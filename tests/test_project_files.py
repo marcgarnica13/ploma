@@ -308,7 +308,8 @@ def test_settings_suggestion(cfg):
     assert allow[0] == "Bash(make:*)"
     for tool in ("pdfinfo", "pdftotext", "chktex", "lacheck", "texcount"):
         assert f"Bash({tool}:*)" in allow
-    assert "Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/*)" in allow
+    assert "Bash(python3 *)" in allow
+    assert not any("${" in a for a in allow), "settings.json does not expand ${CLAUDE_PLUGIN_ROOT}"
     cfg["build"]["command"] = None
     assert project_files.settings_suggestion(cfg)["permissions"]["allow"][0] == "Bash(latexmk:*)"
 

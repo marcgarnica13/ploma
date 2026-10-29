@@ -308,7 +308,7 @@ def settings_suggestion(cfg: dict) -> dict:
             tokens = command.split()
         tool = posixpath.basename(tokens[0]) if tokens else "latexmk"
     allow = [f"Bash({tool}:*)"] + [f"Bash({t}:*)" for t in LINTER_TOOLS if t != tool]
-    allow.append("Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/*)")
+    allow.append("Bash(python3 *)")  # settings.json does not expand ${CLAUDE_PLUGIN_ROOT}
     out_dir = outputs_dir(cfg)
     return {"plansDirectory": _under(out_dir, "plans"), "permissions": {"allow": allow}}
 
