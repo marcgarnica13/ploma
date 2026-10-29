@@ -43,7 +43,7 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:onboard [--dry-run] [--yes]`: detect the repo's facts, propose `ploma.yaml` and project files, write after approval.
 - `/ploma:doctor [path]`: read-only readiness check with a verdict.
 - `/ploma:status`: stage, gate, plan, session log, on one screen.
-- `/ploma:compile`: build the PDF, triage the log, check pages against the budget.
+- `/ploma:compile [--clean]`: build the PDF, triage the log, check pages against the budget.
 - `/ploma:validate-bib [--semantic]`: structural bibliography check; `--semantic` verifies entries against citation APIs.
 - `/ploma:help`: this page.
 

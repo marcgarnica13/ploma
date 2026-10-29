@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: compile-sample-paper
+description: "/ploma:compile on a copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *)'. Without a TeX installation the expected result is FAIL with 'build tool not found' or a build exit code, reported without a traceback."
+tags: [milestone-1, gate]
+context:
+  add_dirs: [examples/sample-paper]
+  scaffold_script: scaffold.sh
