@@ -347,9 +347,12 @@ def _superpowers(root: Path, home: Path) -> dict:
 
 
 _CONFIG_TOKENS = {"id", "ids", "threshold", "seed", "season", "year", "version",
-                  "count", "total", "lr", "epochs", "epoch", "batch", "size", "dropout", "k", "idx", "index",
+                  "count", "total", "lr", "epochs", "epoch", "batch", "dropout", "idx", "index",
                   "steps", "iterations", "patience", "workers"}
 _CONFIG_PHRASES = ("learning_rate", "random_state")
+# R136: k and size only as parameter names; precision_at_k or effect_size stay metrics.
+_CONFIG_KEYS = {"k", "top_k", "topk", "batch_size", "sample_size", "population_size", "window_size", "hidden_size",
+                "embedding_size", "train_size", "test_size", "val_size", "chunk_size"}
 # Nested blocks holding run settings, never metrics.
 _CONFIG_PARENTS = {"config", "configs", "params", "parameters", "hyperparameters", "hparams", "args", "settings",
                    "options"}
@@ -361,7 +364,7 @@ def _config_like(key: str) -> bool:
     tokens = [t for t in re.split(r"[^a-z0-9]+", key.lower()) if t]
     joined = "_".join(tokens)
     return (not tokens or bool(_CONFIG_TOKENS & set(tokens)) or tokens[0] in _COUNT_PREFIXES
-            or any(p in joined for p in _CONFIG_PHRASES))
+            or joined in _CONFIG_KEYS or any(p in joined for p in _CONFIG_PHRASES))
 
 
 def _numeric_keys(data: dict) -> set[str]:

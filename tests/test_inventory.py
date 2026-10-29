@@ -503,3 +503,11 @@ def test_plain_llncs_paper_without_code_gets_generic(tmp_path):
     inv = inventory.inventory(tmp_path)
     assert _gaps(inv)["document.discipline"]["recommended"] == "generic"
     assert inventory.propose_config(inv)["document"]["discipline"] == "generic"
+
+
+def test_k_and_size_metrics_kept_parameters_excluded(tmp_path):
+    """R136: @k metrics and effect_size are metrics; k, top_k and batch-like sizes are parameters."""
+    data = {"precision_at_k": 0.4, "ndcg_at_k": 0.5, "recall_at_k": 0.6, "hits_at_k": 0.7, "effect_size": 0.3,
+            "k": 10, "top_k": 5, "topk": 5, "batch_size": 32, "sample_size": 100, "window_size": 7}
+    g = _gaps(_pipeline_repo(tmp_path, {"m.json": data}))["pipeline.metric_keys"]
+    assert g["recommended"] == ["effect_size", "hits_at_k", "ndcg_at_k", "precision_at_k", "recall_at_k"]
