@@ -649,7 +649,7 @@ def test_review_contract():
     for s in ("ploma:editor", "ploma:domain-referee", "ploma:methods-referee", "ploma:claim-verifier",
               "both in one message", "blind to each other", "skills/_shared/references/cove.md",
               "desk_review.md", "referee_domain.md", "referee_methods.md", "editorial_decision.md", "_r<N>",
-              "referee_1.md", "decision_distribution.md", "editor_synthesis.md", "<outputs.dir>/peer_review_<slug>/",
+              "referee_1.md", "decision_distribution.md", "editor_synthesis.md", "<outputs.dir>/peer_review_<slug>_<venue>/",
               "--no-novelty-check", "mutually exclusive"):
         assert s in peer, s
     assert "The editor spawns no agents" in peer
@@ -1501,3 +1501,16 @@ def test_verify_claims_fail_never_blocks_and_one_manuscript_run_definition():
     assert "never blocks a commit" in text
     assert text.count("document.main with all its \\input files") == 1
     assert "all its inputs" not in text
+
+
+def test_peer_review_dir_is_per_venue(repo_root):
+    """Runs against different venues must not collide: every path is peer_review_<slug>_<venue>/."""
+    shipped = [p for d in ("skills", "agents", "rules") for p in (repo_root / d).rglob("*.md")]
+    for p in shipped:
+        text = p.read_text(encoding="utf-8")
+        assert "peer_review_<slug>/" not in text, p
+    for name in ("agents/editor.md", "agents/domain-referee.md", "agents/methods-referee.md",
+                 "skills/review/references/peer-pipeline.md"):
+        assert "peer_review_<slug>_<venue>/" in (repo_root / name).read_text(encoding="utf-8"), name
+    peer = (repo_root / "skills/review/references/peer-pipeline.md").read_text(encoding="utf-8")
+    assert "the resolved venue key" in peer and "AskUserQuestion" in peer

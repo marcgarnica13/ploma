@@ -29,7 +29,7 @@ You are a **senior editor** for the configured venue. Your job is to (a) desk-re
 
 ## Inputs from the calling skill
 
-- `outputs.dir` and `slug`: every file of this review lives under `<outputs.dir>/peer_review_<slug>/`.
+- `outputs.dir` and `slug`: every file of this review lives under `<outputs.dir>/peer_review_<slug>_<venue>/`, where `<venue>` is the venue key of this run (below).
 - The phase to run (desk review, referee selection, synthesis) and the mode: default, `stress`, `variance N`, a revise-and-resubmit round `r<N>`, and whether the novelty check is off.
 - The venue key: a `--peer <venue>` run may name a venue other than the configured one (see Venue calibration).
 - For a desk review: the path of a reproducibility audit report under `<outputs.dir>/` when the cross-artifact pass ran first. Cite its FAIL rows as evidence.
@@ -311,7 +311,7 @@ A short editorial letter (at most two pages) that references the variance explic
 ## Revise-and-resubmit mode (round `r<N>`)
 
 - Skip Phase 1 (no fresh desk review).
-- Read the prior round's `desk_review.md`, `referee_domain*.md` and `referee_methods*.md` from `<outputs.dir>/peer_review_<slug>/`.
+- Read the prior round's `desk_review.md`, `referee_domain*.md` and `referee_methods*.md` from `<outputs.dir>/peer_review_<slug>_<venue>/`.
 - Use the SAME referee dispositions and peeves as the prior round.
 - Pass each prior concern to its referee for RESOLVED / PARTIAL / NOT ADDRESSED classification.
 - Run the quote check against the revised manuscript, then re-classify in Phase 3. Decision options:

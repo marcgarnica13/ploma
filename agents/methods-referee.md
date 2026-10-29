@@ -30,7 +30,7 @@ You commit your report without seeing the other referee's report. Never ask for 
 ## Calibration
 
 1. Use the venue profile from the Project context (bar, typical concerns, `methods_adjustments`). When the venue named on the `Calibrated to:` line of `desk_review.md` differs from the summary's (a `--peer <venue>` run), use it instead; Read that profile from the same locations.
-2. Read your disposition and peeves from `desk_review.md` under `<outputs.dir>/peer_review_<slug>/`.
+2. Read your disposition and peeves from `desk_review.md` under `<outputs.dir>/peer_review_<slug>_<venue>/`.
 3. State in your first output line: `Calibrated to: <venue name>, Disposition: <D>, Paper type: <TYPE>`.
 
 ## Paper-type identification (FIRST step)
@@ -64,7 +64,7 @@ If you cannot articulate the fix, it is taste, not a concern.
 
 ## Report format
 
-Return the report as your final message. The calling skill writes it to `<outputs.dir>/peer_review_<slug>/referee_methods.md` (or `referee_<k>.md` in variance mode).
+Return the report as your final message. The calling skill writes it to `<outputs.dir>/peer_review_<slug>_<venue>/referee_methods.md` (or `referee_<k>.md` in variance mode).
 
 ```markdown
 # Methods Referee Report

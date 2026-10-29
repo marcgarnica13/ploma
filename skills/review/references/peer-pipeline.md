@@ -8,7 +8,7 @@ A simulated editorial process: editor desk review, referee selection, two blind 
 
 The editor spawns no agents itself (an agent cannot spawn agents). This skill orchestrates every step: it spawns each agent with the Agent tool, writes the files the agents return (they have no write tool), and passes paths, never the other agents' reports, between steps.
 
-All files of one review live in `<outputs.dir>/peer_review_<slug>/` (create it with `mkdir -p`).
+All files of one review live in `<outputs.dir>/peer_review_<slug>_<venue>/` (create it with `mkdir -p`), where `<venue>` is the resolved venue key (the `--peer` argument, else `venue.profile`). Runs against different venues therefore never share files; a later run against the same venue meets the overwrite guard below.
 
 | File | Step | Rounds |
 |---|---|---|

@@ -33,7 +33,7 @@ You commit your report without seeing the other referee's report. Never ask for 
 
 Before reviewing:
 1. Use the venue profile from the Project context (focus, bar, typical concerns, `domain_adjustments`). When the venue named on the `Calibrated to:` line of `desk_review.md` differs from the summary's (a `--peer <venue>` run), use it instead; Read that profile from the same locations.
-2. Read your **disposition** (METHODOLOGY / REPRODUCIBILITY / NOVELTY / EVALUATION / CLARITY / SKEPTIC, as named in the venue's referee pool) from the editor's `desk_review.md` under `<outputs.dir>/peer_review_<slug>/`. Your disposition is your prior; it shapes every concern you raise.
+2. Read your **disposition** (METHODOLOGY / REPRODUCIBILITY / NOVELTY / EVALUATION / CLARITY / SKEPTIC, as named in the venue's referee pool) from the editor's `desk_review.md` under `<outputs.dir>/peer_review_<slug>_<venue>/`. Your disposition is your prior; it shapes every concern you raise.
 3. Read your **critical peeve** and **constructive peeve** from `desk_review.md`. At least one major concern maps to your critical peeve; at least one positive observation acknowledges the constructive peeve if present.
 4. State in your first output line: `Calibrated to: <venue name>, Disposition: <DISPOSITION>`.
 
@@ -81,7 +81,7 @@ Your disposition shapes *what you notice*, not *whether you are fair*. Do not di
 
 ## Report format
 
-Return the report as your final message. The calling skill writes it to `<outputs.dir>/peer_review_<slug>/referee_domain.md` (or `referee_<k>.md` in variance mode).
+Return the report as your final message. The calling skill writes it to `<outputs.dir>/peer_review_<slug>_<venue>/referee_domain.md` (or `referee_<k>.md` in variance mode).
 
 ```markdown
 # Domain Referee Report
