@@ -389,3 +389,19 @@ def test_cli_json(sample_paper, capsys):
     keys = {g["key"] for g in json.loads(capsys.readouterr().out)}
     assert {"venue.profile", "venue.page_budget"} <= keys
     assert inventory.main(["--root", str(sample_paper / "missing")]) == 2
+
+
+def test_build_file_in_main_dir_naming_another_main_is_not_used(tmp_path):
+    """Ruling R77: make would build the other file, so the build file is not this main's build."""
+    for n in ("two_mains_a", "two_mains_b"): shutil.copy(FIX_TEX / f"{n}.tex", tmp_path / f"{n}.tex")
+    (tmp_path / "Makefile").write_text("MAIN := two_mains_b\n\nall:\n\tpdflatex $(MAIN)\n")
+    inv = inventory.inventory(tmp_path, main="two_mains_a.tex")
+    assert inv["main"] == "two_mains_a.tex" and inv["build"]["kind"] is None
+    assert "command" not in inventory.propose_config(inv)["build"]
+    assert inventory.inventory(tmp_path, main="two_mains_b.tex")["build"]["kind"] == "make"
+
+
+def test_latexmkrc_in_main_dir_naming_another_main_is_not_used(tmp_path):
+    shutil.copy(FIX_TEX / "two_mains_a.tex", tmp_path / "paper.tex")
+    (tmp_path / ".latexmkrc").write_text("@default_files = ('other.tex');\n")
+    assert inventory.inventory(tmp_path)["build"]["kind"] is None

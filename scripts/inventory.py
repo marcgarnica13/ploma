@@ -203,15 +203,16 @@ def _pick_main(candidates: list[str], builds: list[dict]) -> str | None:
 
 
 def _build_for(main: str | None, builds: list[dict]) -> dict:
-    """Rulings R46/R48: a build file in the main's own dir, else one elsewhere whose MAIN or
-    @default_files resolves to this main; any other build file is never used (kind None).
+    """Rulings R46/R48/R77: a build file in the main's own dir unless its MAIN or @default_files
+    names a different file, else one elsewhere whose MAIN or @default_files resolves to this
+    main; any other build file is never used (kind None).
     """
     if main is None:
         root_b = next((b for b in builds if b["cwd"] == "."), None)
         return dict(root_b or _NO_BUILD)
     main_dir = posixpath.dirname(main) or "."
     for b in builds:
-        if b["cwd"] == main_dir:
+        if b["cwd"] == main_dir and _named_main(b) in (None, main):
             return dict(b)
     for b in builds:
         if _named_main(b) == main:
