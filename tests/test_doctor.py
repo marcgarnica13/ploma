@@ -214,11 +214,12 @@ def test_figure_provenance_only_with_pipeline(onboarded_sample):
     assert not any(f.id == "manuscript.figure_provenance" for f in _all(_run(onboarded_sample)))
 
 
-def test_project_files_renderer_skip_and_receipt_info(onboarded_sample):
+def test_project_files_pass_and_receipt_info_without_receipt(onboarded_sample):
     r = _run(onboarded_sample)
-    f = _by_id(r, "project-files.renderer")
-    assert f.status == SKIP and "renderer not available until onboard support lands" in f.summary + f.observed
-    assert _by_id(r, "project-files.receipt").status == INFO
+    for check in ("rules", "claude_md", "gitignore", "receipt"):
+        assert _by_id(r, f"project-files.{check}").status == PASS, check
+    (onboarded_sample / "quality_reports" / "ploma-receipt.json").unlink()
+    assert _by_id(_run(onboarded_sample), "project-files.receipt").status == INFO
 
 
 def test_state_group(onboarded_sample):

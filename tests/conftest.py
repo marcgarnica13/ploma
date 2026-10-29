@@ -36,9 +36,13 @@ def cfg(sample_paper) -> dict:
 
 @pytest.fixture
 def onboarded_sample(sample_paper) -> Path:
-    """sample_paper as onboard leaves it (Ruling R1): superpowers enabled, .gitignore, a fresh PDF."""
+    """sample_paper as onboard leaves it (Ruling R1): superpowers enabled, .gitignore, a fresh PDF,
+    and the project files applied (rules, CLAUDE.md section, outputs README, learnings, state, receipt)."""
     import json
     import os
+
+    import ploma_config
+    import project_files
 
     claude = sample_paper / ".claude"
     claude.mkdir(exist_ok=True)
@@ -50,4 +54,6 @@ def onboarded_sample(sample_paper) -> Path:
     shutil.copyfile(sample_paper / "figures" / "fig1.pdf", pdf)
     newest = max(p.stat().st_mtime for p in sample_paper.rglob("*") if p.suffix in (".tex", ".bib"))
     os.utime(pdf, (newest + 60, newest + 60))
+    cfg = ploma_config.load(sample_paper)
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg))
     return sample_paper

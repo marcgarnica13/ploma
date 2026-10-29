@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""Render and apply the project files /ploma:onboard writes into a paper repo (spec section 8).
+
+Ownership modes:
+  enforced      regenerated from ploma.yaml on every run; a hand edit shows as an overwrite diff
+  created-once  written when absent, never overwritten
+  merged        only ploma's part changes: the CLAUDE.md marker section, the .gitignore entries
+
+Usage:
+  python3 scripts/project_files.py [--root R] [--json] plan
+  python3 scripts/project_files.py [--root R] [--json] apply
+  python3 scripts/project_files.py [--root R] [--json] settings
+
+plan shows what apply would do; apply writes create, overwrite and merge actions and records the
+receipt; settings prints the proposed .claude/settings.json additions (never written).
+
+Exit codes: 0 ok, 2 usage error, missing or invalid ploma.yaml, or an unreadable project file.
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import posixpath
+import re
+import shlex
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import _yamlio  # noqa: E402
+import ploma_config  # noqa: E402
+import receipt  # noqa: E402
+import state  # noqa: E402
+
+TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
+MARKER_BEGIN = "<!-- ploma:begin -->"
+MARKER_END = "<!-- ploma:end -->"
+GITIGNORE_HEADER = "# ploma"
+WRITE_ACTIONS = ("create", "overwrite", "merge")
+LINTER_TOOLS = ("pdfinfo", "pdftotext", "chktex", "lacheck", "texcount")
+
+
+@dataclass
+class FileSpec:
+    path: str  # repo-relative posix
+    mode: str  # one of receipt.MODES
+    content: str
+
+
+# ---------------------------------------------------------------- template rendering
+
+_VAR_RE = re.compile(r"\{\{\s*([A-Za-z_][\w.]*)\s*\}\}")
+
+
+def _fmt(value: Any) -> str:
+    if value is None:
+        return "not set"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, list):
+        return ", ".join(_fmt(v) for v in value) if value else "none"
+    if isinstance(value, dict):
+        return ", ".join(f"{k} {_fmt(v)}" for k, v in value.items()) if value else "none"
+    return str(value)
+
+
+def render_template(text: str, ctx: dict) -> str:
+    """Replace each {{ dotted.key }} with its value in ctx; an unknown key raises KeyError naming it."""
+    def value(m: re.Match) -> str:
+        cur: Any = ctx
+        for part in m.group(1).split("."):
+            if not isinstance(cur, dict) or part not in cur:
+                raise KeyError(f"template key {m.group(1)!r} is not in the config")
+            cur = cur[part]
+        return _fmt(cur)
+    return _VAR_RE.sub(value, text)
+
+
+def _fill(schema: dict, value: Any) -> Any:
+    """value with every schema property it lacks set to None (objects recursively)."""
+    props = schema.get("properties")
+    if not props or not isinstance(value, dict):
+        return value
+    out = dict(value)
+    for key, sub in props.items():
+        if key in out:
+            out[key] = _fill(sub, out[key])
+        else:
+            out[key] = _fill(sub, {}) if sub.get("properties") else None
+    return out
+
+
+def _get(cfg: dict, dotted: str) -> Any:
+    cur: Any = cfg
+    for part in dotted.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _rel(p: Any) -> str:
+    """Normalized repo-relative posix form; '' for the repo root or a missing value."""
+    if not isinstance(p, str) or not p:
+        return ""
+    n = posixpath.normpath(p.replace("\\", "/")).strip("/")
+    return "" if n == "." else n
+
+
+def _under(base: str, rest: str) -> str:
+    return f"{base}/{rest}" if base else rest
+
+
+def _bullets(items: Any, empty: str) -> str:
+    vals = [str(v) for v in items] if isinstance(items, list) else []
+    return "\n".join(f"- {v}" for v in vals) if vals else f"- {empty}"
+
+
+def _quoted_list(globs: list[str]) -> str:
+    return "\n".join(f"  - {json.dumps(g)}" for g in globs)
+
+
+def _context(cfg: dict) -> dict:
+    ctx = _fill(json.loads(ploma_config.SCHEMA_PATH.read_text(encoding="utf-8")), cfg)
+    manuscript = [_under(_rel(_get(cfg, "document.root")), "**/*.tex")]
+    bibs = _get(cfg, "build.bib_files")
+    manuscript += [_rel(b) for b in bibs if _rel(b)] if isinstance(bibs, list) else []
+    budget = _get(cfg, "venue.page_budget")
+    command = _get(cfg, "build.command")
+    rerun = _get(cfg, "pipeline.rerun")
+    ctx["_derived"] = {
+        "manuscript_paths": _quoted_list(manuscript),
+        "pipeline_paths": _quoted_list([_under(_rel(_get(cfg, "pipeline.run_from")), "**")]),
+        "build_command": f"`{command}`" if command else "latexmk (no build.command set)",
+        "page_budget": "not set" if budget is None else
+        f"{budget} pages ({'including' if _get(cfg, 'venue.page_budget_includes_refs') else 'excluding'} references)",
+        "anonymity": ("yes. Keep author names, affiliations, acknowledgements, funding notes and "
+                      "self-identifying citations out of the manuscript.")
+        if _get(cfg, "document.anonymized") else "no.",
+        "document_root": _rel(_get(cfg, "document.root")) or "the repo root",
+        "build_cwd": _rel(_get(cfg, "build.cwd")) or "the repo root",
+        "run_from": _rel(_get(cfg, "pipeline.run_from")) or "the repo root",
+        "rerun": f"`{rerun}`" if rerun else "not set",
+        "env_contract": _bullets(_get(cfg, "pipeline.env_contract"), "none recorded"),
+        "gotchas": _bullets(_get(cfg, "pipeline.gotchas"), "none recorded"),
+    }
+    return ctx
+
+
+def _template(name: str) -> str:
+    return (TEMPLATES / name).read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- merged files
+
+def _read(root: Path, rel: str) -> str | None:
+    p = Path(root) / rel
+    if not p.is_file():
+        return None
+    try:
+        return p.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"{rel}: cannot read ({exc})") from None
+
+
+def marker_span(text: str) -> tuple[int, int] | None:
+    """(begin, end) line indexes of the ploma section, or None when absent. Unbalanced raises ValueError."""
+    lines = [ln.strip() for ln in text.splitlines()]
+    begins = [i for i, ln in enumerate(lines) if ln == MARKER_BEGIN]
+    ends = [i for i, ln in enumerate(lines) if ln == MARKER_END]
+    if not begins and not ends:
+        return None
+    if len(begins) != 1 or len(ends) != 1 or ends[0] < begins[0]:
+        raise ValueError(f"CLAUDE.md: the {MARKER_BEGIN} and {MARKER_END} markers are unbalanced; "
+                         "fix them by hand so exactly one section remains")
+    return begins[0], ends[0]
+
+
+def merge_claude_md(existing: str | None, section: str) -> str:
+    """existing with the ploma section replaced in place, or appended after one blank line."""
+    section = section if section.endswith("\n") else section + "\n"
+    if not existing:
+        return section
+    span = marker_span(existing)
+    if span is None:
+        sep = "" if existing.endswith("\n\n") else "\n" if existing.endswith("\n") else "\n\n"
+        return existing + sep + section
+    lines = existing.splitlines(keepends=True)
+    b, e = span
+    return "".join(lines[:b]) + section + "".join(lines[e + 1:])
+
+
+def gitignore_entries(cfg: dict) -> list[str]:
+    out = _rel(_get(cfg, "outputs.dir") or "quality_reports")
+    return [".ploma/", _under(out, "session_logs/"), _under(out, ".cache/")]
+
+
+def gitignore_covers(lines: list[str], entry: str) -> bool:
+    """True when a line equals entry, entry without its trailing slash, or either with a leading slash."""
+    bare = entry.rstrip("/")
+    accept = {entry, bare, "/" + entry, "/" + bare}
+    return any(line.strip() in accept for line in lines)
+
+
+def gitignore_missing(lines: list[str], cfg: dict) -> list[str]:
+    return [e for e in gitignore_entries(cfg) if not gitignore_covers(lines, e)]
+
+
+def merge_gitignore(existing: str | None, cfg: dict) -> str:
+    text = existing or ""
+    missing = gitignore_missing(text.splitlines(), cfg)
+    if not missing:
+        return text
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text + "\n".join([GITIGNORE_HEADER] + missing) + "\n"
+
+
+# ---------------------------------------------------------------- public API
+
+def render_enforced(cfg: dict, ctx: dict | None = None) -> list[FileSpec]:
+    """The enforced rules alone (render_all's first entries); reads nothing from the repo."""
+    ctx = _context(cfg) if ctx is None else ctx
+    specs = [FileSpec(".claude/rules/ploma-manuscript.md", "enforced",
+                      render_template(_template("rules/ploma-manuscript.md"), ctx))]
+    if _get(cfg, "pipeline.enabled") is True:
+        specs.append(FileSpec(".claude/rules/ploma-pipeline.md", "enforced",
+                              render_template(_template("rules/ploma-pipeline.md"), ctx)))
+    return specs
+
+
+def render_all(cfg: dict, root: Path) -> list[FileSpec]:
+    """Every project file onboard owns, in order, with the content it should hold now.
+
+    Merged files carry the full merged text computed from what is on disk under root."""
+    root = Path(root)
+    ctx = _context(cfg)
+    out_dir = _rel(_get(cfg, "outputs.dir") or "quality_reports")
+    specs = render_enforced(cfg, ctx)
+    specs.append(FileSpec(_under(out_dir, "README.md"), "created-once",
+                          render_template(_template("quality_reports/README.md"), ctx)))
+    specs.append(FileSpec(_under(out_dir, "learnings.md"), "created-once",
+                          render_template(_template("learnings.md"), ctx)))
+    specs.append(FileSpec(_under(out_dir, state.FILE_NAME), "created-once", _yamlio.dump_yaml(state._empty())))
+    section = render_template(_template("claude-md-section.md"), ctx)
+    specs.append(FileSpec("CLAUDE.md", "merged", merge_claude_md(_read(root, "CLAUDE.md"), section)))
+    specs.append(FileSpec(".gitignore", "merged", merge_gitignore(_read(root, ".gitignore"), cfg)))
+    return specs
+
+
+def render_statusline(cfg: dict) -> str:
+    """The optional status line script onboard offers (not part of render_all)."""
+    return render_template(_template("statusline.sh"), _context(cfg))
+
+
+def settings_suggestion(cfg: dict) -> dict:
+    """Proposed .claude/settings.json additions to show the user; plugins cannot grant these, so never written."""
+    command = _get(cfg, "build.command")
+    tool = "latexmk"
+    if isinstance(command, str) and command.strip():
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            tokens = command.split()
+        tool = posixpath.basename(tokens[0]) if tokens else "latexmk"
+    allow = [f"Bash({tool}:*)"] + [f"Bash({t}:*)" for t in LINTER_TOOLS if t != tool]
+    allow.append("Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/*)")
+    out_dir = _rel(_get(cfg, "outputs.dir") or "quality_reports")
+    return {"plansDirectory": _under(out_dir, "plans"), "permissions": {"allow": allow}}
+
+
+def _diff(path: str, old: str | None, new: str) -> str:
+    return "".join(difflib.unified_diff((old or "").splitlines(keepends=True), new.splitlines(keepends=True),
+                                        fromfile="/dev/null" if old is None else f"a/{path}",
+                                        tofile=f"b/{path}"))
+
+
+def plan(root: Path, cfg: dict) -> list[dict]:
+    """[{path, mode, action, diff}] for every rendered file; reads only."""
+    root = Path(root)
+    receipt_state = {r["path"]: r["state"] for r in receipt.compare(root, cfg)}
+    rows = []
+    for spec in render_all(cfg, root):
+        current = _read(root, spec.path)
+        diff = ""
+        if current is None:
+            action, diff = "create", _diff(spec.path, None, spec.content)
+        elif current == spec.content:
+            action = "unchanged"
+        elif spec.mode == "created-once":
+            action = "unchanged" if receipt_state.get(spec.path) == "unchanged" else "skip_hand_edited"
+        else:
+            action = "overwrite" if spec.mode == "enforced" else "merge"
+            diff = _diff(spec.path, current, spec.content)
+        rows.append({"path": spec.path, "mode": spec.mode, "action": action, "diff": diff})
+    return rows
+
+
+def apply(root: Path, cfg: dict, plan: list[dict]) -> list[dict]:
+    """Write files whose planned action is create, overwrite or merge, then record the receipt.
+
+    Content is re-rendered at apply time; returns the plan rows each with a ``written`` flag."""
+    root = Path(root)
+    actions = {row["path"]: row["action"] for row in plan}
+    specs = render_all(cfg, root)
+    for spec in specs:
+        if actions.get(spec.path) in WRITE_ACTIONS:
+            state._atomic_write(root / spec.path, spec.content)
+    files = [{"path": s.path, "mode": s.mode, "sha256": receipt.sha256_file(root / s.path)}
+             for s in specs if (root / s.path).is_file()]
+    receipt.write(root, cfg, files)
+    return [dict(row, written=row["action"] in WRITE_ACTIONS) for row in plan]
+
+
+# ---------------------------------------------------------------- CLI
+
+def _error(message: str, as_json: bool) -> int:
+    if as_json:
+        print(json.dumps({"error": message}))
+    else:
+        print(f"project_files: {message}", file=sys.stderr)
+    return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Plan, apply or suggest ploma project files.")
+    parser.add_argument("--root", default=".", help="repo root holding ploma.yaml (default: cwd)")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument("action", choices=("plan", "apply", "settings"))
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return 0 if exc.code == 0 else 2
+    root = Path(args.root)
+    try:
+        cfg = ploma_config.load(root)
+    except ploma_config.ConfigError as exc:
+        return _error(exc.message, args.json)
+    try:
+        if args.action == "settings":
+            data: Any = settings_suggestion(cfg)
+            print(json.dumps(data, indent=2))
+            return 0
+        rows = plan(root, cfg)
+        if args.action == "apply":
+            rows = apply(root, cfg, rows)
+    except (ValueError, KeyError, OSError) as exc:
+        return _error(str(exc), args.json)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        for row in rows:
+            flag = " (written)" if row.get("written") else ""
+            print(f"- {row['action']} {row['path']} [{row['mode']}]{flag}")
+            if row["diff"] and args.action == "plan":
+                print(row["diff"].rstrip("\n"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

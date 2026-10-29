@@ -11,6 +11,7 @@ Exit codes: 0 READY or READY_WITH_WARNINGS, 1 NOT_READY, 2 usage error or path i
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import shlex
@@ -28,6 +29,7 @@ import gate  # noqa: E402
 import inventory  # noqa: E402
 import ploma_config  # noqa: E402
 import profiles  # noqa: E402
+import project_files  # noqa: E402
 import receipt  # noqa: E402
 import state  # noqa: E402
 from _findings import FAIL, INFO, PASS, SKIP, STATUSES, WARN, Finding  # noqa: E402
@@ -290,36 +292,68 @@ def _manuscript(root: Path, cfg: dict) -> list[Finding]:
     return out
 
 
-def _ignored_by(lines: list[str], target: str) -> bool:
-    parts = target.strip("/").split("/")
-    accept = {"/".join(parts[:i]) for i in range(1, len(parts) + 1)} | {parts[-1]}
-    for line in lines:
-        s = line.strip()
-        if not s or s.startswith(("#", "!")):
-            continue
-        for suffix in ("/**", "/*"):
-            if s.endswith(suffix):
-                s = s[: -len(suffix)]
-        if s.strip("/") in accept:
-            return True
-    return False
+def _drift_excerpt(diff: str, limit: int = 6) -> str:
+    body = [ln for ln in diff.splitlines() if ln[:1] in "+-" and not ln.startswith(("+++", "---"))]
+    more = len(body) - limit
+    return "; ".join(body[:limit]) + (f" (and {more} more changed lines)" if more > 0 else "")
 
 
 def _project_files(root: Path, cfg: dict) -> list[Finding]:
     g = "project-files"
-    out = [_f(g, "renderer", SKIP, "renderer not available until onboard support lands")]
+    out = []
+    try:
+        specs = project_files.render_enforced(cfg)  # the enforced entries of render_all; created-once never drift
+    except (ValueError, KeyError, OSError) as exc:
+        specs = None
+        out.append(_f(g, "render", WARN, "ploma could not render the generated rules", observed=str(exc),
+                      remediation="Fix ploma.yaml, then re-run /ploma:onboard."))
+    if specs is not None:
+        bad = 0
+        for spec in (s for s in specs if s.mode == "enforced"):
+            target = root / spec.path
+            if not target.is_file():
+                bad += 1
+                out.append(_f(g, f"missing.{spec.path}", WARN, f"generated rule {spec.path} is missing",
+                              observed=f"missing: {spec.path}", remediation="Re-run /ploma:onboard"))
+                continue
+            try:
+                current = target.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                current = f"<unreadable: {exc}>"
+            if current != spec.content:
+                bad += 1
+                diff = "".join(difflib.unified_diff(current.splitlines(keepends=True),
+                                                    spec.content.splitlines(keepends=True)))
+                out.append(_f(g, f"drift.{spec.path}", WARN,
+                              f"{spec.path} differs from what ploma.yaml generates",
+                              observed=_drift_excerpt(diff),
+                              remediation="Re-run /ploma:onboard to regenerate it; change ploma.yaml, "
+                                          "not the generated file."))
+        if not bad:
+            n = sum(s.mode == "enforced" for s in specs)
+            out.append(_f(g, "rules", PASS, f"{n} generated rules match ploma.yaml"))
+    try:
+        claude = (root / "CLAUDE.md").read_text(encoding="utf-8") if (root / "CLAUDE.md").is_file() else None
+        span = project_files.marker_span(claude) if claude is not None else None
+        problem = "" if span is not None else \
+            "CLAUDE.md does not exist" if claude is None else "no ploma markers in CLAUDE.md"
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        problem = str(exc)
+    out.append(_f(g, "claude_md", WARN, "the CLAUDE.md ploma section is missing or broken", observed=problem,
+                  remediation="Re-run /ploma:onboard to restore the section between "
+                              f"{project_files.MARKER_BEGIN} and {project_files.MARKER_END}.") if problem else
+               _f(g, "claude_md", PASS, "CLAUDE.md has the ploma section"))
     gi = root / ".gitignore"
     try:
         lines = gi.read_text(encoding="utf-8").splitlines() if gi.is_file() else []
     except (OSError, UnicodeDecodeError):
         lines = []
-    outputs = str(_get(cfg, "outputs.dir") or "quality_reports").strip("/")
-    wanted = [".ploma/", f"{outputs}/session_logs/"]
-    missing = [w for w in wanted if not _ignored_by(lines, w)]
+    missing = project_files.gitignore_missing(lines, cfg)
     out.append(_f(g, "gitignore", WARN, ".gitignore does not cover ploma's local state",
                   observed="not ignored: " + ", ".join(missing),
-                  remediation="Add these lines to .gitignore: " + ", ".join(missing)) if missing else
-               _f(g, "gitignore", PASS, ".gitignore covers .ploma/ and session logs"))
+                  remediation="Add these lines to .gitignore (or re-run /ploma:onboard): " + ", ".join(missing))
+               if missing else
+               _f(g, "gitignore", PASS, ".gitignore covers .ploma/, session logs and caches"))
     try:
         data = receipt.load(root, cfg)
     except ValueError as exc:
