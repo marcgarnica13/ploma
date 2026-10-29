@@ -168,7 +168,9 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
     assert "600000 ms" in text and "480 s" in text
 
 
-INSTALLED_M1 = {"onboard", "doctor", "status", "help", "compile", "validate-bib"}
+# R104: grows with each milestone-2 skill task.
+INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
+             "audit-reproducibility"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -177,11 +179,11 @@ def _planned_mention_problems(text: str, label: str) -> list[str]:
     problems = []
     for m in _PLOMA_CMD.finditer(text):
         name = m.group(1)
-        if name in INSTALLED_M1:
+        if name in INSTALLED:
             continue
         after = text[m.end():m.end() + 40].lstrip("`")
         if not re.match(r"\s*(?:\(planned|arrives in milestone 2)", after):
-            problems.append(f"{label}: /ploma:{name} is not installed in milestone 1 and is not marked (planned")
+            problems.append(f"{label}: /ploma:{name} is not installed and is not marked (planned")
     return problems
 
 
@@ -205,7 +207,7 @@ def test_planned_check_catches_a_bare_planned_command():
 
 # ---------------------------------------------------------------- eval setup (R91)
 
-SCAFFOLD_CASES = ("compile", "doctor", "onboard", "status", "validate-bib")
+SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "status", "validate-bib")
 
 
 def test_evals_contain_no_symlinks():
@@ -244,7 +246,7 @@ def test_eval_scaffold_runs(name, tmp_path):
     assert (tmp_path / "ploma.yaml").exists() == (name != "onboard")
 
 
-@pytest.mark.parametrize("name", ("compile", "doctor", "status", "validate-bib"))
+@pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "status", "validate-bib"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -305,3 +307,81 @@ def test_report_header_fields():
     text = (SHARED / "report-header.md").read_text(encoding="utf-8")
     for field in ("**Date:**", "**File:**", "**Skill:**", "**Config:**"):
         assert field in text
+
+
+# ---------------------------------------------------------------- validate stage (milestone 2, Tasks 4 and 8)
+
+VALIDATE_SKILLS = ("audit-reproducibility",)
+
+
+def _skill(name: str) -> str:
+    return (REPO / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", VALIDATE_SKILLS)
+def test_validate_skills_are_installed_and_not_marked_planned(name):
+    """R104: the installed set holds the skill and no planned list names it."""
+    assert name in INSTALLED and (REPO / "skills" / name / "SKILL.md").is_file()
+    help_text = _skill("help")
+    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
+    assert name not in planned_help.split(", ") and f"{name}," not in planned_help
+    assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
+    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
+    installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
+    assert name not in planned_line and f"/ploma:{name}" in installed_line
+    core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
+    assert re.search(rf"Installed now:[^;]*\b{re.escape(name)}\b", core)
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    assert not re.search(rf"/ploma:{re.escape(name)}`? \(planned", readme)
+    row = next(line for line in readme.splitlines() if line.startswith("| 6 | Validate"))
+    assert not re.search(rf"planned:[^|]*/ploma:{re.escape(name)}\b", row) and f"/ploma:{name}" in row
+
+
+def test_no_installed_skill_is_called_planned_anywhere():
+    files = [REPO / "README.md", REPO / "skills" / "validate-bib" / "SKILL.md"]
+    files += [p for p in (REPO / "templates").rglob("*") if p.is_file()]
+    files += sorted((REPO / "rules").rglob("*.md")) + sorted((REPO / "skills").rglob("*.md"))
+    for p in files:
+        text = p.read_text(encoding="utf-8")
+        for name in VALIDATE_SKILLS:
+            assert not re.search(rf"/ploma:{re.escape(name)}`?,? (?:\(planned|which arrives in milestone 2|arrives in milestone 2)",
+                                 text), f"{p}: {name} still marked planned"
+
+
+def test_audit_reproducibility_contract():
+    text = _skill("audit-reproducibility")
+    assert "pipeline is not enabled in ploma.yaml; set pipeline.enabled and its keys, or run /ploma:onboard" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/consistency.py" --root . --record --json' in text
+    assert "--passport" in text and "<outputs.dir>/passports/<slug>.yaml" in text
+    assert "<outputs.dir>/reproducibility_audit_<slug>.md" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record audit-reproducibility' in text
+    for status in ("PASS", "FAIL", "STALE", "UNVERIFIED"):
+        assert status in text
+    assert "never delete" in text.lower()
+    for key in ("pipeline.tolerances", "pipeline.metric_keys", "pipeline.outputs_dir", "pipeline.rerun",
+                "pipeline.env_contract", "pipeline.run_from"):
+        assert key in text, key
+    assert "Monitor" in text and "run_in_background" in text
+    assert "AskUserQuestion" in text
+    # Tolerance numbers come from config and the limits rule, never restated here.
+    assert not re.search(r"\b0\.0[12]\b|0\.1 ?pp", text)
+    ref = (REPO / "skills" / "audit-reproducibility" / "references" / "passport.md").read_text(encoding="utf-8")
+    assert "schemas/passport.schema.json" in ref and "never deletes" in ref.lower()
+
+
+def test_passport_reference_example_validates(tmp_path):
+    """The example passport in the reference parses with the fallback loader and passes the schema check."""
+    import sys
+    sys.path.insert(0, str(REPO / "scripts"))
+    import _yamlmini
+    import consistency
+    ref = (REPO / "skills" / "audit-reproducibility" / "references" / "passport.md").read_text(encoding="utf-8")
+    block = re.search(r"```yaml\n(.*?)```", ref, re.S).group(1)
+    data = _yamlmini.load(block)
+    assert data["claims"] and data["paper"]["slug"]
+    p = tmp_path / "main.yaml"
+    p.write_text(block, encoding="utf-8")
+    findings, info = consistency._passport_findings(p)
+    assert not [f for f in findings if f.id == "consistency.passport_invalid"], [f.summary for f in findings]
+    assert info["claims"] == len(data["claims"])

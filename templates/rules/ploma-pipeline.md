@@ -21,4 +21,4 @@ Variables the pipeline reads; never print their values or commit them.
 
 ## Tolerances
 Numbers in the manuscript match the results within: {{ pipeline.tolerances }}.
-After changing code that feeds a reported number, rerun the pipeline and compare the numbers by hand; /ploma:audit-reproducibility (planned, milestone 2) will automate this.
+After changing code that feeds a reported number, rerun the pipeline and run /ploma:audit-reproducibility to compare the numbers against the results and update the passport.

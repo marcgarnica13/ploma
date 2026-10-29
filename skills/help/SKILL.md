@@ -45,11 +45,12 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:status`: stage, gate, plan, session log, on one screen.
 - `/ploma:compile [--clean]`: build the PDF, triage the log, check pages against the budget.
 - `/ploma:validate-bib [--semantic] [--skip-doi]`: structural bibliography check; `--semantic` verifies entries against citation APIs.
+- `/ploma:audit-reproducibility [--rerun]`: match the paper's reported numbers against the pipeline's results within the configured tolerances and keep the claims passport (needs `pipeline.enabled`).
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)
 
-brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn, deep-audit.
+brainstorm, lit-review, grill, spec, write, format, verify-claims, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn, deep-audit.
 
 If the user asks for one of these, say it is not installed yet and name the nearest installed skill, if any (`/ploma:doctor` or `/ploma:status` for state, `/ploma:compile` before any review). Until `/ploma:commit` arrives, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed.
 
