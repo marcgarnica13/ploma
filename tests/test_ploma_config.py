@@ -202,3 +202,29 @@ def test_summary_never_prints_none(sample_paper):
     cfg["limits"]["review_rounds"] = None
     s = ploma_config.summary(cfg)
     assert "None" not in s and "venue: page budget 8" in s
+
+
+def test_missing_pipeline_outputs_dir_is_warn(sample_paper):
+    """pipeline.outputs_dir is generated and often gitignored: absent on a fresh clone is a WARN, not a FAIL."""
+    cfg = ploma_config.load(sample_paper)
+    cfg["pipeline"]["outputs_dir"] = "results/not_yet"
+    f = _ids(cfg, sample_paper)["config.path.pipeline.outputs_dir"]
+    assert f.status == WARN and "results/not_yet" in f.observed
+    cfg["pipeline"]["run_from"] = "gone"
+    assert _ids(cfg, sample_paper)["config.path.pipeline.run_from"].status == FAIL
+
+
+@pytest.mark.parametrize("slug,ok", [("main", True), ("paper-v2.final_1", True), ("my paper", False),
+                                     ("a/b", False), ("café", False), ("", False)])
+def test_document_slug_pattern(sample_paper, slug, ok):
+    cfg = ploma_config.load(sample_paper)
+    cfg["document"]["slug"] = slug
+    f = _ids(cfg, sample_paper).get("config.pattern.document.slug")
+    assert (f is None) == ok
+    if f is not None:
+        assert f.status == FAIL and "^[A-Za-z0-9._-]+$" in f.summary
+
+
+def test_schema_declares_the_slug_pattern(repo_root):
+    schema = json.loads((repo_root / "schemas" / "ploma.schema.json").read_text(encoding="utf-8"))
+    assert schema["properties"]["document"]["properties"]["slug"]["pattern"] == "^[A-Za-z0-9._-]+$"

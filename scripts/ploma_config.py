@@ -15,6 +15,7 @@ import argparse
 import copy
 import json
 import posixpath
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -124,7 +125,7 @@ def _type_ok(value: Any, types: Any) -> bool:
 
 
 def _check(value: Any, schema: dict, path: str, out: list[Finding]) -> None:
-    """Minimal JSON Schema walk: type, enum, required, properties, items, additionalProperties."""
+    """Minimal JSON Schema walk: type, pattern, enum, required, properties, items, additionalProperties."""
     where = path or "top level"
     if "type" in schema and not _type_ok(value, schema["type"]):
         want = schema["type"] if isinstance(schema["type"], str) else " or ".join(schema["type"])
@@ -132,6 +133,10 @@ def _check(value: Any, schema: dict, path: str, out: list[Finding]) -> None:
                            observed=f"{type(value).__name__}: {value!r}",
                            remediation=f"Set {where} to a {want} in ploma.yaml.", group="config"))
         return
+    if "pattern" in schema and isinstance(value, str) and not re.search(schema["pattern"], value):
+        out.append(Finding(f"config.pattern.{path}", FAIL, f"{where} must match {schema['pattern']}",
+                           observed=repr(value), remediation=f"Change {where} in ploma.yaml to match {schema['pattern']}.",
+                           group="config"))
     if "enum" in schema and value not in schema["enum"]:
         out.append(Finding(f"config.enum.{path}", FAIL, f"{where} must be one of {', '.join(schema['enum'])}",
                            observed=repr(value), remediation=f"Pick one of {schema['enum']}.", group="config"))
@@ -202,7 +207,13 @@ def validate(cfg: dict, root: Path) -> list[Finding]:
     root = Path(root)
     for key, rels in _input_paths(cfg):
         missing = [r for r in rels if not (root / r).exists()]
-        if missing and key == "reviews.glob":
+        if missing and key == "pipeline.outputs_dir":
+            findings.append(Finding(f"config.path.{key}", WARN, "pipeline.outputs_dir does not exist yet",
+                                    observed=", ".join(missing),
+                                    remediation="Run the pipeline to generate it (results are often gitignored), "
+                                                "or fix pipeline.outputs_dir in ploma.yaml.",
+                                    group="config"))
+        elif missing and key == "reviews.glob":
             findings.append(Finding(f"config.path.{key}", WARN, "reviews.glob points into a directory that does not exist",
                                     observed=", ".join(missing),
                                     remediation="Create the reviews directory when referee reports arrive, "

@@ -49,7 +49,8 @@
         },
         "slug": {
           "type": "string",
-          "description": "Used in report filenames; defaults to the stem of main."
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "description": "Used in report filenames; defaults to the stem of main. Letters, digits, dot, underscore and hyphen only."
         },
         "anonymized": {
           "type": "boolean"
