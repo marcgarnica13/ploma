@@ -1,7 +1,8 @@
 # Learnings
 
-The project learnings ledger. /ploma:learn appends entries here; /ploma:learn --promote proposes the
-durable ones for `.claude/rules/ploma-learnings.md` and writes only on approval.
+The project learnings ledger. Add entries by hand for now. /ploma:learn (planned, milestone 2) will
+append entries here and, with --promote, propose the durable ones for `.claude/rules/ploma-learnings.md`,
+writing only on approval.
 
 Entry format:
 

@@ -162,3 +162,38 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
     """A semantic run on a large bibliography outlives the default 2-minute Bash timeout."""
     text = (REPO / "skills" / "validate-bib" / "SKILL.md").read_text(encoding="utf-8")
     assert "600000 ms" in text and "480 s" in text
+
+
+INSTALLED_M1 = {"onboard", "doctor", "status", "help", "compile", "validate-bib"}
+_PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
+
+
+def _planned_mention_problems(text: str, label: str) -> list[str]:
+    """Every /ploma:<name> is installed, or is followed by "(planned" or "arrives in milestone 2"."""
+    problems = []
+    for m in _PLOMA_CMD.finditer(text):
+        name = m.group(1)
+        if name in INSTALLED_M1:
+            continue
+        after = text[m.end():m.end() + 40].lstrip("`")
+        if not re.match(r"\s*(?:\(planned|arrives in milestone 2)", after):
+            problems.append(f"{label}: /ploma:{name} is not installed in milestone 1 and is not marked (planned")
+    return problems
+
+
+def test_uninstalled_skills_are_marked_planned():
+    """Templates, eager rules, hooks and compile output never send the user to a skill that is not installed."""
+    files = [p for p in (REPO / "templates").rglob("*") if p.is_file()]
+    files += sorted((REPO / "rules" / "eager").glob("*.md"))
+    files += sorted((REPO / "hooks").glob("*.py")) + [REPO / "scripts" / "compile.py", REPO / "skills" / "compile" / "SKILL.md"]
+    problems = []
+    for p in files:
+        problems += _planned_mention_problems(p.read_text(encoding="utf-8"), str(p.relative_to(REPO)))
+    assert not problems, "\n".join(problems)
+
+
+def test_planned_check_catches_a_bare_planned_command():
+    assert _planned_mention_problems("Run /ploma:format next.", "x")
+    assert not _planned_mention_problems("/ploma:format (planned, milestone 2) gives the map.", "x")
+    assert not _planned_mention_problems("trim manually; /ploma:format arrives in milestone 2", "x")
+    assert not _planned_mention_problems("Run /ploma:compile next.", "x")
