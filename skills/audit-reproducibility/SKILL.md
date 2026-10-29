@@ -1,13 +1,13 @@
 ---
 name: audit-reproducibility
 description: Check that the numbers reported in the paper match the pipeline's results files within the configured tolerances, and keep the claims passport up to date. Runs the deterministic consistency pass first, then matches the numeric claims it could not place against the results, writes a PASS, FAIL or UNMATCHED row per claim, and updates the passport. Needs the pipeline add-on enabled in ploma.yaml. Use when the user asks whether the paper's numbers match the code, to audit reproducibility, before submission, or before releasing the code and data.
-argument-hint: "[--rerun]"
+argument-hint: "[--rerun | --no-rerun]"
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), Bash(git rev-parse *), AskUserQuestion, Monitor
 ---
 
 # ploma audit-reproducibility
 
-Arguments: `$ARGUMENTS`. `--rerun` offers to re-run the pipeline before the audit (Phase 1).
+Arguments: `$ARGUMENTS`. `--rerun` offers to re-run the pipeline before the audit (Phase 1). `--no-rerun` never re-runs and never ends the turn waiting: `/ploma:review` passes it (review mode: no rerun). With `--no-rerun`, Phase 1 is skipped entirely; missing or stale results become a finding in the report (missing: every claim that needs them is UNMATCHED; stale: a WARN naming the newest results file and the newest `.tex` file), and the audit continues with Phase 2 against the results that exist.
 
 No `ploma.yaml` in the repo root: say "ploma is not set up here. Run /ploma:onboard." and stop.
 
@@ -34,7 +34,7 @@ This skill never edits the manuscript or the pipeline code. It writes two files:
    Exit 0 is verdict PASS or WARN, exit 1 is verdict FAIL (a result, not an error), exit 2 is a usage error or unreadable input: quote the message and stop. The script has written `<outputs.dir>/consistency_<slug>.md` and the `consistency` gate entry; do not record them again.
 
    Quote its summary in the reply: the verdict, the FAIL and WARN counts, how many abstract numbers, introduction numbers and table cells it checked, how many results files it read, and the passport counts when a passport exists. Then one line per FAIL finding (its id and summary).
-2. Results present and current. Glob `pipeline.outputs_dir`. Empty or missing: say so and go to Phase 1. If the newest results file is older than the newest `.tex` file under `document.root` (Glob lists files newest first), say the results may be stale and go to Phase 1.
+2. Results present and current. Glob `pipeline.outputs_dir`. Empty or missing: say so and go to Phase 1. If the newest results file is older than the newest `.tex` file under `document.root` (Glob lists files newest first), say the results may be stale and go to Phase 1. With `--no-rerun`, record either case as a finding and go to Phase 2 instead.
 3. Environment contract. Check which names in `pipeline.env_contract` are unset, without ever printing a value:
 
    ```bash
@@ -45,7 +45,7 @@ This skill never edits the manuscript or the pipeline code. It writes two files:
 
 ## Phase 1: Re-run the pipeline (optional)
 
-Only when the arguments contain `--rerun`, or Phase 0 found the results missing or stale. Without `pipeline.rerun`, say "no rerun command in ploma.yaml (pipeline.rerun); auditing the current results" and go to Phase 2.
+Never with `--no-rerun`. Otherwise only when the arguments contain `--rerun`, or Phase 0 found the results missing or stale. Without `pipeline.rerun`, say "no rerun command in ploma.yaml (pipeline.rerun); auditing the current results" and go to Phase 2.
 
 Ask once with `AskUserQuestion`. Options: "Audit the current results" and "Re-run the pipeline first"; mark the rerun (Recommended) when results are missing or stale, otherwise the current results. Show the command, the run directory, the unset environment names and the gotchas before asking. Without `AskUserQuestion`, do not re-run.
 

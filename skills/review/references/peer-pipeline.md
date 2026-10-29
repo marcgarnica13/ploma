@@ -27,7 +27,7 @@ Run in this order and stop at the first failure:
 1. The flag checks of the skill (mutually exclusive flags, round and variance caps).
 2. Venue resolution with `profiles.py` (in the skill). An unknown key stops here.
 3. Revise-and-resubmit round `--r<N>`: the prior round's files exist (`referee_domain.md` and `referee_methods.md` for N = 2, `referee_domain_r<N-1>.md` and `referee_methods_r<N-1>.md` after that, and `desk_review.md`). Missing: stop and say which file and which earlier command produces it.
-4. Cross-artifact, when it applies (see the skill): `/ploma:audit-reproducibility` runs now, before the desk review. Its result goes into the Pre-Flight Report.
+4. Cross-artifact, when it applies (see the skill): `/ploma:audit-reproducibility --no-rerun` runs now, before the desk review. Its result goes into the Pre-Flight Report.
 5. Print the Pre-Flight Report before spawning any agent, in the format of `report-templates.md`. It names the manuscript, the resolved venue, the discipline, the round, the novelty-check state and the cross-artifact status. The user sees exactly what the pipeline will use.
 
 ## Phase 1: Desk review (fresh runs only)
@@ -41,7 +41,7 @@ The novelty probes use web search, which can return fabricated or misattributed 
 1. Take the rows of the `## Novelty claims` table in `desk_review.md`. None, or `--no-novelty-check`: skip this step.
 2. Spawn `ploma:claim-verifier` with only the YAML block of `cove.md`: `source_material` (the URLs and DOIs from the table) and `claims` (id, the claim, a source hint, one verification question each). Never pass the manuscript, the desk review or a summary of either.
 3. Append `## Novelty post-flight` to `desk_review.md`: verified claims stay as evidence; every other claim moves under "editor could not verify, manual check recommended", with the verifier's reason. A verifier error is fail closed: every claim is unverified.
-4. If the verdict is DESK REJECT for "already done" and the deciding claim is not verified, spawn `ploma:editor` once more with the desk review path and the post-flight table, asking for a new verdict without that claim. Write its returned desk review over the first.
+4. If the verdict is DESK REJECT for "already done" and the deciding claim is not verified, spawn `ploma:editor` once more. Its prompt holds the same inputs as the first spawn (the manuscript path and inputs, the venue key, `outputs.dir` and `<slug>`, the mode, the novelty-check state, the audit report path when the audit ran) plus the desk review path and the post-flight table, asking for a new verdict without that claim. If the new verdict is SEND OUT, the returned desk review must include the `## Referee Selection` table; without it, stop and say the referee selection is missing. Write its returned desk review over the first.
 
 DESK REJECT: stop here. Show the reason, the evidence and the suggested venue, and record the run (`decision=desk-reject`).
 
@@ -54,6 +54,7 @@ Read the `## Referee Selection` table in `desk_review.md` (round N: the same tab
 - `outputs.dir`, `<slug>` and the target file name (`referee_domain.md`, or `referee_domain_r<N>.md`; likewise for methods);
 - round N only: the path of this referee's prior report and the instruction to classify each prior major concern RESOLVED, PARTIAL or NOT ADDRESSED;
 - `--stress` only: "You are looking for reasons to reject this paper. Be hostile but fair."
+- "Read only the files named in this prompt." (plus the venue and discipline files of your Project context)
 
 Never pass one referee's report, or a summary of it, to the other. Write each returned report to its file.
 

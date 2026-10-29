@@ -50,7 +50,7 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:proofread [file.tex | all]`: report-only proofreading, one report per file; fixes only after approval.
 - `/ploma:write <section> [--from-spec] [--merge]`: draft a section into a `<stem>_suggestion.tex` sibling with a self-check and a diff; merges only on `--merge` and your yes.
 - `/ploma:format [--budget N] [--presubmit]`: page map per section against the budget, a cut plan when over (proposals only), and the pre-submission checks.
-- `/ploma:review [path] [--adversarial | --peer <venue> [--r2|--r3|--stress|--variance N] | --seven-pass]`: a referee-style review; `--peer` simulates the venue's editor and two blind referees, `--adversarial` loops critic and fixer with your approval, `--seven-pass` runs seven lenses.
+- `/ploma:review [path] [--adversarial | --peer <venue> [--r2|--r3|--stress|--variance N] [--no-novelty-check] | --seven-pass] [--no-cross-artifact]`: a referee-style review; `--peer` simulates the venue's editor and two blind referees, `--adversarial` loops critic and fixer with your approval, `--seven-pass` runs seven lenses.
 - `/ploma:devils-advocate [path]`: 5 to 7 skeptical challenges to the paper's design choices; report only.
 - `/ploma:help`: this page.
 

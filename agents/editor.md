@@ -144,7 +144,7 @@ For each referee, draw **1 critical peeve and 1 constructive peeve**. In stress 
 
 ### Variance mode (`variance N`)
 
-N is at least 3 and at most the review variance cap in limits. The goal is to *estimate variance*, not to enforce diversity:
+N is at least 2 and at most the review variance cap in limits. The goal is to *estimate variance*, not to enforce diversity:
 1. Draw **N dispositions WITH replacement** from the `referee_pool` weights. Repeats are allowed and informative.
 2. **Stratification rule:** if no SKEPTIC was drawn, replace one randomly chosen referee with a SKEPTIC. This avoids a misleadingly friendly draw that understates publication risk.
 3. For each of the N referees, draw 1 critical and 1 constructive peeve.
