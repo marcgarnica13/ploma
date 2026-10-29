@@ -59,6 +59,7 @@ class GatePrep:
     next_commands: list[str]
     checks: dict[str, dict] = dataclasses.field(default_factory=dict)
     errors: list[str] = dataclasses.field(default_factory=list)
+    notes: list[str] = dataclasses.field(default_factory=list)
 
     def to_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -93,20 +94,49 @@ def _refresh(name: str, root: Path, cfg: dict, runner: Callable[..., Any] | None
         return f"could not run: {exc}"
 
 
+SEMANTIC_STANDS = "semantic bibliography FAIL still stands: run /ploma:validate-bib --semantic"
+SEMANTIC_SUPERSEDED = ("the .bib changed, so the semantic bibliography result is superseded by a structural "
+                       "re-run: run /ploma:validate-bib --semantic again")
+
+
+def _semantic_bib(root: Path, cfg: dict) -> str | None:
+    """'stands' when the bib entry is a semantic FAIL over the current .bib bytes, 'superseded' when
+    it is a semantic result over a .bib that changed since, else None (Ruling R156)."""
+    entry = gate.load(root, cfg)["checks"].get("bib") or {}
+    if entry.get("mode") != "semantic":
+        return None
+    try:
+        current = validate_bib.bib_sha(root, cfg)
+    except (validate_bib.UsageError, OSError, ValueError):
+        return None
+    if entry.get("bib_sha") == current:
+        return "stands" if entry.get("status") == "FAIL" else None
+    return "superseded"
+
+
 def prepare(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, fetch: Any = None) -> GatePrep:
     root = Path(root).resolve()
     first = gate.check(root, cfg)
     refreshed: list[str] = []
     errors: dict[str, str] = {}
+    notes: list[str] = []
     for name in REFRESHED_HERE:
         c = first.checks[name]
         if c["present"] and c["fresh"]:
             continue
+        if name == "bib" and c["present"]:
+            semantic = _semantic_bib(root, cfg)
+            if semantic == "stands":
+                gate.refresh_sha(root, cfg, "bib")
+                notes.append(SEMANTIC_STANDS)
+                continue
+            if semantic == "superseded":
+                notes.append(SEMANTIC_SUPERSEDED)
         err = _refresh(name, root, cfg, runner, fetch)
         refreshed.append(name)
         if err:
             errors[name] = err
-    rep = gate.check(root, cfg) if refreshed else first
+    rep = gate.check(root, cfg) if refreshed or notes else first
 
     failing = [n for n in gate.REQUIRED
                if n in errors or (rep.checks[n]["present"] and rep.checks[n]["fresh"]
@@ -127,7 +157,7 @@ def prepare(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, 
                     next_commands=next_commands,
                     checks={n: {"status": c["status"], "fresh": c["fresh"], "required": c["required"]}
                             for n, c in rep.checks.items()},
-                    errors=[f"{n}: {e}" for n, e in errors.items()])
+                    errors=[f"{n}: {e}" for n, e in errors.items()], notes=notes)
 
 
 def render(prep: GatePrep) -> str:
@@ -142,6 +172,8 @@ def render(prep: GatePrep) -> str:
         lines.append(f"error: {e}")
     for n in prep.failing:
         lines.append(f"failing: {n} (required)")
+    for n in prep.notes:
+        lines.append(f"note: {n}")
     for w in prep.warnings:
         lines.append(f"warning: {w}")
     for cmd in prep.next_commands:

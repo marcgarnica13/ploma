@@ -8,7 +8,8 @@ Structural: cite keys against entries in every resolved bib file, near misses, d
 entries, natbib/biblatex mixing (scripts/bib_check.py). Semantic adds a lookup of every cited entry
 (scripts/cite_lookup.py, at most limits.doi_lookups_per_run network lookups, and none after a time
 budget of 480 s so the run ends inside a 10-minute Bash timeout); --skip-doi leaves the lookups out.
-Writes <outputs.dir>/bib_audit_<structural|semantic>.md, records the "bib" gate entry and a state event. Only --semantic without --skip-doi uses the network. Lookup cache: the plugin
+Writes <outputs.dir>/bib_audit_<structural|semantic>.md, records the "bib" gate entry (with mode and bib_sha,
+the hash of the resolved .bib files) and a state event. Only --semantic without --skip-doi uses the network. Lookup cache: the plugin
 data dir when CLAUDE_PLUGIN_DATA is set, else <root>/.ploma/cite_lookup.json.
 
 Exit codes: 0 verdict PASS, 1 verdict FAIL, 2 usage error, unreadable ploma.yaml or main file.
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -256,6 +258,28 @@ def _render(rep: BibReport, root: Path, main_rel: str, n_sources: int) -> str:
 
 # ---------------------------------------------------------------- run
 
+def _bib_sha(bib_files: list[Path], root: Path) -> str:
+    digest = hashlib.sha256()
+    for b in bib_files:
+        digest.update(_rel(b, root).encode("utf-8") + b"\0")
+        try:
+            digest.update(b.read_bytes() + b"\0")
+        except OSError:
+            digest.update(b"<missing>\0")
+    return digest.hexdigest()
+
+
+def bib_sha(root: Path, cfg: dict) -> str:
+    """sha256 over the resolved .bib files' paths and bytes (missing files hash as missing); the
+    commit gate compares it with the one a semantic run recorded (Ruling R156)."""
+    root = Path(root).resolve()
+    paths = ploma_config.resolve(cfg, root)["_paths"]
+    main = Path(paths["main"]) if paths["main"] else None
+    if main is None or not main.is_file():
+        raise MainFileError(f"cannot read main file {paths['main'] or '(document.main not set)'}")
+    return _bib_sha(bib_check.resolve_bib_files(main, [Path(b) for b in paths["bib_files"]]), root)
+
+
 def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto: str = "",
         keys: dict | None = None, fetch: cite_lookup.Fetch | None = None, cache_path: Path | None = None,
         delay_s: float = 0.5, time_budget_s: float = cite_lookup.TIME_BUDGET_S,
@@ -308,7 +332,7 @@ def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto
     artifact = _rel(report_path, root)
     extras = {"mode": mode, "fail": sum(f.status == FAIL for f in findings),
               "warn": sum(f.status == WARN for f in findings)}
-    gate.record(root, cfg, "bib", verdict, artifact, **extras)
+    gate.record(root, cfg, "bib", verdict, artifact, bib_sha=_bib_sha(bib_files, root), **extras)
     state.record(root, cfg, "validate-bib", verdict, artifact, **extras)
     return rep
 

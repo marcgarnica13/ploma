@@ -132,6 +132,19 @@ def record(root: Path, cfg: dict, check: str, status: str, artifact: str, **extr
     return data
 
 
+def refresh_sha(root: Path, cfg: dict, check: str) -> dict:
+    """Stamp an existing check entry with the current manuscript sha, keeping its result (used when
+    the result still holds for the new manuscript, e.g. a semantic bib FAIL over an unchanged .bib)."""
+    data = load(root, cfg)
+    if check not in data["checks"]:
+        raise ValueError(f"no {check!r} entry to refresh")
+    sha = manuscript_sha(root, cfg)
+    data["checks"][check]["manuscript_sha"] = sha
+    data["manuscript_sha"] = sha
+    _write(root, cfg, data)
+    return data
+
+
 def reset_streak(root: Path, cfg: dict) -> dict:
     data = load(root, cfg)
     data["override_streak"] = 0

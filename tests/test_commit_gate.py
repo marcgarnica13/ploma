@@ -347,3 +347,49 @@ def test_arguments_never_override():
     body = _body()
     assert "never counts as an override" in body and "separate user message" in body
     assert "reference matcher" in body
+
+
+# ---------------------------------------------------------------- R156: semantic bib FAIL stands
+
+def _semantic_fail(root: Path, cfg: dict) -> None:
+    import validate_bib
+    rep = validate_bib.run(root, cfg, semantic=False)
+    gate.record(root, cfg, "bib", "FAIL", "quality_reports/bib_audit_semantic.md", mode="semantic",
+                fail=1, warn=0, bib_sha=validate_bib.bib_sha(root, cfg))
+    assert rep.verdict == "PASS"
+
+
+def test_validate_bib_records_bib_sha(sample_paper, cfg):
+    import validate_bib
+    validate_bib.run(sample_paper, cfg, semantic=False)
+    entry = gate.load(sample_paper, cfg)["checks"]["bib"]
+    assert entry["mode"] == "structural"
+    assert entry["bib_sha"] == validate_bib.bib_sha(sample_paper, cfg) and len(entry["bib_sha"]) == 64
+
+
+def test_semantic_bib_fail_stands_while_bib_unchanged(sample_paper, cfg):
+    _all_fresh(sample_paper, cfg)
+    _semantic_fail(sample_paper, cfg)
+    main = sample_paper / "main.tex"
+    main.write_text(main.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+    prep = commit_gate.prepare(sample_paper, cfg, runner=Runner(sample_paper))
+    entry = gate.load(sample_paper, cfg)["checks"]["bib"]
+    assert entry["mode"] == "semantic" and entry["status"] == "FAIL"
+    assert entry["manuscript_sha"] == gate.manuscript_sha(sample_paper, cfg)
+    assert prep.verdict == "FAIL" and prep.failing == ["bib"]
+    assert "bib" not in prep.refreshed
+    assert any("semantic bibliography FAIL still stands: run /ploma:validate-bib --semantic" in n
+               for n in prep.notes)
+    assert "semantic bibliography FAIL still stands" in commit_gate.render(prep)
+
+
+def test_changed_bib_reruns_structural_and_supersedes_semantic(sample_paper, cfg):
+    _all_fresh(sample_paper, cfg)
+    _semantic_fail(sample_paper, cfg)
+    bib = sample_paper / "refs.bib"
+    bib.write_text(bib.read_text(encoding="utf-8") + "\n% edited\n", encoding="utf-8")
+    prep = commit_gate.prepare(sample_paper, cfg, runner=Runner(sample_paper))
+    entry = gate.load(sample_paper, cfg)["checks"]["bib"]
+    assert entry["mode"] == "structural" and entry["status"] == "PASS"
+    assert "bib" in prep.refreshed and prep.verdict == "PASS"
+    assert any("superseded" in n and "/ploma:validate-bib --semantic" in n for n in prep.notes)
