@@ -20,22 +20,24 @@ Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
 
 ## Lifecycle
 
+Milestone 1 installs onboard, doctor, status, help, compile and validate-bib. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
+
 | # | Stage | Skill |
 |---|---|---|
 | 0 | Install | `/ploma:onboard` |
 | 0b | Health | `/ploma:doctor` |
-| 1 | Brainstorm | `/ploma:brainstorm` |
-| 1b | Literature | `/ploma:lit-review` |
-| 2 | Grill | `/ploma:grill` |
-| 3 | Spec | `/ploma:spec` |
-| 4 | Write | `/ploma:write <section>` |
+| 1 | Brainstorm | `/ploma:brainstorm` (planned) |
+| 1b | Literature | `/ploma:lit-review` (planned) |
+| 2 | Grill | `/ploma:grill` (planned) |
+| 3 | Spec | `/ploma:spec` (planned) |
+| 4 | Write | `/ploma:write <section>` (planned) |
 | 5 | Compile | `/ploma:compile` |
-| 5b | Format | `/ploma:format` |
-| 6 | Validate | `/ploma:validate-bib`, `/ploma:verify-claims`, `/ploma:audit-reproducibility`, `/ploma:proofread` |
-| 7 | Review | `/ploma:review`, `/ploma:devils-advocate` |
-| 8 | Respond | `/ploma:respond <report>` |
-| 9 | Ship | `/ploma:commit` |
-| any | Session | `/ploma:status`, `/ploma:checkpoint`, `/ploma:compress-session`, `/ploma:learn`, `/ploma:deep-audit`, `/ploma:help` |
+| 5b | Format | `/ploma:format` (planned) |
+| 6 | Validate | `/ploma:validate-bib`; planned: `/ploma:verify-claims`, `/ploma:audit-reproducibility`, `/ploma:proofread` |
+| 7 | Review | planned: `/ploma:review`, `/ploma:devils-advocate` |
+| 8 | Respond | `/ploma:respond <report>` (planned) |
+| 9 | Ship | `/ploma:commit` (planned) |
+| any | Session | `/ploma:status`, `/ploma:help`; planned: `/ploma:checkpoint`, `/ploma:compress-session`, `/ploma:learn`, `/ploma:deep-audit` |
 
 ## Running the tests
 

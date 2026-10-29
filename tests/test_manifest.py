@@ -27,4 +27,5 @@ def test_no_bin_dir_and_no_root_claude_md(repo_root):
 
 def test_every_skill_dir_has_skill_md(repo_root):
     for d in (repo_root / "skills").iterdir():
-        assert (d / "SKILL.md").exists(), d
+        if d.is_dir() and not d.name.startswith("_"):
+            assert (d / "SKILL.md").exists(), d

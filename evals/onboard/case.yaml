@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: onboard-dry-run-sample-paper
+description: "/ploma:onboard --dry-run on a copy of the sample paper without ploma.yaml. Run with --scaffold and --allow-tools 'Bash(python3 *)'. A dry run writes nothing."
+tags: [milestone-1, onboard]
+context:
+  add_dirs: [examples/sample-paper]
+  scaffold_script: scaffold.sh
