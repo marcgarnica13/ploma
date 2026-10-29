@@ -6,7 +6,7 @@ ploma writes its reports here. This README is created once; edit it freely.
 |---|---|---|
 | `*.md` reports | compile, bibliography, review, proofread and format reports | yes |
 | `plans/` | plans saved before work starts | yes |
-| `decisions/` | decision logs from /ploma:grill (planned, milestone 2) | yes |
+| `decisions/` | decision logs from /ploma:grill | yes |
 | `passports/` | reproducibility passports | yes |
 | `verdicts/commit-gate.json` | the commit gate verdict | yes |
 | `learnings.md` | the learnings ledger (kept by /ploma:learn (planned, milestone 2)) | yes |

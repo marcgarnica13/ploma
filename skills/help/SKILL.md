@@ -52,11 +52,15 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:format [--budget N] [--presubmit]`: page map per section against the budget, a cut plan when over (proposals only), and the pre-submission checks.
 - `/ploma:review [path] [--adversarial | --peer <venue> [--r2|--r3|--stress|--variance N] [--no-novelty-check] | --seven-pass] [--no-cross-artifact]`: a referee-style review; `--peer` simulates the venue's editor and two blind referees, `--adversarial` loops critic and fixer with your approval, `--seven-pass` runs seven lenses.
 - `/ploma:devils-advocate [path]`: 5 to 7 skeptical challenges to the paper's design choices; report only.
+- `/ploma:brainstorm <topic> [--no-verify]`: 3 to 5 research questions with hypotheses, methods and pitfalls (runs superpowers brainstorming first when enabled); fact-checked.
+- `/ploma:lit-review <topic> [--no-verify]`: literature search and synthesis; BibTeX entries offered only after a citation lookup, never written to your bibliography.
+- `/ploma:grill [topic or file]`: one question per turn with a recommended answer until no design decision is open; writes a decision log.
+- `/ploma:spec [topic | start fresh] [--no-verify]`: the binding paper spec (claims with evidence, venue constraints, section page targets, decisions); edits an existing spec section by section.
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)
 
-brainstorm, lit-review, grill, spec, respond, commit, checkpoint, compress-session, learn, deep-audit.
+respond, commit, checkpoint, compress-session, learn, deep-audit.
 
 If the user asks for one of these, say it is not installed yet and name the nearest installed skill, if any (`/ploma:doctor` or `/ploma:status` for state, `/ploma:review` for feedback on the paper). Until `/ploma:commit` arrives, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed.
 

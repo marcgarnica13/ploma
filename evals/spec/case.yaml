@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: spec-sample-paper
+description: "/ploma:spec on a copy of the sample paper with one earlier grill decision log. Run with --scaffold and --allow-tools 'Bash(python3 *),Bash(mkdir *),Write,Edit,Agent,AskUserQuestion'. Expected: quality_reports/paper_spec.md from the template, locked decisions pre-filled from the log, venue constraints from the config (8 pages, anonymized), claims with file:line or results-key evidence, the figure's ploma:source script, one or two questions per turn with a recommended answer."
+tags: [milestone-2, ideation, interactive, cove]
+context:
+  scaffold_script: scaffold.sh

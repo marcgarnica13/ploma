@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: grill-sample-paper
+description: "/ploma:grill on a copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *),Bash(mkdir *),Write,AskUserQuestion'. A headless run cannot answer, so the expected run looks facts up, asks exactly one question with the recommended option first, writes quality_reports/decisions/<date>_<topic>.md and stops with the question logged as open."
+tags: [milestone-2, ideation, interactive]
+context:
+  scaffold_script: scaffold.sh

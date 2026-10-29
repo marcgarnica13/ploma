@@ -33,7 +33,7 @@ Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
 - Venue profiles (`venues/`) and discipline profiles (`disciplines/`), overridable per project in `ploma.d/`.
 - Scripts behind the skills (`scripts/`), each with `--json` output, and eval cases for every installed skill (`evals/`).
 
-Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate.
+Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate.
 
 ## Commit gate
 
@@ -47,16 +47,16 @@ Until then, `python3 scripts/gate.py check` shows the gate state.
 
 ## Lifecycle
 
-Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added audit-reproducibility, verify-claims, proofread, write, format, review and devils-advocate so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
+Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review and devils-advocate so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
 
 | # | Stage | Skill |
 |---|---|---|
 | 0 | Install | `/ploma:onboard` |
 | 0b | Health | `/ploma:doctor` |
-| 1 | Brainstorm | `/ploma:brainstorm` (planned) |
-| 1b | Literature | `/ploma:lit-review` (planned) |
-| 2 | Grill | `/ploma:grill` (planned) |
-| 3 | Spec | `/ploma:spec` (planned) |
+| 1 | Brainstorm | `/ploma:brainstorm` |
+| 1b | Literature | `/ploma:lit-review` |
+| 2 | Grill | `/ploma:grill` |
+| 3 | Spec | `/ploma:spec` |
 | 4 | Write | `/ploma:write <section>` |
 | 5 | Compile | `/ploma:compile` |
 | 5b | Format | `/ploma:format` |

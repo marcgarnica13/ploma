@@ -37,6 +37,7 @@ DEFAULTS: dict[str, Any] = {
     "venue": {"doc_class": None, "page_budget": None, "page_budget_includes_refs": False,
               "cite_style": "numeric"},
     "reviews": {"glob": None},
+    "literature": {"sources": []},
     "outputs": {"dir": "quality_reports"},
     "style": {"sentences": "short-direct", "forbid_em_dash": True, "forbid_phrases": [],
               "figures": "compact-horizontal"},
@@ -179,7 +180,7 @@ def _glob_prefix(pattern: str) -> str:
 
 def _input_paths(cfg: dict) -> list[tuple[str, list[str]]]:
     """Input path keys that must exist (Ruling R2: outputs are never checked)."""
-    keys = ["document.main", "document.root", "build.bib_files", "build.cwd"]
+    keys = ["document.main", "document.root", "build.bib_files", "build.cwd", "literature.sources"]
     if _get(cfg, "pipeline.enabled") is True:
         keys += ["pipeline.run_from", "pipeline.outputs_dir"]
     pairs = []
@@ -212,6 +213,12 @@ def validate(cfg: dict, root: Path) -> list[Finding]:
                                     observed=", ".join(missing),
                                     remediation="Run the pipeline to generate it (results are often gitignored), "
                                                 "or fix pipeline.outputs_dir in ploma.yaml.",
+                                    group="config"))
+        elif missing and key == "literature.sources":
+            findings.append(Finding(f"config.path.{key}", WARN, "a literature.sources directory does not exist",
+                                    observed=", ".join(missing),
+                                    remediation="Create the directory and put the papers there, "
+                                                "or fix or remove it in literature.sources in ploma.yaml.",
                                     group="config"))
         elif missing and key == "reviews.glob":
             findings.append(Finding(f"config.path.{key}", WARN, "reviews.glob points into a directory that does not exist",

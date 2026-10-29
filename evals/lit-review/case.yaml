@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: lit-review-sample-paper
+description: "/ploma:lit-review on a copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *),Bash(mkdir *),Write,Agent,WebSearch,WebFetch'. Network needed for real results; without it every candidate lands in TO VERIFY. Expected: candidates written to .ploma/tmp, cite_lookup run on them, only verified entries in the VERIFIED block, refs.bib untouched, quality_reports/lit_review_<topic>.md."
+tags: [milestone-2, ideation, cove, network]
+context:
+  scaffold_script: scaffold.sh

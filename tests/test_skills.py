@@ -170,7 +170,8 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
-             "audit-reproducibility", "proofread", "verify-claims", "write", "format", "review", "devils-advocate"}
+             "audit-reproducibility", "proofread", "verify-claims", "write", "format", "review", "devils-advocate",
+             "brainstorm", "lit-review", "grill", "spec"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -208,7 +209,8 @@ def test_planned_check_catches_a_bare_planned_command():
 # ---------------------------------------------------------------- eval setup (R91)
 
 SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "proofread", "status", "validate-bib",
-                  "verify-claims", "write", "format", "review", "review-unknown-venue", "devils-advocate")
+                  "verify-claims", "write", "format", "review", "review-unknown-venue", "devils-advocate",
+                  "brainstorm", "lit-review", "grill")
 
 
 def test_evals_contain_no_symlinks():
@@ -249,7 +251,7 @@ def test_eval_scaffold_runs(name, tmp_path):
 
 @pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "proofread", "status", "validate-bib",
                                   "verify-claims", "write", "format", "review", "review-unknown-venue",
-                                  "devils-advocate"))
+                                  "devils-advocate", "brainstorm", "lit-review", "grill", "spec"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -748,3 +750,202 @@ def test_review_fix_round_rulings():
     audit = _skill("audit-reproducibility")
     assert split_frontmatter(audit)[0]["argument-hint"] == "[--rerun | --no-rerun]"
     assert "Never with `--no-rerun`." in audit and "With `--no-rerun`, record either case as a finding" in audit
+
+
+# ---------------------------------------------------------------- brainstorm, lit-review, grill, spec (milestone 2, Task 10)
+
+IDEATION_ROWS = {"brainstorm": "| 1 | Brainstorm", "lit-review": "| 1b | Literature", "grill": "| 2 | Grill",
+                 "spec": "| 3 | Spec"}
+
+
+def _graders(case: str) -> list[tuple[dict, str]]:
+    return [split_frontmatter(p.read_text(encoding="utf-8")) for p in (REPO / "evals" / case / "graders").glob("*.md")]
+
+
+@pytest.mark.parametrize("name", sorted(IDEATION_ROWS))
+def test_ideation_skills_are_installed_and_not_marked_planned(name):
+    """R104 for Task 10: installed everywhere, planned nowhere."""
+    assert name in INSTALLED and (REPO / "skills" / name / "SKILL.md").is_file()
+    help_text = _skill("help")
+    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
+    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
+    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
+    installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
+    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert f"/ploma:{name}" in installed_line
+    core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
+    assert re.search(rf"Installed now:[^;]*\b{re.escape(name)}\b", core)
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in readme.splitlines() if line.startswith(IDEATION_ROWS[name]))
+    assert f"/ploma:{name}" in row and "planned" not in row
+    for p in [REPO / "README.md"] + [q for q in (REPO / "templates").rglob("*") if q.is_file()] \
+            + sorted((REPO / "rules").rglob("*.md")) + sorted((REPO / "skills").rglob("*.md")):
+        text = p.read_text(encoding="utf-8")
+        assert not re.search(rf"/ploma:{re.escape(name)}`?,? (?:\(planned|arrives in milestone 2)", text), p
+
+
+@pytest.mark.parametrize("name", sorted(IDEATION_ROWS))
+def test_ideation_skills_restate_no_cap(name):
+    texts = [_skill(name)] + [p.read_text(encoding="utf-8") for p in (REPO / "skills" / name).rglob("references/*.md")]
+    for text in texts:
+        m = CAP_RE.search(text)
+        assert not m, m.group(0)
+        assert "context: fork" not in text and "context=fork" not in text
+
+
+def test_brainstorm_contract():
+    text = _skill("brainstorm")
+    fm, _ = split_frontmatter(text)
+    assert fm["argument-hint"] == "<topic, phenomenon or dataset description> [--no-verify]"
+    tools = _tools(fm)
+    for tool in ("Skill", "Agent", "WebSearch", "WebFetch", "Write", "Bash(python3 *)"):
+        assert tool in tools, tool
+    assert "Edit" not in tools
+    # superpowers first when enabled, then the ported flow; its hand-off to planning is cut.
+    for s in ("superpowers:brainstorming", "enabledPlugins", "superpowers@", "~/.claude/settings.json",
+              ".claude/settings.json", "writing-plans"):
+        assert s in text, s
+    assert text.index("superpowers:brainstorming") < text.index("## Research questions")
+    # 3 to 5 questions from descriptive to application, each with the full field set.
+    assert "3 to 5 research questions" in text
+    order = [text.index(w) for w in ("**Descriptive:**", "**Correlational:**", "**Comparative:**", "**Mechanism:**",
+                                      "**Application:**")]
+    assert order == sorted(order)
+    for field in ("**Hypothesis:**", "**Method and evaluation:**", "**Data requirements:**", "**Key assumptions:**",
+                  "**Potential pitfalls:**", "**Related literature:**", "**Paper type:**"):
+        assert field in text, field
+    # Paper types from the discipline card; econ examples gone.
+    assert "paper_types" in text and "default_paper_type" in text and "ploma.d/disciplines/<key>.yaml" in text
+    assert not re.search(r"\b(?:FRED|PSID|Census)\b", text)
+    # CoVe post-flight, output, state.
+    for s in ("skills/_shared/references/cove.md", "ploma:claim-verifier", "--no-verify", "## Post-flight verification",
+              "<outputs.dir>/research_ideation_<topic>.md",
+              'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record brainstorm'):
+        assert s in text, s
+    assert "never the draft" in text.lower()
+
+
+def test_lit_review_contract():
+    text = _skill("lit-review")
+    fm, _ = split_frontmatter(text)
+    assert fm["argument-hint"] == "<topic, paper title or research question> [--no-verify]"
+    tools = _tools(fm)
+    for tool in ("Read", "Agent", "WebSearch", "WebFetch", "Write", "Bash(python3 *)"):
+        assert tool in tools, tool
+    assert "Edit" not in tools  # the user's .bib is never touched
+    # Sources: configured dirs (PDFs by page range), the bib files, the web.
+    for s in ("literature.sources", "build.bib_files", "pages", "WebSearch", "WebFetch"):
+        assert s in text, s
+    # Every suggested entry is looked up before it is offered.
+    for s in (".ploma/tmp/lit_review_candidates.bib",
+              'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cite_lookup.py" .ploma/tmp/lit_review_candidates.bib',
+              "--max", 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bib_check.py"', "bib.duplicate_key",
+              "bib.duplicate_doi"):
+        assert s in text, s
+    for status in ("verified", "partial", "mismatch", "missing", "not_indexed", "unreachable", "skipped"):
+        assert f"`{status}`" in text, status
+    assert "never writes to" in text and "the user copies" in text
+    # Output shape follows the sample.
+    for heading in ("## Summary", "## Key Papers (VERIFIED)", "## TO VERIFY", "## Thematic Organization",
+                    "## Positioning", "## Gaps and Opportunities", "## Suggested Next Steps",
+                    "## BibTeX Entries (VERIFIED)", "## Post-flight verification"):
+        assert heading in text, heading
+    for s in ("skills/_shared/references/cove.md", "ploma:claim-verifier", "<outputs.dir>/lit_review_<topic>.md",
+              'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record lit-review', "--no-verify"):
+        assert s in text, s
+
+
+def test_grill_contract():
+    text = _skill("grill")
+    fm, _ = split_frontmatter(text)
+    assert fm["argument-hint"] == "[topic or file]"
+    tools = _tools(fm)
+    for tool in ("AskUserQuestion", "Grep", "Read", "Glob", "Write", "Bash(python3 *)"):
+        assert tool in tools, tool
+    assert "Edit" not in tools
+    # One question per turn, recommended option first with its reason, facts looked up first.
+    for s in ("exactly one question", "one AskUserQuestion call per turn", "a `questions` list of length 1",
+              "(Recommended)", "first option", "never ask what the repo answers", "Grep",
+              "skills/grill/references/lenses.md", "rotate", "says stop", "no open decision remains"):
+        assert s in text, s
+    # The decision log: path, fields, written as it goes.
+    for s in ("<outputs.dir>/decisions/<date>_<topic>.md", "**Question:**", "**Options:**", "**Answer:**",
+              "**Rationale:**", "**Lens:**", "after every answer"):
+        assert s in text, s
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record grill' in text
+    lenses = (REPO / "skills" / "grill" / "references" / "lenses.md").read_text(encoding="utf-8")
+    for lens in ("Theorist", "Empiricist", "Pragmatist", "Reproducibility"):
+        line = next((ln for ln in lenses.splitlines() if ln.startswith(f"- **{lens}**")), None)
+        assert line and "probes" in line, lens
+
+
+def test_grill_eval_rubric():
+    graders = _graders("grill")
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "AskUserQuestion" and fm.get("min") == 1
+               for fm, _ in graders)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Write" and "decisions/" in str(fm.get("input_match"))
+               for fm, _ in graders)
+    rubric = " ".join(body for fm, body in graders if fm.get("type") == "llm").lower()
+    for s in ("exactly one question", "recommended", "decision log"):
+        assert s in rubric, s
+
+
+def test_spec_contract():
+    text = _skill("spec")
+    fm, _ = split_frontmatter(text)
+    assert fm["argument-hint"] == "[topic | start fresh] [--no-verify]"
+    tools = _tools(fm)
+    for tool in ("AskUserQuestion", "Agent", "Write", "Edit", "Read", "Bash(python3 *)"):
+        assert tool in tools, tool
+    for s in ("<outputs.dir>/paper_spec.md", "skills/spec/references/paper-spec-template.md",
+              'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/profiles.py" --root . show', "venue.page_budget",
+              "document.anonymized", "<outputs.dir>/decisions/", "newest", "one or two questions",
+              "(Recommended)", "section by section", "never regenerate", "skills/_shared/references/cove.md",
+              "ploma:claim-verifier", "% ploma:source", "never invent a script",
+              'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record spec', "--no-verify"):
+        assert s in text, s
+    tpl = (REPO / "skills" / "spec" / "references" / "paper-spec-template.md").read_text(encoding="utf-8")
+    for heading in ("## Identity", "## Venue constraints", "## Claims and evidence", "## Evaluation plan",
+                    "## Positioning", "## Section architecture", "## Locked decisions", "## Open questions",
+                    "## Figures needed"):
+        assert heading in tpl, heading
+    assert "Target pages" in tpl and "Evidence" in tpl and "% ploma:source" in tpl
+    assert "file:line" in tpl and "results" in tpl
+
+
+def test_spec_eval_seeds_a_grill_log(tmp_path):
+    """The spec case stages the sample plus one decision log, so pre-filling locked decisions is graded."""
+    import shutil
+    import subprocess
+    case = REPO / "evals" / "spec"
+    data = _yamlio.load_yaml(case / "case.yaml")
+    assert data["context"] == {"scaffold_script": "scaffold.sh"}
+    if shutil.which("bash") is None:
+        pytest.skip("bash not installed")
+    subprocess.run(["bash", str(case / "scaffold.sh")], cwd=tmp_path, check=True, timeout=30)
+    assert (tmp_path / "main.tex").is_file() and (tmp_path / "ploma.yaml").is_file()
+    logs = list((tmp_path / "quality_reports" / "decisions").glob("*.md"))
+    assert len(logs) == 1 and "**Lens:**" in logs[0].read_text(encoding="utf-8")
+    assert not (tmp_path / "quality_reports" / "paper_spec.md").exists()
+    graders = _graders("spec")
+    assert any(fm.get("type") == "file_exists" and fm.get("path") == "quality_reports/paper_spec.md"
+               for fm, _ in graders)
+
+
+def test_lit_review_eval_guards_the_bib():
+    graders = _graders("lit-review")
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Bash" and "cite_lookup" in str(fm.get("input_match"))
+               for fm, _ in graders)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Edit" and fm.get("max") == 0 for fm, _ in graders)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Write" and "refs.bib" in str(fm.get("input_match"))
+               and fm.get("max") == 0 for fm, _ in graders)
+
+
+def test_brainstorm_eval_runs_cove():
+    graders = _graders("brainstorm")
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Agent" and "claim-verifier" in str(fm.get("input_match"))
+               for fm, _ in graders)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Write"
+               and "research_ideation_" in str(fm.get("input_match")) for fm, _ in graders)

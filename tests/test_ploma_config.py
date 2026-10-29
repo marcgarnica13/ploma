@@ -261,3 +261,24 @@ def test_summary_omits_gotchas_when_pipeline_disabled(sample_paper):
     cfg["pipeline"]["enabled"] = False
     cfg["pipeline"]["gotchas"] = ["something"]
     assert "gotchas" not in ploma_config.summary(cfg)
+
+
+def test_literature_sources_default_and_schema(tmp_path):
+    """R102: literature.sources is a list of directories, empty by default, accepted by the schema."""
+    import ploma_config
+    assert ploma_config.DEFAULTS["literature"] == {"sources": []}
+    schema = json.loads((Path(ploma_config.__file__).resolve().parent.parent / "schemas" / "ploma.schema.json")
+                        .read_text(encoding="utf-8"))
+    lit = schema["properties"]["literature"]
+    assert lit["properties"]["sources"]["type"] == "array" and lit["additionalProperties"] is False
+    (tmp_path / "main.tex").write_text("\\documentclass{article}\n")
+    (tmp_path / "papers").mkdir()
+    (tmp_path / "ploma.yaml").write_text(
+        'ploma: "0.1"\ndocument: {main: main.tex}\nbuild: {engine: pdflatex}\nvenue: {profile: generic-journal}\n'
+        "literature:\n  sources: [papers, missing_dir]\n")
+    cfg = ploma_config.load(tmp_path)
+    assert cfg["literature"]["sources"] == ["papers", "missing_dir"]
+    findings = {f.id: f for f in ploma_config.validate(cfg, tmp_path)}
+    assert not [i for i in findings if i.startswith("config.type") or i.startswith("config.unknown")], list(findings)
+    f = findings["config.path.literature.sources"]
+    assert f.status == "WARN" and f.observed == "missing_dir"

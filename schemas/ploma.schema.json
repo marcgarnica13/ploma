@@ -165,6 +165,19 @@
       },
       "additionalProperties": false
     },
+    "literature": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Directories of papers (PDFs, notes) that /ploma:lit-review reads before searching the web."
+        }
+      },
+      "additionalProperties": false
+    },
     "outputs": {
       "type": "object",
       "properties": {
