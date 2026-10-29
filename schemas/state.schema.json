@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ploma-state.yaml",
+  "description": "Lifecycle state written by scripts/state.py (spec section 6.2). Skills never hand-edit it.",
+  "type": "object",
+  "required": ["ploma_state", "stage", "rounds", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "ploma_state": {"type": "string", "description": "State format version, \"0.1\"."},
+    "stage": {
+      "type": ["string", "null"],
+      "enum": [null, "onboard", "brainstorm", "lit-review", "grill", "spec", "write", "compile", "format",
+               "validate", "review", "respond", "commit"],
+      "description": "Last lifecycle stage a skill ran; null before any stage event."
+    },
+    "rounds": {
+      "type": "object",
+      "description": "Run counts for round-based skills.",
+      "properties": {
+        "review": {"type": "integer"},
+        "respond": {"type": "integer"}
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["at", "skill", "status"],
+        "properties": {
+          "at": {"type": "string", "description": "UTC ISO 8601 timestamp ending in Z."},
+          "skill": {"type": "string"},
+          "status": {"type": "string", "enum": ["PASS", "WARN", "FAIL", "INFO", "SKIP"]},
+          "artifact": {"type": "string"}
+        },
+        "description": "Extra keys (pages, round, ...) are allowed."
+      }
+    }
+  }
+}
