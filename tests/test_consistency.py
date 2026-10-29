@@ -890,3 +890,124 @@ def test_results_paths_are_relative_to_the_repo_root(tmp_path):
     rep = _run(moved, results_dir=res, metric_keys=["hm_fitness", "hm_precision"], root=tmp_path)
     f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Manchester_City")
     assert "pipe/results/run_a/cc_results.json:teams.93.hm_precision" in f.observed, f.observed
+
+
+# ---------------------------------------------------------------- field fixes 3: method context (gap 2)
+
+TRACES_TABLE = r"""\begin{tabular}{|l|c|c|c|c|}
+\hline
+Model / Team & Fitness & Precision & Generalization & Simplicity \\
+\hline
+\multicolumn{5}{|l|}{\emph{Median across all 20 teams}} \\
+\hline
+Heuristic Miner (HM) & 0.83 & 0.63 & 0.70 & 0.51 \\
+Directly-follows graph (DFG) & 1.00 & 0.18 & 0.34 & 0.37 \\
+\hline
+\multicolumn{5}{|l|}{\emph{Representative teams (Heuristic Miner)}} \\
+\hline
+Manchester City & 0.91 & 0.55 & 0.74 & 0.46 \\
+Brentford & 0.85 & 0.77 & 0.70 & 0.50 \\
+\hline
+\end{tabular}
+"""
+METRICS = ("fitness", "precision", "generalization", "simplicity")
+TRACES_TEAMS = {"36": ("Manchester City", (0.9112, 0.5457, 0.7391, 0.4612), (1.0, 0.1156, 0.3301, 0.3688)),
+                "94": ("Brentford", (0.8493, 0.7702, 0.7011, 0.4987), (1.0, 0.2210, 0.3507, 0.3802))}
+TRACES_KEYS = [f"{m}_{k}" for m in ("hm", "dfg") for k in METRICS] + ["fitness", "generalization"]
+
+
+def _traces_paper(tmp_path, table=TRACES_TABLE, pin=""):
+    res = tmp_path / "results"
+    res.mkdir()
+    teams = {}
+    rows = ["team_id,team_name," + ",".join(f"{m}_{k}" for m in ("hm", "dfg") for k in METRICS)]
+    for tid, (name, hm, dfg) in TRACES_TEAMS.items():
+        rec = {"team_name": name}
+        rec.update({f"hm_{k}": v for k, v in zip(METRICS, hm)})
+        rec.update({f"dfg_{k}": v for k, v in zip(METRICS, dfg)})
+        teams[tid] = rec
+        rows.append(f"{tid},{name}," + ",".join(str(v) for v in hm + dfg))
+    (res / "cc_results.json").write_text(json.dumps({"teams": teams,
+                                                     "summary": {"fitness": 0.9634, "generalization": 0.4412}}))
+    (res / "metrics_table.csv").write_text("\n".join(rows) + "\n")
+    main = tmp_path / "main.tex"
+    main.write_text("\\begin{document}\n" + pin + table + "\\end{document}\n")
+    return main, res
+
+
+def _team_row_warns(rep):
+    return [(f.id, f.observed) for f in rep.findings
+            if f.status == "WARN" and (".Manchester_City" in f.id or ".Brentford" in f.id)]
+
+
+def test_traces_table_unplanted_has_no_warn_on_team_rows(tmp_path):
+    main, res = _traces_paper(tmp_path)
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert not _team_row_warns(rep)
+    assert not any(f.id.startswith("consistency.table_method_ambiguous") for f in rep.findings)
+    assert not any(f.id.startswith("consistency.table_cell_other_method") for f in rep.findings)
+
+
+def test_traces_table_other_method_value_warns(tmp_path):
+    main, res = _traces_paper(tmp_path, table=TRACES_TABLE.replace("Manchester City & 0.91 & 0.55",
+                                                                   "Manchester City & 0.91 & 0.12"))
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    f = next(f for f in rep.findings if f.id == "consistency.table_cell_other_method.Manchester_City")
+    assert f.status == "WARN" and "0.12" in f.summary
+    assert "dfg_precision" in f.observed and "hm_precision" in f.observed, f.observed
+    assert [i for i, _ in _team_row_warns(rep)] == ["consistency.table_cell_other_method.Manchester_City"]
+
+
+def test_traces_table_without_section_row_is_ambiguous_info(tmp_path):
+    table = TRACES_TABLE.replace("\\multicolumn{5}{|l|}{\\emph{Representative teams (Heuristic Miner)}} \\\\\n"
+                                 "\\hline\n", "")
+    assert "Representative" not in table
+    for city in ("0.55", "0.12"):
+        sub = tmp_path / city
+        sub.mkdir()
+        main, res = _traces_paper(sub, table=table.replace("Manchester City & 0.91 & 0.55",
+                                                           f"Manchester City & 0.91 & {city}"))
+        rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=sub)
+        assert not _team_row_warns(rep), city
+        f = next(f for f in rep.findings if f.id.startswith("consistency.table_method_ambiguous"))
+        assert f.status == "INFO"
+        assert f.summary == ("the cell check cannot tell methods apart in table at main.tex:2; add a section row "
+                             "naming the method or rely on the per-claim audit")
+
+
+def test_section_row_acronym_sets_the_method(tmp_path):
+    table = TRACES_TABLE.replace("Representative teams (Heuristic Miner)", "Representative teams, HM")
+    main, res = _traces_paper(tmp_path, table=table.replace("Manchester City & 0.91 & 0.55",
+                                                            "Manchester City & 0.91 & 0.12"))
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert "consistency.table_cell_other_method.Manchester_City" in _ids(rep)
+
+
+def test_source_pin_restricts_a_table_to_one_file(tmp_path):
+    planted = TRACES_TABLE.replace("Manchester City & 0.91 & 0.55", "Manchester City & 0.91 & 0.12")
+    main, res = _traces_paper(tmp_path, table=planted)
+    (res / "decoy.json").write_text(json.dumps({"teams": {"36": {"team_name": "Manchester City",
+                                                                 "hm_precision": 0.12}}}))
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert "consistency.table_cell_other_method.Manchester_City" not in _ids(rep)
+    main.write_text(main.read_text().replace("\\begin{tabular}",
+                                             "%% ploma-source: results/cc_results.json\n\n\\begin{tabular}", 1))
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert "consistency.table_cell_other_method.Manchester_City" in _ids(rep)
+    assert "decoy" not in " ".join(f.observed for f in rep.findings if ".Manchester_City" in f.id)
+
+
+def test_method_prefixes_and_acronyms():
+    assert consistency._method_prefixes(TRACES_KEYS) == {"hm", "dfg"}
+    assert consistency._method_prefixes(["avg_fitness", "generalization"]) == set()
+    pre = {"hm", "dfg"}
+    assert consistency._method_of("Representative teams (Heuristic Miner)", pre) == "hm"
+    assert consistency._method_of("Directly-follows graph (DFG)", pre, parens_only=True) == "dfg"
+    assert consistency._method_of("Directly-follows graph", pre) is None
+    assert consistency._method_of("(Directly-follows graph)", pre) == "dfg"
+    assert consistency._method_of("Median across all 20 teams", pre) is None
+
+
+def test_docs_describe_the_source_pin(repo_root):
+    skill = (repo_root / "skills" / "audit-reproducibility" / "SKILL.md").read_text(encoding="utf-8")
+    assert "%% ploma-source:" in skill

@@ -24,7 +24,9 @@ names or their words: a label "BERT-L" does not name "bert_large", so that row g
 check and a value copied from another entity is missed. A finding names the other entity by its
 record's name-like field (name, team, model, method, label, title) or else its key, cites results files
 relative to the repo root, keeps to the keys carrying the column header's word (Precision: *_precision)
-when any match, and to the row's own results file when it holds a match (Ruling R169).
+when any match, and to the row's own results file when it holds a match (Ruling R169). A comment
+"%% ploma-source: <repo-relative path>" within the 3 lines above a \\begin{tabular} restricts that
+table's cells to that results file.
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -40,6 +42,15 @@ Rules (spec section 7.2):
   consistency.table_cell_other_column.<label>      WARN  such a cell matches the row's entity only under a
                                                          key lacking its column header's distinguishing
                                                          word (an HM cell holding the DFG value)
+  consistency.table_cell_other_method.<label>      WARN  in a table section whose full-width \\multicolumn row
+                                                         names a method ("(Heuristic Miner)", "(HM)"), or in
+                                                         a row labelled "Heuristic Miner (HM)", a cell
+                                                         matches the row's entity only under another
+                                                         method's key prefix (dfg_precision, not
+                                                         hm_precision); a method maps to the key prefix
+                                                         equal to its acronym or its initials
+  consistency.table_method_ambiguous.<file:line>   INFO  metric keys carry two or more method prefixes and
+                                                         some rows of the table have no method context
   consistency.table_cell_not_in_results.<raw>      WARN  a table cell matches no results value
   consistency.table_check_uninformative            INFO  the pool covers over half of the values such a cell
                                                          can display (2-decimal cells in [0, 1]: distinct
@@ -326,6 +337,8 @@ class Results:
     keys_found: set[str] = field(default_factory=set)
     unreadable: list[tuple[Path, str]] = field(default_factory=list)
     located: list[Located] = field(default_factory=list)  # keyed values with their location
+    file_values: dict[str, list] = field(default_factory=dict)  # repo-relative file: its numeric values
+    file_keyed: dict[str, list] = field(default_factory=dict)  # repo-relative file: its keyed values
 
 
 def _uniq(values: list) -> list:
@@ -398,7 +411,12 @@ def load_results(results_dir: Path, metric_keys: list[str], root: Path | None = 
             text = path.read_text(encoding="utf-8")
             if path.suffix.lower() == ".json":
                 data = json.loads(text)
-                _walk_json(data, keys, res)
+                one = Results()
+                _walk_json(data, keys, one)
+                res.values += one.values
+                res.keyed_values += one.keyed_values
+                res.keys_found |= one.keys_found
+                res.file_values[rel], res.file_keyed[rel] = one.values, one.keyed_values
                 found: list[Located] = []
                 _json_located(data, keys, (path.stem,), "", (), False, found)
                 for loc in found:
@@ -418,10 +436,12 @@ def load_results(results_dir: Path, metric_keys: list[str], root: Path | None = 
                         if number is None:
                             continue
                         res.values.append(number)
+                        res.file_values.setdefault(rel, []).append(number)
                         if i < len(header) and header[i].strip() in keys:
                             res.keys_found.add(header[i].strip())
                             if row is not header:
                                 res.keyed_values.append(number)
+                                res.file_keyed.setdefault(rel, []).append(number)
                                 loc = _locate((path.stem, header[i].strip()), strings, number,
                                               f"{rel} row {r + 1} {header[i].strip()}", keys)
                                 loc.file = rel
@@ -484,26 +504,50 @@ def _row_label(cell: str) -> str:
     return re.sub(r"[^\w.+-]+", "_", text).strip("_.")
 
 
-def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str) -> list[dict]:
+_PIN_RE = re.compile(r"^\s*%+\s*ploma-source:\s*(\S+)", re.M)
+_MULTICOLUMN_RE = re.compile(r"\\multicolumn\s*\{\s*(\d+)\s*\}")
+
+
+def _source_pin(raw: str, begin: int) -> str:
+    """The path of a "%% ploma-source: <path>" comment within the 3 lines above a \\begin{tabular}."""
+    above = "\n".join(raw[:begin].split("\n")[-4:])  # the begin's own line and the 3 above it
+    pins = _PIN_RE.findall(above)
+    return pins[-1].removeprefix("./") if pins else ""
+
+
+def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str, raw: str = "") -> list[dict]:
     """Numeric cells with file, line, the row they sit in ("row": file:line of the row start), the row's
     label (its first cell's words, or "line<N>"), and the column header of the latest row above with
     several cells and no number ("header"; a "%" in it makes the column's numbers percents), with its words that no other header column has ("distinct":
-    "HM precision" next to "DFG precision" gives ["hm"])."""
+    "HM precision" next to "DFG precision" gives ["hm"]). Each cell also carries its table ("table":
+    file:line of the \\begin), the row's first cell as written ("label_text"), the text of the latest
+    full-width \\multicolumn row above in the table ("section", reset by each such row) and the table's
+    "%% ploma-source:" path ("source", empty when none)."""
     cells = []
-    for _, content, end in _texmask.env_spans(stripped, TABULAR_ENVS):
+    for begin, content, end in _texmask.env_spans(stripped, TABULAR_ENVS):
         body = masked[content:end]
         end_tag = body.rfind("\\end")
         body = body[:end_tag] if end_tag >= 0 else body
+        text_body = stripped[content:content + len(body)]
+        table = f"{file}:{lines.line(begin)}"
+        source = _source_pin(raw, begin) if raw else ""
+        split = re.split(r"(\\\\)", body)
+        width = max((len(re.split(r"(?<!\\)&", r)) for r in split if r != "\\\\"), default=1)
         offset = content
         headers: list[str] = []
         distinct: list[list[str]] = []
         percent: list[bool] = []
-        for row in re.split(r"(\\\\)", body):
+        section = ""
+        for row in split:
             if row != "\\\\":
                 pos = offset
                 column = 0
                 parts = re.split(r"(?<!\\)(&)", row)
                 texts = [p for p in parts if p != "&"]
+                row_text = text_body[offset - content:offset - content + len(row)]
+                span = _MULTICOLUMN_RE.search(row_text)
+                if len(texts) == 1 and span and int(span.group(1)) >= max(width, 2):
+                    section = row_text
                 if len(texts) >= 2 and all(_cell_number(t) is None for t in texts):
                     headers = [_row_label(t).replace("_", " ") for t in texts]
                     percent = ["%" in t for t in texts]  # "acc (\\%)": the column's bare numbers are percents
@@ -511,6 +555,7 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
                     distinct = [sorted(w - set().union(*(o for j, o in enumerate(words) if j not in (0, k))))
                                 for k, w in enumerate(words)]
                 row_line = lines.line(offset + len(row) - len(row.lstrip()))
+                label_text = row_text.split("&", 1)[0]
                 label = _row_label(parts[0]) if parts else ""
                 if not label or _cell_number(parts[0]) is not None:
                     label = f"line{row_line}"
@@ -525,7 +570,8 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
                             n.update(line=lines.line(pos + len(cell) - len(cell.lstrip())), file=file,
                                      row=f"{file}:{row_line}", label=label,
                                      header=headers[column] if column < len(headers) else "",
-                                     distinct=distinct[column] if column < len(distinct) and column else [])
+                                     distinct=distinct[column] if column < len(distinct) and column else [],
+                                     table=table, label_text=label_text, section=section, source=source)
                             cells.append(n)
                     pos += len(cell)
             offset += len(row)
@@ -622,7 +668,7 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], l
             n["_src"] = src
             inside = any(s <= n["pos"] < e for s, e in spans)
             (abstract if inside else body).append(n)
-        cells.extend(_table_cells(stripped, masked, lines, name))
+        cells.extend(_table_cells(stripped, masked, lines, name, raw))
         sections += [(src, m.start()) for m in _SECTION_START_RE.finditer(stripped)]
 
     segments = _segments(main, texts)
@@ -848,6 +894,46 @@ def _other_entity(loc: Located, levels: dict[tuple, set[str]]) -> tuple[tuple, s
     return None
 
 
+def _method_prefixes(metric_keys: list[str]) -> set[str]:
+    """Method prefixes of the metric keys: first words of keys whose remaining words another key has
+    under another first word (hm_precision and dfg_precision give hm and dfg)."""
+    split = [(t[0], t[1:]) for t in map(_tokens, metric_keys) if len(t) >= 2]
+    return {p for p, rest in split if any(q != p and r == rest for q, r in split)}
+
+
+def _method_name(text: str, prefixes: set[str]) -> str | None:
+    """The prefix a method name maps to: the name itself lowercased ("HM"), or its initials ("Heuristic
+    Miner", "Directly-follows graph")."""
+    words = re.findall(r"[A-Za-z0-9]+", text)
+    if not words:
+        return None
+    if len(words) == 1 and words[0].lower() in prefixes:
+        return words[0].lower()
+    initials = "".join(w[0] for w in words).lower()
+    return initials if initials in prefixes else None
+
+
+def _method_of(text: str, prefixes: set[str], parens_only: bool = False) -> str | None:
+    """The method a table text names in parentheses ("(Heuristic Miner)", "(HM)") or, unless
+    parens_only, as an acronym ("HM"); None when it names none of the prefixes."""
+    if not prefixes or not text:
+        return None
+    text = re.sub(r"\\[A-Za-z]+\*?", " ", text)
+    candidates = re.findall(r"\(([^()]*)\)", text)
+    if not parens_only:
+        candidates += re.findall(r"\b[A-Z][A-Z0-9]+\b", text)
+    for cand in candidates:
+        method = _method_name(cand, prefixes)
+        if method:
+            return method
+    return None
+
+
+def _metric_key(loc: Located, keys: set[str]) -> str:
+    """The metric key in the value's key path (the column name for a CSV value)."""
+    return next((part for part in loc.path if part in keys), "")
+
+
 NAME_FIELD_WORDS = frozenset({"name", "team", "model", "method", "label", "title"})
 
 
@@ -896,17 +982,34 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     table_check_uninformative when that pool covers more than half of the values a cell can display.
     A cell matching no results value is WARN table_cell_not_in_results."""
     pool = _pool(results, metric_keys)
-    by_raw: dict[tuple[str, str], set] = {}
+    files = results.file_keyed if metric_keys else results.file_values
+
+    def pool_of(c: dict) -> list:
+        return _uniq(files.get(c["source"], [])) if c.get("source") else pool
+
+    by_raw: dict[tuple[str, str, str], set] = {}
     for c in cells:
-        if (c["kind"], c["raw"]) not in by_raw:
-            by_raw[(c["kind"], c["raw"])] = {_vkey(v) for v in pool if matches(c, v, tolerances)}
-    hits = [by_raw[(c["kind"], c["raw"])] for c in cells]
+        key = (c["kind"], c["raw"], c.get("source") or "")
+        if key not in by_raw:
+            by_raw[key] = {_vkey(v) for v in pool_of(c) if matches(c, v, tolerances)}
+    hits = [by_raw[(c["kind"], c["raw"], c.get("source") or "")] for c in cells]
     rows: dict[str, list[int]] = {}
     for i, c in enumerate(cells):
         rows.setdefault(c.get("row", f"{c['file']}:{c['line']}"), []).append(i)
-    located = results.located if metric_keys else []
+    all_located = results.located if metric_keys else []
+    key_set = set(metric_keys)
     key_words = {w for k in metric_keys for w in _tokens(k)}
-    entities: dict[str, Any] = {}
+    prefixes = _method_prefixes(metric_keys)
+    entities: dict[tuple[str, str], Any] = {}
+
+    def method_of(c: dict) -> str | None:
+        """The row's own method ("Heuristic Miner (HM)"), else its section's."""
+        return _method_of(c.get("label_text", ""), prefixes, parens_only=True) \
+            or _method_of(c.get("section", ""), prefixes)
+
+    def key_method(loc: Located) -> str | None:
+        words = _tokens(_metric_key(loc, key_set))
+        return words[0] if len(words) >= 2 and words[0] in prefixes else None
 
     out: list[Finding] = []
     missed: dict[str, list[dict]] = {}
@@ -917,15 +1020,17 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     for idxs in rows.values():
         unplaced += [cells[i] for i in idxs if not hits[i]]
         label = cells[idxs[0]].get("label") or ""
-        if label and not re.fullmatch(r"line\d+", label) and located and label not in entities:
-            entities[label] = _entity(label, located)
-        named = entities.get(label)
+        source = cells[idxs[0]].get("source") or ""
+        located = [loc for loc in all_located if loc.file == source] if source else all_located
+        if label and not re.fullmatch(r"line\d+", label) and located and (label, source) not in entities:
+            entities[(label, source)] = _entity(label, located)
+        named = entities.get((label, source))
         if not named:
             for i in idxs:
                 if not hits[i]:
                     missed.setdefault(cells[i]["raw"], []).append(cells[i])
                 else:
-                    cov = _coverage(cells[i], pool, cache, tolerances)
+                    cov = _coverage(cells[i], pool_of(cells[i]), cache if not source else {}, tolerances)
                     if cov and cov[0] > 0.5:
                         dense.append((cov[0], cov[1], cells[i]))
             continue
@@ -933,6 +1038,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
         ent = [loc for loc, m in zip(located, own) if m]
         other_entity: list[tuple[dict, str]] = []
         other_column: list[tuple[dict, str]] = []
+        other_method: list[tuple[dict, str]] = []
         found_by = {i: [loc for loc in ent if _vkey(loc.value) in hits[i]] for i in idxs if hits[i]}
         row_files = {loc.file for found in found_by.values() for loc in found}  # where the row's own cells sit
         for i in idxs:
@@ -941,6 +1047,20 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                 missed.setdefault(c["raw"], []).append(c)
                 continue
             found = found_by[i]
+            col = set(_tokens(c.get("header") or "")) & key_words
+            method = method_of(c) if found else None
+            if method:
+                in_col = [loc for loc in found if not col or col & set(_tokens(_metric_key(loc, key_set)))]
+                methods = {key_method(loc) for loc in in_col}
+                if in_col and all(m and m != method for m in methods):
+                    expected = [loc for loc in ent if key_method(loc) == method
+                                and (not col or col & set(_tokens(_metric_key(loc, key_set))))]
+                    note = f"is in the {method.upper()} section but matches only " + ", ".join(
+                        f"{loc.where} = {loc.value}" for loc in in_col[:3])
+                    if expected:
+                        note += f"; the {method.upper()} value is {expected[0].where} = {expected[0].value}"
+                    other_method.append((c, note))
+                    continue
             if found:
                 want = set(c.get("distinct") or ())
                 if want and any(want & loc.words for loc in ent) and not any(want & loc.words for loc in found):
@@ -950,7 +1070,6 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                 continue
             elsewhere = [loc for loc in located if _vkey(loc.value) in hits[i]]
             # R169: the column header picks the key first (a Precision cell goes to *_precision keys).
-            col = set(_tokens(c.get("header") or "")) & key_words
             by_column = [loc for loc in elsewhere if col & {w for part in loc.path for w in _tokens(part)}]
             elsewhere = by_column or elsewhere
             owners = [_other_entity(loc, levels) for loc in elsewhere]
@@ -966,7 +1085,11 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                 ("table_cell_other_column", other_column,
                  "holds a value from another column's metric of the same entity",
                  "Copy the value from the key that matches the column header; re-run the pipeline or correct "
-                 "the table.")):
+                 "the table."),
+                ("table_cell_other_method", other_method,
+                 "holds the same entity's value for another method than its section's",
+                 "Copy the value from the key of the section's method; re-run the pipeline or correct the "
+                 "table.")):
             if not items:
                 continue
             fid = f"consistency.{rule}.{label}"
@@ -989,6 +1112,23 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
         if c["raw"] not in seen and _unkeyed(c, results, metric_keys, tolerances):
             seen.add(c["raw"])
             out.append(_unkeyed_finding(c, ", ".join(_where(x) for x in unplaced if x["raw"] == c["raw"])))
+    if len(prefixes) >= 2:
+        tables: dict[str, list[dict]] = {}
+        for c in cells:
+            tables.setdefault(c.get("table") or c["file"], []).append(c)
+        for table, tcells in tables.items():
+            if all(method_of(c) or prefixes & set(_tokens(c.get("header") or ""))
+                   or prefixes & set(_tokens(c.get("label") or "")) for c in tcells):
+                continue
+            out.append(Finding(
+                f"consistency.table_method_ambiguous.{table}", INFO,
+                f"the cell check cannot tell methods apart in table at {table}; add a section row naming the "
+                f"method or rely on the per-claim audit",
+                observed=f"metric keys carry the method prefixes {', '.join(sorted(prefixes))}; no section row, "
+                         f"row label or column header names a method for some rows",
+                remediation="Add a full-width \\multicolumn row naming the method, such as \"(Heuristic Miner)\", "
+                            "above the rows it covers (/ploma:audit-reproducibility checks each claim).",
+                group="tables"))
     if dense:
         top = max(d[0] for d in dense)
         out.append(Finding(
