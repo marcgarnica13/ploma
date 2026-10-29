@@ -34,6 +34,7 @@ Read the report file. Quote its `**Status:**` line and its Pages vs budget line.
 - **Undefined.** List the undefined citation keys and the undefined reference labels.
 - **Overfull.** One line with the count above the threshold; name the worst box and its width.
 - **Rerun WARN.** One line: build again before submitting.
+- **LaTeX warnings.** INFO only: give the count and name the ones worth a look (a float specifier changed, a multiply defined label); they do not change the status.
 - **Budget unchecked.** When the Pages vs budget line says the page budget could not be checked, quote it; it is not a failure. The user checks where the references start by hand (/ploma:format gives the page map).
 
 ## 3. Rebuild, at most twice

@@ -405,3 +405,31 @@ def test_fail_report_keeps_raw_build_output(sample_paper, cfg):
     text = rep.report_path.read_text(encoding="utf-8")
     assert "line 99" in text and "Last 40 lines of build output" in text
 
+
+def test_report_lists_latex_warnings_as_info(sample_paper, cfg):
+    """R127 D7: LaTeX warnings appear under "LaTeX warnings" as INFO and do not change the status."""
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log="latex_warnings.log"))
+    text = rep.report_path.read_text(encoding="utf-8")
+    section = text.split("## LaTeX warnings", 1)[1].split("\n## ", 1)[0]
+    assert "5 LaTeX warning(s)" in section
+    assert "- INFO `!h' float specifier changed to `!ht'." in section
+    assert "undefined" not in section.replace("There were undefined", "")
+
+
+def test_latex_warnings_capped_at_20(sample_paper, cfg):
+    log = (FIXTURES / "logs" / "clean.log").read_text(encoding="utf-8")
+    log += "".join(f"\nLaTeX Warning: Text page {i} contains only floats.\n" for i in range(27))
+    custom = sample_paper / "custom.log"
+    custom.write_text(log, encoding="utf-8")
+    runner = Runner(sample_paper, log=None)
+    orig = runner.__call__
+
+    def call(cmd, **kw):
+        res = orig(cmd, **kw)
+        shutil.copyfile(custom, sample_paper / "main.log")
+        return res
+    rep = compile_mod.run(sample_paper, cfg, runner=call)
+    section = rep.report_path.read_text(encoding="utf-8").split("## LaTeX warnings", 1)[1].split("\n## ", 1)[0]
+    assert "27 LaTeX warning(s)" in section
+    assert sum(line.startswith("- INFO ") for line in section.splitlines()) == 20
+    assert "and 7 more" in section

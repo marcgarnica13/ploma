@@ -38,6 +38,7 @@ import state  # noqa: E402
 
 TIMEOUT_S = 600
 TAIL_LINES = 40
+LATEX_WARNINGS_MAX = 20
 ENGINE_FLAGS = {"pdflatex": "-pdf", "xelatex": "-pdfxe", "lualatex": "-pdflua"}
 _PRUNE = {"node_modules", "__pycache__", ".venv", "venv"}
 # "make: pdflatex: No such file or directory", "sh: 1: latexmk: not found", "bash: x: command not found"
@@ -280,6 +281,15 @@ def _render(rep: CompileReport, cfg: dict, threshold: float) -> str:
             f"{log.overfull_total} overfull box(es) in total, {len(log.overfull)} above {threshold:g}pt."]
     for o in log.overfull:
         out.append(f"- {o['pt']:g}pt: {o['context']}")
+    out += ["", "## LaTeX warnings", ""]
+    if log.latex_warnings:
+        n = len(log.latex_warnings)
+        out.append(f"{n} LaTeX warning(s) (INFO; they do not change the status).")
+        out += [f"- INFO {w}" for w in log.latex_warnings[:LATEX_WARNINGS_MAX]]
+        if n > LATEX_WARNINGS_MAX:
+            out.append(f"- and {n - LATEX_WARNINGS_MAX} more (see the log)")
+    else:
+        out.append("None.")
     out += ["", "## Pages vs budget", ""]
     b = rep.budget
     if rep.pages is None:

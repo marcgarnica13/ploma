@@ -1,0 +1,36 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2024.1.15)  29 OCT 2026 10:12
+entering extended mode
+ restricted \write18 enabled.
+ file:line:error style messages enabled.
+ %&-line parsing enabled.
+**main.tex
+(./main.tex
+LaTeX2e <2023-11-01> patch level 1
+L3 programming layer <2024-01-04>
+(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2023/05/17 v1.4n Standard LaTeX document class
+(/usr/share/texlive/texmf-dist/tex/latex/base/size11.clo
+(./main.tex
+LaTeX Warning: `!h' float specifier changed to `!ht'.
+
+LaTeX Warning: Reference `fig:one' on page 1 undefined on input line 7.
+
+LaTeX Warning: Citation `smith2020' on page 2 undefined on input line 4.
+
+LaTeX Warning: Label `sec:intro' multiply defined.
+
+LaTeX Warning: Text page 3 contains only floats.
+
+LaTeX Warning: Unused global option(s):
+               [a4paper].
+
+LaTeX Warning: `!h' float specifier changed to `!ht'.
+
+LaTeX Warning: There were undefined references.
+
+LaTeX Warning: There were multiply-defined labels.
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
+ )
+Output written on main.pdf (3 pages, 41234 bytes).

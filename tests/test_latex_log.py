@@ -110,3 +110,22 @@ def test_cli_exit_codes(capsys, tmp_path):
     out = capsys.readouterr().out
     assert json.loads(out[out.index("{"):])["ok"] is False
     assert latex_log.main([str(tmp_path / "missing.log")]) == 2
+
+
+def test_latex_warnings_collected_other_than_undefined_and_rerun():
+    """R127 D7: generic LaTeX warnings are listed once each, continuation lines joined."""
+    r = parse_log(LOGS["latex_warnings"])
+    assert r.latex_warnings == ["`!h' float specifier changed to `!ht'.",
+                                "Label `sec:intro' multiply defined.",
+                                "Text page 3 contains only floats.",
+                                "Unused global option(s): [a4paper].",
+                                "There were multiply-defined labels."]
+    assert r.undefined_citations == ["smith2020"] and r.undefined_references == ["fig:one"] and r.rerun_needed
+    assert parse_log(LOGS["clean"]).latex_warnings == []
+    assert "latex warning: `!h' float specifier changed to `!ht'." in latex_log.render_text(r, 10)
+
+
+def test_wrapped_latex_warning_is_joined():
+    full = "LaTeX Warning: Float too large for page by 123.45678pt on input line 1234 of a very long file name."
+    text = full[:79] + "\n" + full[79:] + "\n\n"
+    assert parse_log(text).latex_warnings == [full[len("LaTeX Warning: "):]]

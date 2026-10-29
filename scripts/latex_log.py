@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Triage a pdflatex log: errors, undefined citations and references, overfull boxes, rerun hints.
+"""Triage a pdflatex log: errors, undefined citations and references, overfull boxes, rerun hints,
+other LaTeX warnings.
 
 Usage: python3 scripts/latex_log.py <logfile> [--threshold 10] [--json]
 Exit codes: 0 no errors, 1 the log holds errors, 2 usage error or unreadable log.
@@ -32,6 +33,9 @@ _OVERFULL = re.compile(r"^Overfull \\[hv]box \((\d+(?:\.\d+)?)pt too (?:wide|hig
 _CITATION = re.compile(r"Citation [`']([^`']+)' on page \S+ undefined")
 _REFERENCE = re.compile(r"Reference [`']([^`']+)' on page \S+ undefined")
 _RERUN = re.compile(r"Label\(s\) may have changed|Rerun to get|Please \(?re\)?run")
+_LATEX_WARNING = re.compile(r"^LaTeX Warning: (.+)$")
+# Summaries of undefined citations or references already reported by key.
+_UNDEFINED_SUMMARY = re.compile(r"^There were undefined (?:references|citations)")
 _PACKAGE_WARNING = re.compile(r"^(?:Package|Class) (\S+) Warning: (.+)$")
 
 # How far below a "! ..." error we look for its "l.<n>" marker.
@@ -47,6 +51,7 @@ class LogReport:
     overfull_total: int = 0
     rerun_needed: bool = False
     package_warnings: list[str] = field(default_factory=list)
+    latex_warnings: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -127,6 +132,17 @@ def parse_log(text: str, overfull_threshold_pt: float = 10.0) -> LogReport:
             continue
         if _RERUN.search(line):
             report.rerun_needed = True
+        m = _LATEX_WARNING.match(line)
+        if m:
+            message = m.group(1).strip()
+            # LaTeX continues a multi-line warning on lines indented with spaces.
+            for follow in lines[idx + 1:]:
+                if not follow.strip() or not follow[0].isspace():
+                    break
+                message += " " + follow.strip()
+            if not _UNDEFINED_SUMMARY.match(message) and not _RERUN.search(message):
+                _add_unique(report.latex_warnings, message)
+            continue
         m = _PACKAGE_WARNING.match(line)
         if m:
             _add_unique(report.package_warnings, f"{m.group(1)}: {m.group(2).strip()}")
@@ -149,6 +165,8 @@ def render_text(report: LogReport, threshold: float) -> str:
         out.append("- rerun needed: cross-references may have changed")
     for w in report.package_warnings:
         out.append(f"- package warning: {w}")
+    for w in report.latex_warnings:
+        out.append(f"- latex warning: {w}")
     return "\n".join(out)
 
 
