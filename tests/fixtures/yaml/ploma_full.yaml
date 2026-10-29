@@ -1,0 +1,52 @@
+ploma: "0.1"
+document:
+  type: paper                        # paper | proposal | thesis; only paper in v0.1
+  main: manuscript/samplepaper.tex   # resolved by \documentclass search
+  root: manuscript
+  title: "Capturing Team Strategy in European Football via Process Mining"
+  slug: samplepaper                  # used in report filenames
+  anonymized: true
+  discipline: ml                     # key into disciplines/*.yaml
+build:
+  command: "make"                    # honoured verbatim, run from build.cwd; null = latexmk fallback
+  cwd: manuscript
+  engine: pdflatex                   # pdflatex | xelatex | lualatex
+  bib_tool: bibtex                   # bibtex | biber
+  bib_files: [manuscript/mybib.bib]
+  pdf: manuscript/samplepaper.pdf
+  log: manuscript/samplepaper.log
+  overfull_threshold_pt: 10
+venue:
+  profile: springer-ml               # key into venues/*.yaml or ploma.d/venues/*.yaml
+  doc_class: llncs                   # detected
+  page_budget: 13                    # null if unknown
+  page_budget_includes_refs: false
+  cite_style: numeric                # numeric | author-year
+reviews:
+  glob: "review/*.md"                # prior-round referee reports, any text format
+outputs:
+  dir: quality_reports
+style:
+  sentences: short-direct
+  forbid_em_dash: true
+  forbid_phrases: []                 # appended to the shipped slop list
+  figures: compact-horizontal
+pipeline:                            # optional; absent or enabled:false disables the code add-on
+  enabled: true
+  language: python
+  run_from: src
+  rerun: "uv run python notebooks/discovery/parse_statsbomb_matches.py"
+  outputs_dir: src/results
+  metric_keys: [avg_fitness, generalization, dependency]
+  env_contract: [MONGO_USER, MONGO_PWD, MONGO_STR, TAGS_FILE, RESULTS_FILE, STATSBOMB_DATA_DIR]
+  gotchas:
+    - "TAGS_FILE is read at import time in parsers/soccerlogs.py"
+    - "Activity key format action##zone must be preserved"
+    - "Pitch coordinates are flipped (y -> FIELD_WIDTH - y); verify orientation"
+  tolerances: {counts: exact, metrics: 0.01, aggregates: 0.02, percentages_pp: 0.1}
+limits:                              # overrides of rules/eager/limits.md defaults
+  review_rounds: 5
+  cove_regenerations: 2
+  doi_lookups_per_run: 50
+dependencies:
+  superpowers: soft
