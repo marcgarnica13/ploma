@@ -248,7 +248,8 @@ def test_cli_unreadable_bib_is_usage_error(tmp_path):
 
 def test_lookup_result_to_dict():
     r = LookupResult("k", "verified", "crossref", "e", "10.1/x")
-    assert r.to_dict() == {"key": "k", "status": "verified", "source": "crossref", "evidence": "e", "doi": "10.1/x"}
+    assert r.to_dict() == {"key": "k", "status": "verified", "source": "crossref", "evidence": "e", "doi": "10.1/x",
+                           "doi_unresolved": False}
 
 
 def test_doi_not_found_falls_back_to_title_search_as_partial():
@@ -407,8 +408,15 @@ def test_article_not_found_with_all_sources_answering_is_missing():
     assert r.status == "missing"
 
 
-def test_article_not_found_with_one_source_rate_limited_is_not_indexed():
+def test_article_not_found_with_s2_rate_limited_is_missing():
+    """D13: keyless Semantic Scholar answers 429 as a rule; Crossref and OpenAlex answering decides."""
     routes = dict(ALL_MISS, **{"api.semanticscholar.org": (429, "")})
+    r = lookup(_typed("article"), fetch=fake_fetch(routes), cache={})
+    assert r.status == "missing" and "1 of 3 sources did not answer" in r.evidence
+
+
+def test_article_not_found_with_openalex_rate_limited_is_not_indexed():
+    routes = dict(ALL_MISS, **{"api.openalex.org": (429, "")})
     cache: dict = {}
     r = lookup(_typed("article"), fetch=fake_fetch(routes), cache=cache)
     assert r.status == "not_indexed" and "type article" in r.evidence
@@ -562,3 +570,43 @@ def test_escaped_springer_doi_is_looked_up_unescaped():
     assert r.doi == "10.1007/978-3-030-85469-0_16"
     assert "\\" not in calls[0][0] and "%5C" not in calls[0][0]
     assert "/works/10.1007/978-3-030-85469-0_16" in calls[0][0]
+
+
+# ---------------------------------------------------------------- D13, D14: field-fix unit 2
+
+S2_429 = {"api.semanticscholar.org": (429, "")}
+DEAD_DOI = {"api.crossref.org/works/10.9999": (404, "Resource not found."), "api.datacite.org": (404, "")}
+
+
+def test_fabricated_article_with_fake_doi_is_missing_without_s2():
+    e = parse_bib(r"@article{Fake2020, author = {Nobody, Ann}, title = {A Study That Was Never Written},"
+                  r" year = 2020, doi = {10.9999/fake.123}}")[0]
+    r = lookup(e, fetch=fake_fetch({**DEAD_DOI, **ALL_MISS, **S2_429}), cache={})
+    assert r.status == "missing", r.evidence
+    assert "DOI not found on Crossref or DataCite" in r.evidence and r.doi_unresolved is False
+
+
+def test_dead_doi_and_no_match_among_answering_sources_is_missing():
+    e = parse_bib(r"@inproceedings{Fake2020, author = {Nobody, Ann}, title = {A Study That Was Never Written},"
+                  r" year = 2020, doi = {10.9999/fake.123}}")[0]
+    routes = {**DEAD_DOI, **ALL_MISS, **S2_429, "api.openalex.org": (503, "")}
+    assert lookup(e, fetch=fake_fetch(routes), cache={}).status == "missing"
+    misc = parse_bib(r"@misc{Fake2020, title = {A Study That Was Never Written}, doi = {10.9999/fake.123}}")[0]
+    assert lookup(misc, fetch=fake_fetch(routes), cache={}).status == "not_indexed"
+
+
+def test_real_article_with_typo_doi_is_partial_and_doi_unresolved():
+    e = parse_bib(r"""@article{Lind2019, author = {Dana Lindqvist}, title = {Graph Methods for Process Discovery},
+      year = 2019, doi = {10.9999/typo}}""")[0]
+    routes = dict(DEAD_DOI, **S2_429, **{"api.crossref.org/works?": (200, CROSSREF_MISS),
+                                         "api.openalex.org": (200, OPENALEX_HIT)})
+    r = lookup(e, fetch=fake_fetch(routes), cache={})
+    assert (r.status, r.source) == ("partial", "openalex") and r.doi_unresolved is True
+
+
+def test_doi_unresolved_only_when_both_registries_answer_404():
+    e = parse_bib(r"""@article{Lind2019, author = {Dana Lindqvist}, title = {Graph Methods for Process Discovery},
+      year = 2019, doi = {10.9999/typo}}""")[0]
+    routes = {"api.crossref.org/works/10.9999": (404, ""), "api.datacite.org": (503, ""),
+              "api.crossref.org/works?": (200, CROSSREF_MISS), "api.openalex.org": (200, OPENALEX_HIT)}
+    assert lookup(e, fetch=fake_fetch(routes), cache={}).doi_unresolved is False

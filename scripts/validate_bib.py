@@ -8,6 +8,8 @@ Structural: cite keys against entries in every resolved bib file, near misses, d
 entries, natbib/biblatex mixing (scripts/bib_check.py). Semantic adds a lookup of every cited entry
 (scripts/cite_lookup.py, at most limits.doi_lookups_per_run network lookups, and none after a time
 budget of 480 s so the run ends inside a 10-minute Bash timeout); --skip-doi leaves the lookups out.
+Each lookup gives bib.lookup.<status>.<key>; an entry found by title whose DOI Crossref and DataCite
+both answer 404 for also gets bib.doi_unresolved.<key> WARN (the printed DOI will be dead).
 Writes <outputs.dir>/bib_audit_<structural|semantic>.md, records the "bib" gate entry (with mode and bib_sha,
 the hash of the resolved .bib files) and a state event. Only --semantic without --skip-doi uses the network. Lookup cache: the plugin
 data dir when CLAUDE_PLUGIN_DATA is set, else <root>/.ploma/cite_lookup.json.
@@ -40,7 +42,7 @@ SEVERITY = {FAIL: "Critical", WARN: "Medium", INFO: "Low"}
 ROWS = [
     ("Structural (missing / typos)", ("bib.missing.", "bib.file_missing.", "bib.near_miss.")),
     ("Citation drift (duplicates)", ("bib.duplicate_",)),
-    ("DOI verification", ("bib.lookup.", "bib.no_doi.")),
+    ("DOI verification", ("bib.lookup.", "bib.no_doi.", "bib.doi_unresolved.")),
     ("Style consistency", ("bib.cite_style_mix",)),
     ("Unused entries", ("bib.unused.",)),
 ]
@@ -113,7 +115,10 @@ def _cited_entries(entries: list[bib_check.Entry], cited: dict[str, list]) -> li
     return [first[k] for k in cited if k in first]
 
 
-def _lookup_findings(results: list[cite_lookup.LookupResult], cited: dict[str, list], root: Path) -> list[Finding]:
+def _lookup_findings(results: list[cite_lookup.LookupResult], cited: dict[str, list], root: Path,
+                     dois: dict[str, str] | None = None) -> list[Finding]:
+    """One bib.lookup.<status>.<key> finding per result, plus bib.doi_unresolved.<key> WARN (D14) when the
+    entry's DOI is unknown to Crossref and DataCite although the work was found by title."""
     out = []
     for r in results:
         status = LOOKUP_STATUS.get(r.status)
@@ -128,6 +133,14 @@ def _lookup_findings(results: list[cite_lookup.LookupResult], cited: dict[str, l
             summary = f"{r.key}: " + r.evidence.split(";", 1)[0]
         out.append(Finding(f"bib.lookup.{r.status}.{r.key}", status, summary,
                            observed=observed, remediation=LOOKUP_FIX[r.status], group="bib"))
+        if getattr(r, "doi_unresolved", False):
+            out.append(Finding(f"bib.doi_unresolved.{r.key}", WARN,
+                               f"{r.key}: DOI {(dois or {}).get(r.key) or r.doi} does not resolve on Crossref or "
+                               f"DataCite; the printed DOI will be dead",
+                               observed=observed + (f"; the record found by title has DOI {r.doi}"
+                                                    if r.doi and r.doi != (dois or {}).get(r.key) else ""),
+                               remediation="Copy the DOI from the publisher page (the work itself was found by "
+                                           "title), or remove the doi field.", group="bib"))
     return out
 
 
@@ -233,7 +246,7 @@ def _render(rep: BibReport, root: Path, main_rel: str, n_sources: int) -> str:
         if no_doi:
             keys = ", ".join(f"`{f.id[len('bib.no_doi.'):]}`" for f in no_doi)
             out.append(f"- {len(no_doi)} cited entries carry no DOI (Low; a DOI is optional): {keys}.")
-        out += _bullets(pick(("bib.lookup.",)), "No lookup problems.")
+        out += _bullets(pick(("bib.lookup.", "bib.doi_unresolved.")), "No lookup problems.")
         out += ["", "| Key | Status | Source | Evidence |", "|---|---|---|---|"]
         for r in rep.lookups:
             out.append(f"| {_cell(r.key)} | {r.status} | {r.source or '-'} | {_cell(r.evidence) or '-'} |")
@@ -318,7 +331,8 @@ def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto
                                       mailto=mailto, keys=keys or {}, fetch=fetch,
                                       time_budget_s=time_budget_s,
                                       **({"clock": clock} if clock is not None else {}))
-            findings.extend(_lookup_findings(lookups, cited, root))
+            dois = {e.key: bib_check._norm_doi(e.fields.get("doi", "")) for e in targets}
+            findings.extend(_lookup_findings(lookups, cited, root, dois))
 
     verdict = "FAIL" if any(f.status == FAIL for f in findings) else "PASS"
     out_dir = Path(paths["outputs_dir"])

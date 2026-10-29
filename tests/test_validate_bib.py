@@ -299,16 +299,25 @@ def test_article_not_found_all_sources_answering_is_fail(sample_paper, cfg, cach
     assert _ids(rep)["bib.lookup.missing.Bradley1952"] == "FAIL" and rep.verdict == "FAIL"
 
 
-def test_article_not_found_with_one_source_429_is_warn(sample_paper, cfg, cache):
+def test_article_not_found_with_s2_429_is_fail(sample_paper, cfg, cache):
+    """D13: keyless Semantic Scholar answers 429; Crossref and OpenAlex answering is enough for missing."""
     def s2_rate_limited(url, headers):
         if "semanticscholar" in url:
             return 429, ""
         return missing_fetch(url, headers)
     rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=s2_rate_limited, cache_path=cache, delay_s=0)
+    assert _ids(rep)["bib.lookup.missing.Bradley1952"] == "FAIL" and rep.verdict == "FAIL"
+
+
+def test_openalex_429_leaves_doiless_entry_not_indexed(sample_paper, cfg, cache):
+    def oa_rate_limited(url, headers):
+        if "openalex" in url:
+            return 429, ""
+        return missing_fetch(url, headers)
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=oa_rate_limited, cache_path=cache, delay_s=0)
     ids = _ids(rep)
-    assert ids["bib.lookup.not_indexed.Bradley1952"] == "WARN"
-    assert not any(v == "FAIL" for k, v in ids.items() if k.startswith("bib.lookup."))
-    assert rep.verdict == "PASS"
+    assert ids["bib.lookup.not_indexed.Elo1978"] == "WARN"  # no DOI: OpenAlex down leaves it undecided
+    assert ids["bib.lookup.missing.Bradley1952"] == "FAIL"  # its DOI is dead on Crossref and DataCite too
 
 
 def test_time_budget_skips_and_report_counts_them(sample_paper, cfg, cache):
@@ -343,3 +352,24 @@ def test_unicode_spaces_in_api_titles_render_as_plain_spaces(sample_paper, cfg, 
         assert bad not in text, bad
     for r in rep.lookups:
         assert not any(c in r.evidence for c in "   ") and "\\xa0" not in r.evidence
+
+
+def test_unresolved_doi_on_a_title_matched_entry_is_its_own_warn(sample_paper, cfg, cache):
+    """D14: the work exists (title match) but its printed DOI is dead on Crossref and DataCite."""
+    base = verifying_fetch(sample_paper / "refs.bib")
+
+    def dead_dois(url, headers):
+        u = urlparse(url)
+        if (u.netloc == "api.crossref.org" and u.path.startswith("/works/")) or u.netloc == "api.datacite.org":
+            return 404, ""
+        if u.netloc == "api.semanticscholar.org":
+            return 429, ""
+        return base(url, headers)
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=dead_dois, cache_path=cache, delay_s=0)
+    ids = _ids(rep)
+    assert ids["bib.lookup.partial.Bradley1952"] == "WARN"
+    assert ids["bib.doi_unresolved.Bradley1952"] == "WARN"
+    f = next(f for f in rep.findings if f.id == "bib.doi_unresolved.Bradley1952")
+    assert "the printed DOI will be dead" in f.summary and "10.2307/2334029" in f.summary + f.observed
+    assert "bib.doi_unresolved.Elo1978" not in ids  # no DOI in the entry
+    assert "bib.doi_unresolved.Bradley1952" in rep.report_path.read_text(encoding="utf-8")

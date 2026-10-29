@@ -41,7 +41,7 @@ The script prints the summary table, the verdict line and the report path (`<out
 
 1. Quote the summary table and the `**Verdict:**` line exactly as printed.
 2. Read the report. Under the table, one line per FAIL, in report order: the key, where it is cited (the Observed text), and the fix. For a missing key with a near-miss WARN, give the near-miss key as the fix ("cite `Elo1978`, not `elo1978`").
-3. Then one line per WARN with its fix. A lookup that was `unreachable` concluded nothing; say so, and never call that entry wrong. A `not_indexed` entry was not found in the citation indexes, which is normal for reports, preprints, software and web pages; ask the user to confirm it exists, never call it fabricated.
+3. Then one line per WARN with its fix. A lookup that was `unreachable` concluded nothing; say so, and never call that entry wrong. A `not_indexed` entry was not found in the citation indexes, which is normal for reports, preprints, software and web pages; ask the user to confirm it exists, never call it fabricated. A `bib.doi_unresolved` WARN means the work was found by title but its DOI is unknown to Crossref and DataCite: the printed DOI will be dead, so give the fix (the DOI from the publisher page).
 4. In semantic mode, say how many cited entries were verified and name any `partial` or `mismatch` entries with the evidence from the DOI table.
 5. Unused entries and entries without a DOI: one line with the counts. Do not list them unless asked.
 

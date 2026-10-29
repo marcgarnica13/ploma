@@ -4,8 +4,11 @@ search on Crossref, OpenAlex, Semantic Scholar.
 Usage: python3 scripts/cite_lookup.py <refs.bib> [--keys k1,k2] [--max 50] [--mailto x]
        [--openalex-key K] [--s2-key K] [--json]
 Statuses: verified, partial, mismatch, missing, not_indexed, unreachable, skipped.
-``missing`` needs all three title-search sources to answer and an entry type that citation indexes cover
-(STRICT_TYPES); otherwise a work no source knows is ``not_indexed`` (R94).
+``missing`` needs an entry type that citation indexes cover (STRICT_TYPES) and either Crossref and OpenAlex
+both answering without a title match (Semantic Scholar without a key answers 429 as a rule, D13), or a DOI
+that both Crossref and DataCite answer 404 for with no title match among the sources that answered;
+otherwise a work no source knows is ``not_indexed`` (R94). A title-matched entry whose DOI both registries
+answer 404 for is ``partial`` with ``doi_unresolved`` set (D14).
 Results are cached for 90 days in ``default_cache_path()``; run() saves the cache every
 SAVE_EVERY network lookups and skips the remaining network lookups once its time budget is spent.
 Exit codes: 0 no result is missing or mismatch, 1 at least one is, 2 usage error or unreadable bib file.
@@ -55,6 +58,7 @@ class LookupResult:
     source: str = ""
     evidence: str = ""
     doi: str = ""
+    doi_unresolved: bool = False  # the entry's DOI is unknown to Crossref and DataCite (both answered 404)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -321,14 +325,19 @@ class _Facts:
         return failed, hits
 
 
-def _title_search(entry: Entry, facts: _Facts) -> LookupResult:
+def _title_search(entry: Entry, facts: _Facts, *, doi_dead: bool = False) -> LookupResult:
+    """Title search on every source in turn. With no match, the entry is decided (missing for strict types)
+    when Crossref and OpenAlex both answered, or when doi_dead (Crossref and DataCite both 404) and at least
+    one source answered."""
     title = query_title(entry.fields.get("title", ""))
     failures, best = 0, None
+    answered: set[str] = set()
     for name in SOURCES:
         failed, hits = facts.search(name, title)
         if failed:
             failures += 1
             continue
+        answered.add(name)
         judged = sorted((_judge(entry, h) + (h,) for h in hits), key=lambda t: t[0], reverse=True)
         if judged and judged[0][0] >= TITLE_MATCH:
             ratio, problems, evidence, hit = judged[0]
@@ -342,12 +351,14 @@ def _title_search(entry: Entry, facts: _Facts) -> LookupResult:
         evidence += f" ({failures} of {len(SOURCES)} sources did not answer)"
     if best:
         evidence += f"; closest {best[1]}: {best[2]}"
-    return _not_found(entry, evidence, all_answered=not failures)
+    decided = {"crossref", "openalex"} <= answered or (doi_dead and bool(answered))
+    return _not_found(entry, evidence, decided=decided)
 
 
-def _not_found(entry: Entry, evidence: str, *, all_answered: bool) -> LookupResult:
-    """R94: missing only when every source answered and the entry type is one indexes cover; else not_indexed."""
-    if all_answered and entry.type.lower() in STRICT_TYPES:
+def _not_found(entry: Entry, evidence: str, *, decided: bool) -> LookupResult:
+    """R94 as amended by D13: missing only when the lookup is decided (see _title_search) and the entry type is
+    one indexes cover; else not_indexed."""
+    if decided and entry.type.lower() in STRICT_TYPES:
         return LookupResult(entry.key, "missing", "", evidence)
     return LookupResult(entry.key, "not_indexed", "",
                         f"not found in citation indexes (type {entry.type.lower()}); {evidence}")
@@ -386,12 +397,13 @@ def _doi_lookup(entry: Entry, doi: str, facts: _Facts) -> LookupResult:
     if not entry.fields.get("title"):
         if failed:
             return LookupResult(entry.key, "unreachable", "", f"{reason}; entry has no title", doi)
-        res = _not_found(entry, f"{reason}; entry has no title", all_answered=False)
+        res = _not_found(entry, f"{reason}; entry has no title", decided=False)
         res.doi = doi
         return res
-    res = _title_search(entry, facts)
-    if res.status == "verified" and not failed:
+    res = _title_search(entry, facts, doi_dead=not failed)
+    if res.status in ("verified", "partial") and not failed:
         res.status = "partial"  # the work exists, but the DOI in the entry does not resolve
+        res.doi_unresolved = True
     res.evidence = f"{reason} {doi}; {res.evidence}"
     res.doi = res.doi or doi
     return res
