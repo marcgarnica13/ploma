@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": ["Bash(make:*)"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/context-monitor.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
