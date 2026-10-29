@@ -705,6 +705,10 @@ def test_grey_markers():
     assert grey_marker(e("@article{K, title = {T}, institution = {MIT}, type = {Doctoral Dissertation}}"))
     assert grey_marker(e("@article{K, title = {T}, journal = {X}, howpublished = {CiteSeer}}"))
     assert not grey_marker(e("@article{K, title = {T}, journal = {Swposium}}"))  # wp only as a word
+    for journal in ("Scientific Reports", "Reports on Progress in Physics", "Synthesis Lectures on Data Mining",
+                    "Hypothesis Testing Quarterly"):
+        assert not grey_marker(e(f"@article{{K, title = {{T}}, journal = {{{journal}}}}}")), journal
+    assert grey_marker(e("@article{K, title = {T}, journal = {Research Report RR-12}}"))
     for t in ("techreport", "misc", "unpublished", "phdthesis", "mastersthesis"):
         assert grey_marker(e(f"@{t}{{K, title = {{T}}}}")), t
     assert grey_marker(e("@proceedings{K, title = {T}}"))

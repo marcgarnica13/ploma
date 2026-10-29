@@ -49,7 +49,8 @@ STRICT_TYPES = frozenset({"article", "inproceedings", "conference", "book", "inc
 ALL_SOURCES_TYPES = frozenset({"phdthesis", "mastersthesis"})
 # R168: wording in these fields, publishers and entry types that mark grey literature, which indexes list poorly.
 GREY_FIELDS = ("journal", "booktitle", "institution", "type", "note")
-GREY_WORDS_RE = re.compile(r"tech\.\s*rep|technical report|working paper|report|thesis|dissertation|\bwp\b", re.I)
+# Whole words only, singular "report": "Scientific Reports" and "Synthesis Lectures" are journals, not grey.
+GREY_WORDS_RE = re.compile(r"tech\.\s*rep|\b(?:technical report|working paper|report|thesis|dissertation|wp)\b", re.I)
 GREY_PUBLISHER_FIELDS = ("publisher", "organization", "howpublished")
 GREY_PUBLISHER_RE = re.compile(r"citeseer", re.I)
 GREY_TYPES = frozenset({"techreport", "misc", "unpublished", "phdthesis", "mastersthesis"})
