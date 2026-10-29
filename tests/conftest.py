@@ -26,3 +26,9 @@ def sample_paper(tmp_path) -> Path:
     dst = tmp_path / "sample-paper"
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("build"))
     return dst
+
+
+@pytest.fixture
+def cfg(sample_paper) -> dict:
+    import ploma_config
+    return ploma_config.load(sample_paper)

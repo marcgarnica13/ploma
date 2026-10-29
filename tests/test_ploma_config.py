@@ -14,7 +14,6 @@ FIXTURES = Path(__file__).parent / "fixtures" / "yaml"
 MINIMAL = (FIXTURES / "ploma_minimal.yaml").read_text()
 BAD_TYPE = (FIXTURES / "ploma_bad_type.yaml").read_text()
 FULL = (FIXTURES / "ploma_full.yaml").read_text()
-NEEDS_SAMPLE = pytest.mark.xfail(strict=False, reason="sample paper arrives in Task 4")
 
 
 def _ids(cfg, root):
@@ -47,7 +46,6 @@ def test_unparseable_config_raises(tmp_path):
         ploma_config.load(tmp_path)
 
 
-@NEEDS_SAMPLE
 def test_missing_path_is_a_finding(sample_paper):
     cfg = ploma_config.load(sample_paper)
     cfg["build"]["bib_files"] = ["gone.bib"]
@@ -56,7 +54,6 @@ def test_missing_path_is_a_finding(sample_paper):
     assert "gone.bib" in f["config.path.build.bib_files"].observed
 
 
-@NEEDS_SAMPLE
 def test_unsupported_document_type(sample_paper):
     cfg = ploma_config.load(sample_paper)
     cfg["document"]["type"] = "proposal"
@@ -172,7 +169,6 @@ def test_summary_mentions_key_facts(tmp_path):
         assert needle in s
 
 
-@NEEDS_SAMPLE
 def test_summary_is_short(sample_paper):
     assert len(ploma_config.summary(ploma_config.load(sample_paper))) < 1500
 
