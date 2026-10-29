@@ -949,3 +949,55 @@ def test_brainstorm_eval_runs_cove():
                for fm, _ in graders)
     assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Write"
                and "research_ideation_" in str(fm.get("input_match")) for fm, _ in graders)
+
+
+# ---------------------------------------------------------------- Task 10 fix round 1 (R141)
+
+def test_brainstorm_exits_superpowers_before_sizing():
+    text = _skill("brainstorm")
+    for s in ("after Context and before the research questions",
+              "Use it only for the conversation and the play-back of what the user wants",
+              'stop before its "Size the Work" step',
+              "Write no design document, make no commit, spawn no builder-check subagent, and offer no visual companion or spike.",
+              "Its HARD-GATE and its `superpowers:writing-plans` step do not apply: the ideation report below is the output.",
+              "ploma's rule wins over superpowers' \"ask them to describe first\""):
+        assert s in text, s
+    assert "before anything else" not in text
+    assert text.index("## Context") < text.index("invoke `superpowers:brainstorming`") < text.index("## Research questions")
+
+
+def test_lit_review_key_papers_hold_only_verified_candidates():
+    text = _skill("lit-review")
+    assert "Key Papers (VERIFIED) holds only candidates whose final lookup status is `verified`" in text
+    assert "## Already in your bibliography (not checked here; run /ploma:validate-bib --semantic)" in text
+    assert "Every other status drops the paper from Key Papers into TO VERIFY with its status and evidence." in text
+    assert "| bibliography key |" not in text  # existing entries never sit under Key Papers
+    assert "--keys <key> --max <limits.doi_lookups_per_run>" in text
+    assert "the cap minus the number of candidates looked up, at least 1" in text
+    rubric = " ".join(body for fm, body in _graders("lit-review") if fm.get("type") == "llm")
+    assert "Key Papers (VERIFIED)" in rubric and "Already in your bibliography" in rubric
+
+
+@pytest.mark.parametrize("name", ("brainstorm", "lit-review", "grill"))
+def test_bibliography_discovered_when_bib_files_empty(name):
+    text = _skill(name)
+    assert "\\bibliography{...}" in text and "\\addbibresource{...}" in text and "bib_check.py" in text
+
+
+def test_grill_lens_header_and_precedence():
+    text = _skill("grill")
+    assert "Repro for the reproducibility lens" in text
+    assert "the needed lens wins over the rotation" in text
+    _, prompt = split_frontmatter((REPO / "evals" / "grill" / "prompt.md").read_text(encoding="utf-8"))
+    assert "one thing at a time" not in prompt.lower()
+
+
+def test_spec_without_answers_and_other_logs():
+    text = _skill("spec")
+    assert 'keep the question under Open questions marked "unanswered"' in text
+    assert "Other decision logs, not used:" in text
+    graders = _graders("spec")
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Edit" and fm.get("input_match") == ".tex"
+               and fm.get("max") == 0 for fm, _ in graders)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "AskUserQuestion" and fm.get("min") == 1
+               for fm, _ in graders)

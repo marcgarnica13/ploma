@@ -24,14 +24,17 @@ No `ploma.yaml` in the repo root: say "ploma is not set up here. Run /ploma:onbo
    ```
 
 2. Discipline card (`document.discipline`, `generic` when unset): Read `ploma.d/disciplines/<key>.yaml` if it exists, else `${CLAUDE_PLUGIN_ROOT}/disciplines/<key>.yaml`. Its `paper_types` (with `default_paper_type` first) are the paper types to tag with; its `sanity_checks`, `reproducibility_norms` and `challenge_examples` name the threats each question must face.
-3. Read what the repo already holds, so no question repeats it: the manuscript (`document.main` and its inputs) when it exists, the files in each `literature.sources` directory (titles and abstracts; a PDF by page range with Read `pages`), earlier `<outputs.dir>/research_ideation_*.md` and `<outputs.dir>/lit_review_*.md` reports, and the bibliography files in `build.bib_files`.
+3. Read what the repo already holds, so no question repeats it: the manuscript (`document.main` and its inputs) when it exists, the files in each `literature.sources` directory (titles and abstracts; a PDF by page range with Read `pages`), earlier `<outputs.dir>/research_ideation_*.md` and `<outputs.dir>/lit_review_*.md` reports, and the bibliography: the files in `build.bib_files`, or, when that list is empty, the files the manuscript names in `\bibliography{...}` or `\addbibresource{...}` (the same discovery `bib_check.py` does).
 4. If `<outputs.dir>/research_ideation_<topic>.md` exists, read it first. Build on it: add a dated section with the new questions instead of regenerating what is there.
 
 ## Open exploration (superpowers, when enabled)
 
 superpowers is enabled when the session's skill list shows `superpowers:brainstorming`, or when any of `~/.claude/settings.json`, `.claude/settings.json` and `.claude/settings.local.json` has an `enabledPlugins` key starting with `superpowers@` set to `true`.
 
-- Enabled: invoke `superpowers:brainstorming` with the Skill tool before anything else, with the input and this goal: "explore research directions for a paper; the output is a set of research questions, not a software design". Follow it for the open-ended part only: its one-question-at-a-time dialogue about the problem, the user's goals and constraints, and the directions worth pursuing. Do not write its design document and do not invoke `superpowers:writing-plans`: the ideation report below takes their place. Carry its outcome (the framing the user settled on, constraints, directions ruled in or out) into the research questions.
+- Enabled: after Context and before the research questions, invoke `superpowers:brainstorming` with the Skill tool, with the input and this goal: "explore research directions for a paper; the output is a set of research questions, not a software design". Use it only for the conversation and the play-back of what the user wants: the problem, the user's goals and constraints, and the directions worth pursuing.
+  - Exit: stop before its "Size the Work" step. Write no design document, make no commit, spawn no builder-check subagent, and offer no visual companion or spike. Its HARD-GATE and its `superpowers:writing-plans` step do not apply: the ideation report below is the output.
+  - At every fork, ploma's rule wins over superpowers' "ask them to describe first": offer options with the recommended one first and its reason.
+  - Carry its outcome (the framing the user settled on, constraints, directions ruled in or out) into the research questions.
 - Not enabled: say "superpowers is not enabled; running the ideation flow on its own (install it with /plugin install superpowers@claude-plugins-official)." and go on.
 
 ## Research questions

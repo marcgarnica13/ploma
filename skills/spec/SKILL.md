@@ -24,7 +24,7 @@ The spec lives at `<outputs.dir>/paper_spec.md` and follows `${CLAUDE_PLUGIN_ROO
    ```
 
 2. If `<outputs.dir>/paper_spec.md` exists, this is an update run: read it whole. Change it section by section with Edit, only the sections this session touches, and set its **Updated** date; never regenerate the file, and keep every hand edit. Where the file disagrees with what you find in the repo, do not change it silently: add an entry under Open questions that names both and recommends one.
-3. Grill log: Glob `<outputs.dir>/decisions/*.md` and take the newest (by the date in the file name, then by modification time). Its Decisions become Locked decisions, with the source `decisions/<file>#D<n>`; its "Settled by the repo" rows feed the matching sections; its Open items become Open questions. None of these is asked again. Name the log in the **Decision log** header field, or `none`.
+3. Grill log: Glob `<outputs.dir>/decisions/*.md` and take the newest (by the date in the file name, then by modification time). Its Decisions become Locked decisions, with the source `decisions/<file>#D<n>`; its "Settled by the repo" rows feed the matching sections; its Open items become Open questions. None of these is asked again. Name the log in the **Decision log** header field, or `none`. When other decision logs exist, list them in the reply as not pre-filled from ("Other decision logs, not used: <paths>"), so the user can point you at one.
 
 ## 2. Gather what the repo answers
 
@@ -48,7 +48,7 @@ Then interview the user on the open items only, in this order (ported from the r
 6. **Contribution and positioning:** the gap and the delta over the closest work.
 7. **Architecture:** the sections, the claims each serves, the target pages, and the figures.
 
-Each turn asks one or two questions with AskUserQuestion (a `questions` list of length 1 or 2), never more. In each question the first option is your recommendation: its label ends with "(Recommended)" and its description gives the reason, citing what you found. Other options state their consequence. After every answer, edit the spec at once: move the item out of Open questions into its section, and record a choice between live alternatives as a Locked decision with the source `interview <YYYY-MM-DD>`. Probe a weak plan by asking what a skeptic would say, not by declaring it wrong. Stop when no open item needs the user, or when the user says stop; what is left stays under Open questions. Do not over-interview: once the identity, the claims and the evaluation plan are clear, close.
+Each turn asks one or two questions with AskUserQuestion (a `questions` list of length 1 or 2), never more. In each question the first option is your recommendation: its label ends with "(Recommended)" and its description gives the reason, citing what you found. Other options state their consequence. After every answer, edit the spec at once: move the item out of Open questions into its section, and record a choice between live alternatives as a Locked decision with the source `interview <YYYY-MM-DD>`. Probe a weak plan by asking what a skeptic would say, not by declaring it wrong. Stop when no open item needs the user, or when the user says stop; what is left stays under Open questions. Do not over-interview: once the identity, the claims and the evaluation plan are clear, close. When AskUserQuestion is unavailable or returns without an answer, keep the question under Open questions marked "unanswered", ask nothing more, and continue to the page check and the post-flight.
 
 Before closing, check the section architecture: the target pages add up within the page budget (counting references only when the budget includes them). Over budget is an Open question that names the overrun and recommends where to cut.
 
@@ -66,4 +66,4 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record spec <PASS|WARN> --artif
 
 ## Reply
 
-The identity sentence, the claims table, the section architecture with its page total against the budget, the locked decisions (and how many came from the grill log), the open questions, the post-flight block and the spec path. On an update run, list the sections changed. End with one line: "Run /ploma:write <section> --from-spec to draft against this spec."
+The identity sentence, the claims table, the section architecture with its page total against the budget, the locked decisions (and how many came from the grill log, naming any other decision logs not used), the open questions, the post-flight block and the spec path. On an update run, list the sections changed. End with one line: "Run /ploma:write <section> --from-spec to draft against this spec."

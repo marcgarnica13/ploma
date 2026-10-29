@@ -7,4 +7,4 @@ Each question is asked through one lens. Lenses are viewpoints, not severity set
 - **Pragmatist**: probes scope and cost: what fits the venue's page budget and deadline, what can be cut or deferred, and what a reader will actually use.
 - **Reproducibility**: probes whether someone else can rerun it: data access, pinned dependencies, seeds and determinism, the run command, and what cannot be released and why.
 
-Pick the lens whose probe the decision most needs. When two fit equally, take the one asked least so far.
+Pick the lens whose probe the decision most needs. When two fit equally, take the one asked least so far. When the needed lens is the one just used, the needed lens wins over the rotation. In the AskUserQuestion header the reproducibility lens is written Repro.

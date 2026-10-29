@@ -30,7 +30,7 @@ This skill never writes to the bibliography files in `build.bib_files` or to any
 Search in this order and keep a note of where each paper came from:
 
 1. **Project folders.** Each directory in `literature.sources` (an empty list means none): Glob it for `.pdf`, `.md`, `.txt` and `.bib` files. Read a PDF by page range with the Read tool's `pages` parameter: the first pages for title, abstract and contribution, then the pages a finding is on. Note the path and page of every finding you take from a file.
-2. **The existing bibliography.** Every file in `build.bib_files`: these papers are already in the project. Use them in the synthesis under their existing keys and never suggest them again as new entries.
+2. **The existing bibliography.** Every file in `build.bib_files`; when that list is empty, the files the manuscript names in `\bibliography{...}` or `\addbibresource{...}` (Grep `document.root`; a name without `.bib` gets it, resolved from the main file's directory: the same discovery `bib_check.py` does). These papers are already in the project. Use them in the synthesis under their existing keys and never suggest them again as new entries.
 3. **The web.** WebSearch for recent work (the last five to ten years unless a seminal paper is older), then WebFetch the canonical page (DOI landing page, arXiv abstract, publisher page, Crossref, OpenAlex or Semantic Scholar record) for every paper you keep. Note working papers and preprints as such: they may change.
 
 Read the manuscript (`document.main` and its inputs) when it exists, so the positioning section compares the field with what this paper claims.
@@ -50,12 +50,14 @@ Then the gaps: unanswered questions, data or methods that could address them, co
 
 Every entry you suggest is checked before it is offered.
 
-1. Write each suggested new entry (never one already in `build.bib_files`) to `.ploma/tmp/lit_review_candidates.bib` (`mkdir -p .ploma/tmp` first), with the fields you took from the canonical page, the DOI included when there is one.
+1. Write each suggested new entry (never one already in the existing bibliography) to `.ploma/tmp/lit_review_candidates.bib` (`mkdir -p .ploma/tmp` first), with the fields you took from the canonical page, the DOI included when there is one.
 2. Duplicates against the project's bibliography:
 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/bib_check.py" <document.main> --bib <each build.bib_files entry> --bib .ploma/tmp/lit_review_candidates.bib --json
    ```
+
+   With `build.bib_files` empty, pass only the candidates file: the script adds the files the manuscript names itself.
 
    Read only the `bib.duplicate_key.*` findings (rename the candidate's key) and the `bib.duplicate_doi.*` and `bib.duplicate_title.*` findings that pair a candidate with an existing entry (drop the candidate: the paper is already in the bibliography under that key; say so in the review). Ignore the other findings: they are about the manuscript, not the candidates.
 3. Existence lookup, with a Bash timeout of 600000 ms:
@@ -68,16 +70,16 @@ Every entry you suggest is checked before it is offered.
 
    | Status | Where the entry goes |
    |---|---|
-   | `verified` | BibTeX Entries (VERIFIED) |
-   | `partial` | correct the fields from the script's evidence and the canonical page, re-run the lookup for that key (`--keys <key>`); `verified` then goes to VERIFIED, anything else to TO VERIFY with the evidence |
-   | `not_indexed`, `unreachable`, `skipped` | TO VERIFY, with the reason |
-   | `mismatch`, `missing` | TO VERIFY marked "not found in the citation indexes: do not cite"; drop the paper from Key Papers and from the summary unless a file in `literature.sources` confirms it (then TO VERIFY with the path) |
+   | `verified` | Key Papers (VERIFIED) and BibTeX Entries (VERIFIED) |
+   | `partial` | correct the fields from the script's evidence and the canonical page, re-run the lookup for that key (`--keys <key> --max <limits.doi_lookups_per_run>`); a final `verified` goes to VERIFIED, anything else to TO VERIFY with the evidence |
+   | `not_indexed`, `unreachable`, `skipped` | TO VERIFY, with the status and the reason |
+   | `mismatch`, `missing` | TO VERIFY marked "not found in the citation indexes: do not cite", with the status and evidence; drop the paper from the summary too |
 
-Only `verified` entries appear in the BibTeX block. A paper already in the bibliography may appear under Key Papers with its existing key and "Found in: bibliography"; checking those entries is /ploma:validate-bib's job, not this skill's. Never fabricate a citation; a paper you cannot pin down is a search direction in Suggested Next Steps, not an entry.
+Key Papers (VERIFIED) holds only candidates whose final lookup status is `verified`, papers found in `literature.sources` included: a local PDF does not replace the lookup. Every other status drops the paper from Key Papers into TO VERIFY with its status and evidence. Only `verified` entries appear in the BibTeX block. Papers already in the user's bibliography are never looked up here; they go in their own section, "Already in your bibliography (not checked here; run /ploma:validate-bib --semantic)", under their existing keys. Never fabricate a citation; a paper you cannot pin down is a search direction in Suggested Next Steps, not an entry.
 
 ## Post-flight verification
 
-Unless `--no-verify` is given, run the protocol in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/cove.md` on the draft review. Literature reviews carry a very high hallucination risk. Extract as claims: every finding attributed to a paper ("Author (Year) shows X"), every venue and year detail, every negative-literature claim ("no prior work does Y"). Spawn `ploma:claim-verifier` (Agent tool, `subagent_type: ploma:claim-verifier`) with only the claims, the verification questions and the source pointers (DOIs, URLs, `literature.sources` paths with pages, the bibliography files). Never the draft. The BibTeX check and the verifier share the DOI lookup cap (`limits.doi_lookups_per_run`): the verifier's block carries `doi_lookup_cap: <the cap minus the lookups the BibTeX check made, at least 1>`. Reconcile as `cove.md` says: on FAIL remove or rewrite the contradicted claims from the verifier's evidence, within the regeneration cap in limits. A claim the verifier corrects is corrected in the review and, when it touches an entry, in the BibTeX block, which then gets one more lookup for that key.
+Unless `--no-verify` is given, run the protocol in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/cove.md` on the draft review. Literature reviews carry a very high hallucination risk. Extract as claims: every finding attributed to a paper ("Author (Year) shows X"), every venue and year detail, every negative-literature claim ("no prior work does Y"). Spawn `ploma:claim-verifier` (Agent tool, `subagent_type: ploma:claim-verifier`) with only the claims, the verification questions and the source pointers (DOIs, URLs, `literature.sources` paths with pages, the bibliography files). Never the draft. The BibTeX check and the verifier share the DOI lookup cap (`limits.doi_lookups_per_run`): the verifier's block carries `doi_lookup_cap: <the cap minus the number of candidates looked up, at least 1>`. Reconcile as `cove.md` says: on FAIL remove or rewrite the contradicted claims from the verifier's evidence, within the regeneration cap in limits. A claim the verifier corrects is corrected in the review and, when it touches an entry, in the BibTeX block, which then gets one more lookup for that key (`--keys <key> --max <limits.doi_lookups_per_run>`).
 
 ## Report
 
@@ -90,7 +92,7 @@ Write `<outputs.dir>/lit_review_<topic>.md` in this shape:
 **Query:** <the query verbatim>
 **Sources:** <literature.sources directories read, bibliography files, web searches>
 
-> Citations are split into **VERIFIED** (bibliographic details confirmed by the citation lookup) and **TO VERIFY** (relevant but not confirmed; do not cite until checked). The post-flight block is at the end.
+> Citations are split into **VERIFIED** (bibliographic details confirmed by the citation lookup), **Already in your bibliography** (not checked here) and **TO VERIFY** (relevant but not confirmed; do not cite until checked). The post-flight block is at the end.
 
 ## Summary
 
@@ -104,7 +106,11 @@ Write `<outputs.dir>/lit_review_<topic>.md` in this shape:
 - **Method:** <method, data, evaluation>
 - **Key finding:** <result, with the metric when there is one>
 - **Relevance:** <why it matters for this paper; how this paper differs>
-- **Found in:** <literature.sources path and page | bibliography key | web>
+- **Found in:** <literature.sources path and page | web>
+
+## Already in your bibliography (not checked here; run /ploma:validate-bib --semantic)
+
+- **<key>:** <Author (Year), short title>: <relevance in one line>
 
 ## TO VERIFY
 
