@@ -186,7 +186,6 @@ def test_output_tail_is_last_40_lines(sample_paper, cfg):
     out = "".join(f"line {i}\n" for i in range(100))
     rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, stdout=out))
     assert rep.output_tail.splitlines() == [f"line {i}" for i in range(60, 100)]
-    assert "line 99" in rep.report_path.read_text(encoding="utf-8")
 
 
 def test_timeout_is_fail(sample_paper, cfg):
@@ -388,3 +387,21 @@ def test_halt_on_error_log_counts_one_error(sample_paper, cfg):
     rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log="halt_classic.log", returncode=1))
     assert len(rep.log.errors) == 1
     assert "1 error(s) in the log, first at sections/method.tex:9" in rep.reasons
+
+
+def test_pass_report_has_no_raw_build_output(sample_paper, cfg):
+    """R127 D6: on PASS the report carries nothing raw; the tail is kept only on FAIL."""
+    out = "".join(f"/usr/share/fonts/type1/font{i}.pfb\n" for i in range(100))
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, stdout=out))
+    assert rep.status == "PASS"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "font99" not in text and "build output" not in text and "```" not in text
+
+
+def test_fail_report_keeps_raw_build_output(sample_paper, cfg):
+    out = "".join(f"line {i}\n" for i in range(100))
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log="error.log", stdout=out, returncode=1))
+    assert rep.status == "FAIL"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "line 99" in text and "Last 40 lines of build output" in text
+

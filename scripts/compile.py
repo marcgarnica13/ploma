@@ -258,7 +258,7 @@ def _render(rep: CompileReport, cfg: dict, threshold: float) -> str:
         out.append(f"- Note: {n}")
     if log.rerun_needed:
         out.append("- WARN rerun needed: cross-references may have changed; build again before submitting")
-    if rep.output_tail:
+    if rep.output_tail and rep.status == "FAIL":  # R127 D6: nothing raw on PASS
         out += ["", f"Last {TAIL_LINES} lines of build output:", "", "```", rep.output_tail, "```"]
     out += ["", "## Errors", ""]
     if log.errors:
