@@ -1,0 +1,198 @@
+"""validate_bib.py: structural and semantic bibliography audit, report, gate and state entries.
+
+Every semantic test injects ``fetch``; nothing touches the network."""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
+
+import pytest
+
+import gate
+import state
+import validate_bib
+from bib_check import parse_bib
+
+SAMPLE_HEADINGS = ["## Summary", "## Structural", "## Citation drift", "## DOI verification",
+                   "## Style consistency", "## Next steps"]
+
+
+def _plain(s: str) -> str:
+    return re.sub(r"[{}]", "", s)
+
+
+def _item(entry) -> dict:
+    authors = []
+    for a in entry.fields.get("author", "").split(" and "):
+        a = _plain(a.strip())
+        family, _, given = a.partition(",")
+        authors.append({"family": family.strip(), "given": given.strip()})
+    return {"DOI": entry.fields.get("doi", ""), "title": [_plain(entry.fields.get("title", ""))],
+            "author": authors, "issued": {"date-parts": [[int(entry.fields["year"])]]}}
+
+
+def verifying_fetch(bib: Path, calls: list | None = None):
+    """Crossref answers every DOI and title query with the entry itself; other sources are empty."""
+    entries = parse_bib(bib.read_text(encoding="utf-8"))
+    by_doi = {e.fields["doi"].lower(): e for e in entries if e.fields.get("doi")}
+
+    def fetch(url: str, headers: dict) -> tuple[int, str]:
+        if calls is not None:
+            calls.append(url)
+        u = urlparse(url)
+        if u.netloc == "api.crossref.org" and u.path.startswith("/works/"):
+            e = by_doi.get(unquote(u.path[len("/works/"):]).lower())
+            return (200, json.dumps({"message": _item(e)})) if e else (404, "")
+        if u.netloc == "api.crossref.org":
+            return 200, json.dumps({"message": {"items": [_item(e) for e in entries]}})
+        if u.netloc == "api.openalex.org":
+            return 200, json.dumps({"results": []})
+        return 200, json.dumps({"data": []})
+    return fetch
+
+
+def unreachable_fetch(url: str, headers: dict) -> tuple[int, str]:
+    return 0, ""
+
+
+def missing_fetch(url: str, headers: dict) -> tuple[int, str]:
+    if "api.crossref.org/works/" in url:
+        return 404, ""
+    if "crossref" in url:
+        return 200, json.dumps({"message": {"items": []}})
+    if "openalex" in url:
+        return 200, json.dumps({"results": []})
+    return 200, json.dumps({"data": []})
+
+
+@pytest.fixture
+def cache(tmp_path) -> Path:
+    return tmp_path / "cache" / "cite_lookup.json"
+
+
+def _ids(rep) -> dict:
+    return {f.id: f.status for f in rep.findings}
+
+
+def test_structural_pass_on_sample(sample_paper, cfg):
+    rep = validate_bib.run(sample_paper, cfg, semantic=False)
+    assert rep.verdict == "PASS"
+    assert rep.lookups == []
+    assert rep.report_path == sample_paper.resolve() / "quality_reports" / "bib_audit_structural.md"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "**Verdict: PASS.**" in text
+    assert "FernandezNavarro2016" in text  # unused entry, informational
+    entry = gate.load(sample_paper, cfg)["checks"]["bib"]
+    assert entry["status"] == "PASS" and entry["artifact"] == "quality_reports/bib_audit_structural.md"
+    last = state.load(sample_paper, cfg)["events"][-1]
+    assert last["skill"] == "validate-bib" and last["status"] == "PASS"
+
+
+def test_missing_key_fails_and_structural_section_names_it(sample_paper, cfg):
+    intro = sample_paper / "sections" / "intro.tex"
+    intro.write_text(intro.read_text(encoding="utf-8").replace("\\cite{Elo1978}", "\\cite{Elo1987}"),
+                     encoding="utf-8")
+    rep = validate_bib.run(sample_paper, cfg, semantic=False)
+    assert rep.verdict == "FAIL"
+    assert _ids(rep)["bib.missing.Elo1987"] == "FAIL"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "**Verdict: FAIL.**" in text
+    structural = text.split("## Structural", 1)[1].split("\n## ", 1)[0]
+    assert "Elo1987" in structural and "intro.tex:5" in structural
+    assert gate.load(sample_paper, cfg)["checks"]["bib"]["status"] == "FAIL"
+
+
+def test_semantic_all_verified_passes_with_doi_table(sample_paper, cfg, cache):
+    calls: list = []
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=verifying_fetch(sample_paper / "refs.bib", calls),
+                           cache_path=cache, delay_s=0)
+    assert rep.verdict == "PASS"
+    assert {r.key: r.status for r in rep.lookups} == {"Bradley1952": "verified", "Elo1978": "verified",
+                                                       "Hunter2004": "verified"}
+    assert rep.report_path.name == "bib_audit_semantic.md"
+    text = rep.report_path.read_text(encoding="utf-8")
+    doi = text.split("## DOI verification", 1)[1].split("\n## ", 1)[0]
+    assert "| Key | Status | Source | Evidence |" in doi
+    for key in ("Bradley1952", "Elo1978", "Hunter2004"):
+        assert re.search(rf"^\| {key} \| verified \| crossref \|", doi, re.M)
+    assert "FernandezNavarro2016" not in doi  # cited entries only
+    assert _ids(rep).get("bib.no_doi.Elo1978") == "INFO"
+
+
+def test_unreachable_api_is_warn_not_fail(sample_paper, cfg, cache):
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=unreachable_fetch, cache_path=cache, delay_s=0)
+    assert rep.verdict == "PASS"
+    ids = _ids(rep)
+    assert ids["bib.lookup.unreachable.Bradley1952"] == "WARN"
+    assert not any(s == "FAIL" for s in ids.values())
+    assert gate.load(sample_paper, cfg)["checks"]["bib"]["status"] == "PASS"
+
+
+def test_lookup_missing_is_fail(sample_paper, cfg, cache):
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=missing_fetch, cache_path=cache, delay_s=0)
+    assert rep.verdict == "FAIL"
+    assert _ids(rep)["bib.lookup.missing.Elo1978"] == "FAIL"
+
+
+def test_skip_doi_makes_no_lookups(sample_paper, cfg, cache):
+    def boom(url, headers):
+        raise AssertionError("network used")
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, skip_doi=True, fetch=boom, cache_path=cache)
+    assert rep.lookups == [] and rep.verdict == "PASS"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "--skip-doi" in text.split("## DOI verification", 1)[1].split("\n## ", 1)[0]
+
+
+def test_lookup_cap_from_limits(sample_paper, cache):
+    p = sample_paper / "ploma.yaml"
+    p.write_text(p.read_text(encoding="utf-8") + "limits:\n  doi_lookups_per_run: 1\n", encoding="utf-8")
+    import ploma_config
+    cfg = ploma_config.load(sample_paper)
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=verifying_fetch(sample_paper / "refs.bib"),
+                           cache_path=cache, delay_s=0)
+    statuses = [r.status for r in rep.lookups]
+    assert statuses.count("skipped") == 2 and rep.verdict == "PASS"
+
+
+@pytest.mark.parametrize("semantic", [False, True])
+def test_report_matches_sample_format(sample_paper, cfg, cache, semantic):
+    rep = validate_bib.run(sample_paper, cfg, semantic=semantic, fetch=verifying_fetch(sample_paper / "refs.bib"),
+                           cache_path=cache, delay_s=0)
+    text = rep.report_path.read_text(encoding="utf-8")
+    positions = [text.find(h) for h in SAMPLE_HEADINGS]
+    assert all(p >= 0 for p in positions) and positions == sorted(positions)
+    assert "| Check | Critical | Medium | Low |" in text
+    assert re.search(r"^\*\*Verdict: (PASS|FAIL)\.\*\*", text, re.M)
+    assert text.startswith("# Bibliography " + ("Semantic" if semantic else "Structural") + " Audit")
+
+
+def test_to_dict_is_json(sample_paper, cfg):
+    d = json.loads(json.dumps(validate_bib.run(sample_paper, cfg, semantic=False).to_dict()))
+    assert d["verdict"] == "PASS" and d["mode"] == "structural"
+
+
+def test_cli(sample_paper, monkeypatch, capsys, cache):
+    monkeypatch.setattr(validate_bib.cite_lookup, "default_cache_path", lambda: cache)
+    assert validate_bib.main(["--root", str(sample_paper), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "PASS"
+    assert validate_bib.main(["--root", str(sample_paper)]) == 0
+    assert "Verdict: PASS" in capsys.readouterr().out
+    assert validate_bib.main(["--root", str(sample_paper / "nope")]) == 2
+
+
+def test_cli_passes_keys_and_ignores_unsubstituted_placeholders(sample_paper, monkeypatch, cache):
+    seen = {}
+    real_run = validate_bib.run
+
+    def fake_run(root, cfg, **kw):
+        seen.update(kw)
+        return real_run(root, cfg, semantic=False)
+    monkeypatch.setattr(validate_bib, "run", fake_run)
+    monkeypatch.delenv("OPENALEX_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_OPENALEX_API_KEY", raising=False)
+    validate_bib.main(["--root", str(sample_paper), "--semantic", "--mailto", "a@b.org", "--s2-key", "S2",
+                       "--openalex-key", "${user_config.openalex_api_key}"])
+    assert seen["semantic"] is True and seen["mailto"] == "a@b.org"
+    assert seen["keys"] == {"semantic_scholar": "S2"}

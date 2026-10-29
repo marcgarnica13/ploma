@@ -44,7 +44,7 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:doctor [path]`: read-only readiness check with a verdict.
 - `/ploma:status`: stage, gate, plan, session log, on one screen.
 - `/ploma:compile [--clean]`: build the PDF, triage the log, check pages against the budget.
-- `/ploma:validate-bib [--semantic]`: structural bibliography check; `--semantic` verifies entries against citation APIs.
+- `/ploma:validate-bib [--semantic] [--skip-doi]`: structural bibliography check; `--semantic` verifies entries against citation APIs.
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)
