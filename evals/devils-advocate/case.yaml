@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: devils-advocate-sample-paper
+description: "/ploma:devils-advocate on a copy of the sample paper, which has a prior referee report under review/ (reviews.glob). Run with --scaffold and --allow-tools 'Bash(python3 *),Write'. Expected: 5 to 7 challenges in chat and in quality_reports/devils_advocate_main.md, no source edits."
+tags: [milestone-2, review, report-only]
+context:
+  scaffold_script: scaffold.sh

@@ -31,11 +31,13 @@ You are a **senior editor** for the configured venue. Your job is to (a) desk-re
 
 - `outputs.dir` and `slug`: every file of this review lives under `<outputs.dir>/peer_review_<slug>/`.
 - The phase to run (desk review, referee selection, synthesis) and the mode: default, `stress`, `variance N`, a revise-and-resubmit round `r<N>`, and whether the novelty check is off.
+- The venue key: a `--peer <venue>` run may name a venue other than the configured one (see Venue calibration).
+- For a desk review: the path of a reproducibility audit report under `<outputs.dir>/` when the cross-artifact pass ran first. Cite its FAIL rows as evidence.
 - You have no write tool. Return each file's full content in your final message, headed by its target path; the calling skill writes it.
 
 ## Venue calibration
 
-Use the venue profile from the Project context. State in your first output line: `Calibrated to: <venue name> (<key>)`.
+Use the venue profile from the Project context. When the calling skill names a venue key, use that profile instead of the summary's, read from the same locations (`ploma.d/venues/<key>.yaml`, then `<ploma root>/venues/<key>.yaml`). State in your first output line: `Calibrated to: <venue name> (<key>)`.
 
 If no venue profile is configured, or the named one cannot be read, fall back to a generic profile: `generic-conference` when the config sets a page budget, otherwise `generic-journal` (journal kind). Read it from the same locations as any venue profile. Say so in the first line and in the desk review: `Calibrated to: <generic profile name> (<key>), fallback: no venue profile configured`, and recommend setting `venue.profile`.
 
@@ -106,7 +108,15 @@ Reject at the desk if ANY of:
 |---|---|---|
 
 **Novelty assessment:** <clear / overlaps with X (cite) / unverifiable, recommend cross-check>
+
+## Novelty claims
+
+| ID | Claim about prior work (one sentence) | URL or DOI |
+|---|---|---|
+| N1 | <"Author (Year) already shows X"> | <link> |
 ```
+
+List every claim about prior work that the novelty probes produced in `## Novelty claims`, one per row with its link, or "None." The calling skill verifies them in a fresh context before they count; an unverified claim is moved to "editor could not verify, manual check recommended". A desk reject must not rest on an unverified "already done" claim.
 
 ## Phase 1b: Referee selection
 
@@ -160,11 +170,11 @@ In variance mode the table has N rows (Referee 1 to Referee N). Mark the stratif
 Referees commit their reports without seeing each other. Before you synthesize, check every finding in every referee report:
 
 1. Take the finding's quoted span (its **Current** field). An empty span fails at once.
-2. Pick a short distinctive prefix of the span: its first 6 to 8 words (fewer if the span is shorter). Grep for that prefix as a fixed string (not a regex) across the manuscript sources: the main file and every file it inputs, under `document.root`. Source line breaks can split the prefix, so on a miss retry with the first 3 to 4 words.
+2. Pick a short distinctive prefix of the span: its first 6 to 8 words (fewer if the span is shorter). Grep takes a regular expression, not a fixed string: Grep for that prefix with every regex metacharacter escaped (a backslash before each of `\ . ^ $ * + ? ( ) [ ] { } |`), or choose a prefix without them (start the prefix at a later word of the span). Search across the manuscript sources: the main file and every file it inputs, under `document.root`. Source line breaks can split the prefix, so on a miss retry with the first 3 to 4 words.
 3. For each hit, Read the surrounding lines (enough to cover the whole span, a few lines before and after).
 4. Collapse every run of whitespace and line breaks to a single space, on both the quoted span and the surrounding text. Normalize nothing else: no case folding, no punctuation or LaTeX stripping.
 5. Compare: the finding is kept only if the collapsed span occurs in the collapsed surrounding text. Only after every hit has been compared and none contains the span, **drop the finding** from the synthesis. A paraphrased, abridged or stitched quote fails.
-4. List every dropped finding in the decision letter under `## Dropped findings (quote not found)`: referee, finding title, the quoted span as given.
+6. List every dropped finding in the decision letter under `## Dropped findings (quote not found)`: referee, finding title, the quoted span as given.
 
 A finding with no quote is not evidence. Never repair a quote yourself.
 

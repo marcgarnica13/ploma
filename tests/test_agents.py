@@ -140,11 +140,25 @@ def test_reviewers_quote_the_manuscript(name):
 def test_editor_quote_check_procedure():
     text = (REPO / "agents" / "editor.md").read_text(encoding="utf-8")
     check = text.split("## Quote check", 1)[1].split("\n## ", 1)[0]
-    steps = ["first 6 to 8 words", "Grep for that prefix as a fixed string", "Read the surrounding lines",
+    steps = ["first 6 to 8 words", "Grep for that prefix with every regex metacharacter escaped", "Read the surrounding lines",
              "Collapse every run of whitespace and line breaks to a single space, on both",
              "Only after every hit has been compared and none contains the span, **drop the finding**"]
     positions = [check.index(s) for s in steps]
     assert positions == sorted(positions), "grep, read, collapse, compare, then drop"
+    # Task 9 carried minors: Grep is regex-based, and the steps are numbered without a repeat.
+    assert "as a fixed string" not in check and "choose a prefix without them" in check
+    numbers = re.findall(r"^(\d+)\. ", check, flags=re.M)
+    assert numbers == [str(i) for i in range(1, len(numbers) + 1)], numbers
+
+
+def test_editor_and_referees_honour_a_venue_named_by_the_skill():
+    """--peer <venue> may differ from venue.profile: the named key wins, read from the same locations."""
+    editor = (REPO / "agents" / "editor.md").read_text(encoding="utf-8")
+    assert "When the calling skill names a venue key, use that profile instead of the summary's" in editor
+    assert "## Novelty claims" in editor
+    for name in ("domain-referee", "methods-referee"):
+        text = (REPO / "agents" / f"{name}.md").read_text(encoding="utf-8")
+        assert "the venue named on the `Calibrated to:` line of `desk_review.md`" in text, name
 
 
 def test_editor_falls_back_to_a_generic_venue():

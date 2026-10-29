@@ -1,0 +1,77 @@
+# Adversarial mode (`--adversarial`): critic and fixer loop
+
+The critic finds the issues, the fixer proposes edits, the user approves them, a fresh critic re-audits the edited paper. The loop stops when the critic approves, when the user stops it, or at the round cap. This is the only review mode that edits the manuscript, and it edits only what the user approves in that round.
+
+Round cap: `limits.review_rounds` from the resolved config (default in `${CLAUDE_PLUGIN_ROOT}/rules/eager/limits.md`). A repeated concern is bounded by the per-finding cap in the same table.
+
+## Round 1: critic
+
+Run the default mode of the skill. Its report is `paper_review_<slug>_round<N>.md` for the first free N. Rounds below count from there.
+
+APPROVED when the report has zero major concerns and no referee objection marked fatal. Stop the loop and write the final report.
+
+## Fixer (each round)
+
+1. For each major concern, and each minor one the user asks for, propose a concrete edit: the file, the exact current text and the replacement. Group them by severity: CRITICAL, then MAJOR, then MINOR.
+2. Ask once with `AskUserQuestion`: "Apply all", "Apply CRITICAL and MAJOR only", "Review each", "Stop the loop". "Review each" asks per edit. Without `AskUserQuestion`, show the edits and stop: nothing is applied without an answer.
+3. The user approves nothing: HALTED (user override). Write the final report.
+4. Snapshot before the first edit of the round. Copy every `.tex` and `.bib` file under `document.root` that an approved edit touches to `.ploma/review-backup/round<N>/`, keeping the relative paths (`mkdir -p`, then `cp`). Do not use `git stash` to snapshot: it would move the user's uncommitted work out of the tree. In a git repo you may also record `git stash create` (it makes a restorable commit and leaves the tree as it is) and name the commit in the final report.
+5. Apply the approved edits with the Edit tool, one by one. Each Edit asks the user's permission; that is intended.
+6. Rebuild:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/compile.py" --json
+   ```
+
+   A FAIL verdict: copy every file back from `.ploma/review-backup/round<N>/`, say ROLLED BACK with the first error from the compile output, and ask the user whether to try a different fix or stop. The rollback restores the pre-round state exactly.
+
+## Re-audit (fresh context)
+
+Spawn a general-purpose agent (Agent tool) for round N+1. Its prompt holds only: the manuscript path and inputs, the path of `${CLAUDE_PLUGIN_ROOT}/skills/review/references/report-templates.md` (default format and the six dimensions), the discipline key and the venue key, the round number, and "return the report as your final message; do not edit any file". Never pass the earlier rounds' reports or the diff: a fresh reviewer sees the edited paper, not the history, which avoids anchoring.
+
+Run the quote check of the default mode on its findings, write `paper_review_<slug>_round<N+1>.md`, and go back to the APPROVED test.
+
+## Author disagreement
+
+Compare each round's major concerns with the round two before it (N and N+2), by title and location. A concern that comes back after a fix is flagged "author disagreement": ask the user to keep the text as is (with a one-line rationale, recorded in the final report) or to try another fix. Do not propose a third fix for the same concern without the user asking.
+
+## Stopping
+
+| Condition | Verdict |
+|---|---|
+| Zero major concerns, no fatal objection | APPROVED |
+| Round cap reached | HALTED (round cap): list the open concerns; the user decides |
+| User approves nothing, or stops the loop | HALTED (user override) |
+| Build fails after the edits and the user stops | ROLLED BACK |
+
+## Final report
+
+Write `<outputs.dir>/paper_review_<slug>_FINAL.md` with the header of `report-header.md`, then:
+
+```markdown
+**Rounds:** N
+**Verdict:** APPROVED | HALTED (round cap) | HALTED (user override) | ROLLED BACK
+
+## Round summary
+| Round | Report | Major concerns | Fatal objections | Edits applied | Status |
+|---|---|---|---|---|---|
+
+## Changes applied
+<files changed; the snapshot directory per round; the `git stash create` commit if recorded; `git diff` against it shows the full change>
+
+## Author disagreements
+| Concern | Rounds | User's decision and rationale |
+|---|---|---|
+
+## Remaining concerns
+<for HALTED and ROLLED BACK: each open concern with severity and location>
+
+## Next step
+<submit, one more pass, or a substantial revision>
+```
+
+Record with `mode=adversarial`, `round=<last round>` and the verdict token `approved`, `halted` or `rolled-back`.
+
+## When not to use it
+
+Early drafts (the loop forces polish on ideas still moving), papers that do not build (edits cannot be checked), and when the author wants one opinion to weigh, not a critic to satisfy.

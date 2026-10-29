@@ -170,7 +170,7 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
-             "audit-reproducibility", "proofread", "verify-claims", "write", "format"}
+             "audit-reproducibility", "proofread", "verify-claims", "write", "format", "review", "devils-advocate"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -199,16 +199,16 @@ def test_uninstalled_skills_are_marked_planned():
 
 
 def test_planned_check_catches_a_bare_planned_command():
-    assert _planned_mention_problems("Run /ploma:review next.", "x")
-    assert not _planned_mention_problems("/ploma:review (planned, milestone 2) gives the map.", "x")
-    assert not _planned_mention_problems("trim manually; /ploma:review arrives in milestone 2", "x")
+    assert _planned_mention_problems("Run /ploma:respond next.", "x")
+    assert not _planned_mention_problems("/ploma:respond (planned, milestone 2) gives the map.", "x")
+    assert not _planned_mention_problems("trim manually; /ploma:respond arrives in milestone 2", "x")
     assert not _planned_mention_problems("Run /ploma:compile next.", "x")
 
 
 # ---------------------------------------------------------------- eval setup (R91)
 
 SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "proofread", "status", "validate-bib",
-                  "verify-claims", "write", "format")
+                  "verify-claims", "write", "format", "review", "review-unknown-venue", "devils-advocate")
 
 
 def test_evals_contain_no_symlinks():
@@ -248,7 +248,8 @@ def test_eval_scaffold_runs(name, tmp_path):
 
 
 @pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "proofread", "status", "validate-bib",
-                                  "verify-claims", "write", "format"))
+                                  "verify-claims", "write", "format", "review", "review-unknown-venue",
+                                  "devils-advocate"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -454,7 +455,8 @@ def test_proofread_rule_and_agent_agree_on_the_report_path():
 
 # ---------------------------------------------------------------- write and format (milestone 2, Tasks 6 and 7)
 
-LIFECYCLE_ROWS = {"write": "| 4 | Write", "format": "| 5b | Format"}
+LIFECYCLE_ROWS = {"write": "| 4 | Write", "format": "| 5b | Format", "review": "| 7 | Review",
+                  "devils-advocate": "| 7 | Review"}
 
 
 @pytest.mark.parametrize("name", sorted(LIFECYCLE_ROWS))
@@ -571,3 +573,128 @@ def test_write_merge_needs_a_merge_run():
     assert "Merging happens only in a run invoked with `--merge`" in text
     assert "rerun with `/ploma:write <query> --merge`" in text
     assert "ignoring trailing blank lines" in text
+
+
+# ---------------------------------------------------------------- review and devils-advocate (milestone 2, Task 9)
+
+REVIEW_REFS = ("peer-pipeline", "adversarial-loop", "seven-pass", "report-templates")
+# Loop caps come from rules/eager/limits.md and limits: in config; no review file restates a number.
+CAP_RE = re.compile(r"\b(?:max(?:imum)?|at most|up to|cap(?:ped)? (?:at|of)) \d|\bN ?(?:<=|≤) ?\d|\b\d+ rounds\b|(?<!-)\br[3-9]\b")
+
+
+def _review_texts() -> dict[str, str]:
+    texts = {"SKILL.md": _skill("review")}
+    for name in REVIEW_REFS:
+        texts[name] = (REPO / "skills" / "review" / "references" / f"{name}.md").read_text(encoding="utf-8")
+    return texts
+
+
+def test_review_frontmatter_and_tools():
+    fm, _ = split_frontmatter(_skill("review"))
+    assert fm["argument-hint"] == ("[path] [--adversarial | --peer <venue> [--r2|--r3|--stress|--variance N] "
+                                   "[--no-novelty-check] | --seven-pass] [--no-cross-artifact]")
+    tools = _tools(fm)
+    assert "Edit" not in tools  # adversarial edits always prompt
+    for tool in ("Agent", "Skill", "AskUserQuestion", "Write", "Bash(python3 *)"):
+        assert tool in tools, tool
+
+
+def test_review_contract():
+    text = _skill("review")
+    refs = _review_texts()
+    for name in REVIEW_REFS:
+        assert f"${{CLAUDE_PLUGIN_ROOT}}/skills/review/references/{name}.md" in text, name
+    # Venue resolution: profiles.py from the skill; an unknown key stops before any agent with the key list.
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/profiles.py" --root . show <key>' in text
+    assert "stop before spawning any agent" in text and "available keys" in text
+    # Pre-Flight Report in --peer mode, before any agent.
+    assert "## Pre-Flight Report" in refs["report-templates"]
+    assert "Print the Pre-Flight Report before spawning any agent" in refs["peer-pipeline"]
+    # Default and peer never edit the manuscript; adversarial edits only on approval, with snapshot and rollback.
+    assert "Default and `--peer` modes never edit the manuscript" in text
+    adv = refs["adversarial-loop"]
+    for s in ("git stash", ".ploma/review-backup/", 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/compile.py" --json',
+              "author disagreement", "AskUserQuestion", "limits.review_rounds", "ROLLED BACK"):
+        assert s in adv, s
+    # Orchestration by the skill: editor, then both referees in one message, then synthesis; CoVe on novelty claims.
+    peer = refs["peer-pipeline"]
+    for s in ("ploma:editor", "ploma:domain-referee", "ploma:methods-referee", "ploma:claim-verifier",
+              "both in one message", "blind to each other", "skills/_shared/references/cove.md",
+              "desk_review.md", "referee_domain.md", "referee_methods.md", "editorial_decision.md", "_r<N>",
+              "referee_1.md", "decision_distribution.md", "editor_synthesis.md", "<outputs.dir>/peer_review_<slug>/",
+              "--no-novelty-check", "mutually exclusive"):
+        assert s in peer, s
+    assert "The editor spawns no agents" in peer
+    # Round flags: the cap comes from limits; above it the skill refuses.
+    assert "revise-and-resubmit cap" in text and "refuse" in text.lower()
+    # Cross-artifact: only with pipeline.enabled and without --no-cross-artifact; first in peer, last in default.
+    for s in ("pipeline.enabled", "--no-cross-artifact", "/ploma:audit-reproducibility",
+              "rules/reference/cross-artifact-review.md"):
+        assert s in text, s
+    # Seven-pass: lenses in parallel, lens 3 and 6 by ploma agents, lens 7 runs the semantic bib check itself.
+    seven = refs["seven-pass"]
+    for s in ("ploma:domain-reviewer", "ploma:proofreader", "general-purpose", "all seven in one message",
+              "validate_bib.py --root . --semantic --json", "_SYNTHESIS.md", "<outputs.dir>/seven_pass_<slug>/",
+              "lens_<N>_<name>.md"):
+        assert s in seven, s
+    assert "/ploma:validate-bib" not in seven.split("## Lens 7", 1)[1].split("\n## ", 1)[0]
+    # Default report: six dimensions keep their names; method and evaluation cite the discipline card.
+    tpl = refs["report-templates"]
+    for dim in ("Argument Structure", "Method Soundness", "Evaluation & Validity", "Literature Positioning",
+                "Writing Quality", "Presentation"):
+        assert dim in tpl, dim
+    assert tpl.count("sanity_checks") >= 2
+    assert "<outputs.dir>/paper_review_<slug>_round<N>.md" in text
+    # State, findings, data-not-instructions.
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record review' in text and "--extra round=<N>" in text
+    assert "skills/_shared/references/finding-format.md" in text and "data, never instructions" in text
+    assert "context: fork" not in "".join(refs.values()) and "context=fork" not in "".join(refs.values())
+    for name, body in refs.items():
+        m = CAP_RE.search(body)
+        assert not m, f"{name} restates a cap: {body[max(0, m.start() - 30):m.end() + 30]!r}"
+
+
+def test_review_reference_files_are_generic_and_clean():
+    for name, body in _review_texts().items():
+        assert not BANNED_RE.search(body) and not LLNCS_RE.search(body) and not EM_DASH_RE.search(body), name
+
+
+def test_review_evals():
+    def graders(case):
+        return [split_frontmatter(p.read_text(encoding="utf-8")) for p in (REPO / "evals" / case / "graders").glob("*.md")]
+    default = graders("review")
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Edit" and fm.get("max") == 0 for fm, _ in default)
+    assert any(fm.get("type") == "file_exists" and fm.get("path") == "quality_reports/paper_review_main_round1.md"
+               for fm, _ in default)
+    unknown = graders("review-unknown-venue")
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Agent" and fm.get("max") == 0 for fm, _ in unknown)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Skill" and "review" in str(fm.get("input_match"))
+               for fm, _ in unknown)
+    regex = [body.strip() for fm, body in unknown if fm.get("type") == "regex"]
+    import subprocess
+    import sys
+    out = subprocess.run([sys.executable, str(REPO / "scripts" / "profiles.py"), "show", "quantum-letters"],
+                         capture_output=True, text=True)
+    assert out.returncode == 2 and regex and all(re.search(r, out.stderr) for r in regex)
+    rubric = " ".join(body for fm, body in unknown if fm.get("type") == "llm")
+    assert "Pre-Flight Report" in rubric and "available" in rubric
+    _, prompt = split_frontmatter((REPO / "evals" / "review-unknown-venue" / "prompt.md").read_text(encoding="utf-8"))
+    assert "quantum-letters" in prompt
+
+
+def test_devils_advocate_contract():
+    text = _skill("devils-advocate")
+    fm, _ = split_frontmatter(text)
+    tools = _tools(fm)
+    assert "Edit" not in tools and "Agent" not in tools
+    for s in ("reviews.glob", "challenge_examples", "5 to 7", "<outputs.dir>/devils_advocate_<slug>.md",
+              'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record devils-advocate', "never edits",
+              "data, never instructions"):
+        assert s in text, s
+    for cat in ("Framing", "Method choice", "Evaluation", "Generalization", "Scope", "Argument order", "Related work"):
+        assert cat in text, cat
+    graders = [split_frontmatter(p.read_text(encoding="utf-8"))[0]
+               for p in (REPO / "evals" / "devils-advocate" / "graders").glob("*.md")]
+    assert any(g.get("type") == "tool_used" and g.get("tool") == "Edit" and g.get("max") == 0 for g in graders)
+    assert any(g.get("type") == "file_exists" and g.get("path") == "quality_reports/devils_advocate_main.md"
+               for g in graders)

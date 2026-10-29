@@ -1,6 +1,6 @@
 # ploma
 
-**Status: milestone 1 (0.1.0-m1, unreleased).** Install, health, compile and bibliography checks work; writing, review and commit skills arrive in milestone 2. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+**Status: milestone 1 (0.1.0-m1, unreleased).** Install, health, compile, bibliography, validation, writing, format and review skills work; commit and the remaining skills arrive in milestone 2. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
 ## What ploma is
 
@@ -33,7 +33,7 @@ Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
 - Venue profiles (`venues/`) and discipline profiles (`disciplines/`), overridable per project in `ploma.d/`.
 - Scripts behind the skills (`scripts/`), each with `--json` output, and eval cases for every installed skill (`evals/`).
 
-Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: audit-reproducibility, verify-claims, proofread, write, format.
+Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate.
 
 ## Commit gate
 
@@ -47,7 +47,7 @@ Until then, `python3 scripts/gate.py check` shows the gate state.
 
 ## Lifecycle
 
-Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added audit-reproducibility, verify-claims, proofread, write and format so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
+Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added audit-reproducibility, verify-claims, proofread, write, format, review and devils-advocate so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
 
 | # | Stage | Skill |
 |---|---|---|
@@ -61,7 +61,7 @@ Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; mi
 | 5 | Compile | `/ploma:compile` |
 | 5b | Format | `/ploma:format` |
 | 6 | Validate | `/ploma:validate-bib`, `/ploma:verify-claims`, `/ploma:audit-reproducibility`, `/ploma:proofread` |
-| 7 | Review | planned: `/ploma:review`, `/ploma:devils-advocate` |
+| 7 | Review | `/ploma:review`, `/ploma:devils-advocate` |
 | 8 | Respond | `/ploma:respond <report>` (planned) |
 | 9 | Ship | `/ploma:commit` (planned) |
 | any | Session | `/ploma:status`, `/ploma:help`; planned: `/ploma:checkpoint`, `/ploma:compress-session`, `/ploma:learn`, `/ploma:deep-audit` |
