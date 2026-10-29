@@ -129,7 +129,7 @@ def _lookup_findings(results: list[cite_lookup.LookupResult], cited: dict[str, l
             observed += f"; cited at {_rel(where[0][0], root)}:{where[0][1]}"
         summary = f"{r.key}: lookup {r.status}"
         if r.status == "not_indexed":
-            summary = f"{r.key}: " + r.evidence.split(";", 1)[0]
+            summary = f"{r.key}: " + ";".join(r.evidence.split(";", 2)[:2])  # R168 wording and type
         out.append(Finding(f"bib.lookup.{r.status}.{r.key}", status, summary,
                            observed=observed, remediation=LOOKUP_FIX[r.status], group="bib"))
         if getattr(r, "doi_unresolved", False):

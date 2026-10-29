@@ -117,7 +117,7 @@ def test_one_source_unreachable_rest_miss_is_not_indexed():
                         "api.semanticscholar.org": (200, S2_EMPTY)})
     r = lookup(ENTRY_NO_DOI, fetch=fetch, cache={})
     assert r.status == "not_indexed"
-    assert "not found in citation indexes (type inproceedings)" in r.evidence
+    assert "not found in Crossref or OpenAlex; confirm it exists (type inproceedings)" in r.evidence
 
 
 def test_cache_hit_skips_fetch():
@@ -400,7 +400,7 @@ def test_misc_not_found_is_not_indexed():
     """R94: @misc is legitimately absent from citation indexes."""
     r = lookup(_typed("misc"), fetch=fake_fetch(ALL_MISS), cache={})
     assert r.status == "not_indexed"
-    assert "not found in citation indexes (type misc)" in r.evidence
+    assert "not found in Crossref or OpenAlex; confirm it exists (type misc)" in r.evidence
 
 
 def test_article_not_found_with_all_sources_answering_is_missing():

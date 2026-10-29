@@ -290,7 +290,7 @@ def test_misc_not_found_is_warn_not_indexed(sample_paper, cfg, cache):
     assert ids["bib.lookup.not_indexed.Elo1978"] == "WARN"
     assert "bib.lookup.missing.Elo1978" not in ids
     f = next(f for f in rep.findings if f.id == "bib.lookup.not_indexed.Elo1978")
-    assert "not found in citation indexes (type misc)" in f.summary
+    assert f.summary == "Elo1978: not found in Crossref or OpenAlex; confirm it exists (type misc)"
     assert "bib.lookup.not_indexed.Elo1978" in rep.report_path.read_text(encoding="utf-8")
 
 

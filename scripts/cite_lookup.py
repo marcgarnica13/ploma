@@ -406,7 +406,7 @@ def _not_found(entry: Entry, evidence: str, *, decided: bool) -> LookupResult:
     if decided and entry.type.lower() in STRICT_TYPES:
         return LookupResult(entry.key, "missing", "", evidence)
     return LookupResult(entry.key, "not_indexed", "",
-                        f"not found in citation indexes (type {entry.type.lower()}); {evidence}")
+                        f"not found in Crossref or OpenAlex; confirm it exists (type {entry.type.lower()}); {evidence}")
 
 
 def _judge_doi(entry: Entry, doi: str, hit: _Hit, source: str) -> LookupResult:
