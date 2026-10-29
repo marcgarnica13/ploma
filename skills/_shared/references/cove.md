@@ -33,6 +33,7 @@ Spawn the `ploma:claim-verifier` agent (Agent tool, `subagent_type: ploma:claim-
 source_material:
   - path: <file the claims can be checked against>
   - url: <DOI or canonical URL>
+doi_lookup_cap: <optional; this verifier's share of limits.doi_lookups_per_run when several run in parallel>
 claims:
   - id: C1
     text: "<the claim, one sentence>"
@@ -47,15 +48,18 @@ The verifier returns a report with a match value and a tier per claim. Map each 
 | Verifier result | Treatment |
 |---|---|
 | `yes`, no tier | verified |
-| `partial` with no tier (a reasonable gloss of the source) | counts toward PARTIAL; keep the claim and add an uncertainty flag inline saying what the source says exactly |
-| `partial` or `cannot-verify` with LOW-WARN or MED-WARN | counts toward PARTIAL; flag the claim inline as unverified, with the reason |
+| `partial` with no tier (a reasonable gloss of the source) | verified with a note; keep the claim and add an uncertainty flag inline saying what the source says exactly; does not change the outcome |
+| `partial` or `cannot-verify` with LOW-WARN | advisory, non-gating; flag the claim inline as unverified, with the reason; does not change the outcome |
+| `partial` or `cannot-verify` with MED-WARN | counts toward PARTIAL; flag the claim inline as unverified, with the reason |
 | `no`, or any HIGH-WARN | counts toward FAIL |
 | `not-verifiable-claim-type` | excluded from the claim count and from the outcome; listed under "Not verifiable (claim type)" with the verifier's one-line reason |
 
 Then the outcome:
 
-- **PASS**: every counted claim is verified. Return the draft.
-- **PARTIAL**: no claim counts toward FAIL, and at least one counts toward PARTIAL. Return the draft with each such claim flagged inline.
+The outcome depends on the tier counts only:
+
+- **PASS**: 0 HIGH-WARN and 0 MED-WARN, whatever the LOW-WARN count. LOW-WARN claims are listed as advisory and flagged inline. Return the draft.
+- **PARTIAL**: 0 HIGH-WARN and at least one MED-WARN. Return the draft with each MED and LOW claim flagged inline.
 - **FAIL**: at least one HIGH-WARN (a contradiction or a fabricated reference). Regenerate the affected section from the verifier's evidence and re-verify the changed claims. After the CoVe regeneration cap in limits (`limits.cove_regenerations`), stop and return the best draft with the remaining discrepancies in a warning block. Never ship a known-wrong claim silently.
 
 ## Output block

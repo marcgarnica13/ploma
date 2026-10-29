@@ -21,7 +21,7 @@ This skill follows `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/cove.md`. Re
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ploma_config.py" --json
    ```
 
-2. The file or files to check exist and are readable. `<stem>` is the checked file's name without its extension (the main file's for a manuscript run).
+2. The file or files to check exist and are readable. `<stem>` is the checked file's name without its extension (the main file's for a manuscript run). A manuscript run checks `document.main` with all its inputs (no file argument, or the main file named); any other file, a single section included, is a partial run.
 3. Source pointers: every `--source`, plus the bibliography files in `build.bib_files`, plus any local copies of cited works the user names. With no pointer at all, say so and stop.
 
 ## Phase 1: Extract claims
@@ -52,17 +52,27 @@ One specific question per claim, answerable from its source alone, with the sour
 
 ## Phase 3: Fresh-context verification
 
-Spawn `ploma:claim-verifier` (Agent tool, `subagent_type: ploma:claim-verifier`) with a prompt that holds only the YAML block from `cove.md`: `source_material` and `claims` with `id`, `text`, `source_hint` and `verification_question`. Never pass the draft, a summary of it, the surrounding section or this conversation. For a long claim list, split it into batches and spawn one verifier per batch in the same message; each batch carries only its own claims and sources.
+Spawn `ploma:claim-verifier` (Agent tool, `subagent_type: ploma:claim-verifier`) with a prompt that holds only the YAML block from `cove.md`: `source_material`, `doi_lookup_cap` and `claims` with `id`, `text`, `source_hint` and `verification_question`. Never pass the draft, a summary of it, the surrounding section or this conversation. For a long claim list, split it into batches and spawn one verifier per batch in the same message; each batch carries only its own claims and sources.
 
-The verifier runs the citation lookups itself within the DOI lookup cap in limits.
+The verifier runs the citation lookups itself within the DOI lookup cap (`limits.doi_lookups_per_run`). Parallel batches share that cap: each batch block carries `doi_lookup_cap: <floor(cap / batches)>` (at least 1), which the verifier passes to the lookup script as `--max <floor(cap / batches)>`. A single verifier gets the whole cap.
 
 ## Phase 4: Reconcile
 
-Map each claim with the table in `cove.md`. Outcome:
+Map each verifier match to a report verdict:
 
+| Verifier match | Report verdict |
+|---|---|
+| `yes` | SUPPORTED |
+| `partial` | PARTIAL (with its tier, if any) |
+| `no` | CONTRADICTED (always HIGH-WARN) |
+| `cannot-verify` | UNVERIFIABLE (with its tier: HIGH for a fabricated reference, MED for a transient failure, LOW for an inaccessible source) |
+| `not-verifiable-claim-type` | excluded: listed under "Not verifiable (claim type)", not counted |
+
+Outcome, from the tier counts only (the rule in `cove.md`):
+
+- **PASS**: 0 HIGH-WARN and 0 MED-WARN, whatever the LOW-WARN count. LOW-WARN claims are listed under "LOW-WARN (advisory, non-gating)".
+- **PARTIAL**: 0 HIGH-WARN and at least one MED-WARN.
 - **FAIL**: at least one HIGH-WARN (a contradiction or a fabricated reference).
-- **PARTIAL**: no HIGH-WARN, and at least one MED-WARN, LOW-WARN, `partial` or `cannot-verify`.
-- **PASS**: every counted claim verified.
 
 `not-verifiable-claim-type` claims are excluded from the counts and listed separately. A MED-WARN or LOW-WARN never counts as a contradiction: an unreachable source concluded nothing.
 
@@ -92,14 +102,14 @@ Each HIGH-WARN, MED-WARN and LOW-WARN entry is a finding in the format of `${CLA
 
 ## Record
 
-The gate entry is FAIL on any HIGH-WARN and PASS otherwise (PARTIAL records PASS: MED and LOW never gate). The state event carries the outcome (PARTIAL is WARN):
+The gate entry is FAIL on any HIGH-WARN and PASS otherwise (PARTIAL records PASS: MED and LOW never gate). The state event carries the outcome (PASS is PASS, PARTIAL is WARN, FAIL is FAIL):
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" record claims <PASS|FAIL> --artifact <outputs.dir>/verify_claims_<stem>.md --extra high=<H>
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record verify-claims <PASS|WARN|FAIL> --artifact <outputs.dir>/verify_claims_<stem>.md
 ```
 
-Record the gate entry only for a manuscript run (no file argument, or a file under `document.root`); a separate draft records the state event only. There is no flag that softens a HIGH-WARN. When the author judges a HIGH-WARN wrong, the commit gate override covers it: `commit anyway: <reason>` at `/ploma:commit`, which logs the reason.
+Record the gate entry only for a manuscript run (the main file with all its inputs). A partial run (one section file, or a draft outside the manuscript) records the state event only and says so in the reply: "Partial run: claims gate entry not recorded." There is no flag that softens a HIGH-WARN. When the author judges a HIGH-WARN wrong, the commit gate override covers it: `commit anyway: <reason>` at `/ploma:commit`, which logs the reason.
 
 ## Reply
 

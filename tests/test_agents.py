@@ -201,6 +201,10 @@ def test_claim_verifier_lookup_cap_and_status_mapping():
     assert "--max <limits.doi_lookups_per_run>" in text
     for status, tier in (("missing", "HIGH"), ("mismatch", "HIGH"), ("unreachable", "MED"), ("not_indexed", "LOW")):
         assert re.search(rf"`{status}`[^\n|]*\|[^\n]*{tier}", text), (status, tier)
+    assert "PASS (0 HIGH, 0 MED; LOW advisories allowed) | PARTIAL (0 HIGH, 1 or more MED)" in text
+    assert "`doi_lookup_cap`" in text
+    row = next(line for line in text.splitlines() if line.startswith("   | `not_indexed`"))
+    assert "verified (`yes`, no tier)" in row
     for line in text.splitlines():
         if "matches_claim" in line and "yes" in line and "cannot-verify" in line:
             assert "not-verifiable-claim-type" in line, line

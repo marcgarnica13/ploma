@@ -41,6 +41,8 @@ source_material:
   - url: https://doi.org/<doi>
   - search: "<author> <short title> <year>"
 
+doi_lookup_cap: 25   # optional: your share of the DOI lookup cap
+
 claims:
   - id: C1
     text: "Smith (2020) introduces the method used in Section 3."
@@ -64,7 +66,7 @@ For each `verification_question`:
    python3 "<ploma scripts>/cite_lookup.py" <refs.bib> --keys <k> --json --max <limits.doi_lookups_per_run>
    ```
 
-   `<refs.bib>` is the bibliography file named in the source material (one of `build.bib_files`), `<k>` the comma-separated entry keys, and `<ploma scripts>` the absolute path on the `ploma scripts:` line of the injected block (`${CLAUDE_PLUGIN_ROOT}/scripts` without it). `<limits.doi_lookups_per_run>` is the DOI lookup cap: the "DOI lookups per run" value in the summary's limits line, else `limits.doi_lookups_per_run` in `ploma.yaml`, else the default in `<ploma root>/rules/eager/limits.md`. Never pass a larger value. The script queries Crossref, DataCite, OpenAlex and Semantic Scholar and returns a status per entry. Map it:
+   `<refs.bib>` is the bibliography file named in the source material (one of `build.bib_files`), `<k>` the comma-separated entry keys, and `<ploma scripts>` the absolute path on the `ploma scripts:` line of the injected block (`${CLAUDE_PLUGIN_ROOT}/scripts` without it). `<limits.doi_lookups_per_run>` is the DOI lookup cap: the `doi_lookup_cap` value in the request when present (your share when several verifiers run in parallel), else the "DOI lookups per run" value in the summary's limits line, else `limits.doi_lookups_per_run` in `ploma.yaml`, else the default in `<ploma root>/rules/eager/limits.md`. Never pass a larger value. The script queries Crossref, DataCite, OpenAlex and Semantic Scholar and returns a status per entry. Map it:
 
    | Script status | What it means for the claim |
    |---|---|
@@ -73,7 +75,7 @@ For each `verification_question`:
    | `missing` | every index answered and none knows the work: evidence for HIGH-WARN (fabricated reference) |
    | `mismatch` | the DOI resolves to a different work: evidence for HIGH-WARN |
    | `unreachable` | every source failed (network, rate limit): `cannot-verify`, MED-WARN |
-   | `not_indexed` | an entry type indexes often lack (report, preprint, software, web page): `cannot-verify`, LOW-WARN, or LOW once a canonical URL confirms it exists; never HIGH on this status alone |
+   | `not_indexed` | an entry type indexes often lack (report, preprint, software, web page): `cannot-verify`, LOW-WARN; once a canonical URL (DOI page, publisher, arXiv, official site) confirms it exists, the existence part is verified (`yes`, no tier); never HIGH on this status alone |
    | `skipped` | the lookup cap was reached: `cannot-verify`, MED-WARN (re-run later) |
 3. Record:
    - `independent_answer`: what the source actually says;
@@ -99,7 +101,7 @@ Each per-claim finding carries a **severity tier**:
 ## Claim Verification Report
 
 **Claims reviewed:** N
-**Verification outcome:** PASS (all match, 0 HIGH) | PARTIAL (0 HIGH, 1 or more MED or LOW) | FAIL (1 or more HIGH)
+**Verification outcome:** PASS (0 HIGH, 0 MED; LOW advisories allowed) | PARTIAL (0 HIGH, 1 or more MED) | FAIL (1 or more HIGH)
 
 **Tier counts:** HIGH-WARN: H | MED-WARN: M | LOW-WARN: L
 

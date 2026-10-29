@@ -292,7 +292,9 @@ def test_cove_reference_isolates_the_verifier():
         assert outcome in text
     assert "## Post-flight verification" in text  # the output block
     assert "never the draft" in text.lower() or "never pass the draft" in text.lower()
-    assert "`partial` with no tier (a reasonable gloss of the source) | counts toward PARTIAL" in text
+    assert "`partial` with no tier (a reasonable gloss of the source) | verified with a note" in text
+    assert "**PASS**: 0 HIGH-WARN and 0 MED-WARN, whatever the LOW-WARN count." in text
+    assert "**PARTIAL**: 0 HIGH-WARN and at least one MED-WARN." in text
     assert "`not-verifiable-claim-type` | excluded from the claim count" in text
     assert "### Not verifiable (claim type)" in text
 
@@ -366,6 +368,8 @@ def test_audit_reproducibility_contract():
         assert key in text, key
     assert "Monitor" in text and "run_in_background" in text
     assert "AskUserQuestion" in text
+    assert 'If the user picks "Report only", skip steps 2 to 4 entirely' in text
+    assert "Run this only when the passport file exists" in text
     # Tolerance numbers come from config and the limits rule, never restated here.
     assert not re.search(r"\b0\.0[12]\b|0\.1 ?pp", text)
     ref = (REPO / "skills" / "audit-reproducibility" / "references" / "passport.md").read_text(encoding="utf-8")
@@ -389,6 +393,18 @@ def test_passport_reference_example_validates(tmp_path):
     assert info["claims"] == len(data["claims"])
 
 
+def _tools(fm: dict) -> list[str]:
+    raw = fm["allowed-tools"]
+    items = raw if isinstance(raw, list) else str(raw).split(",")
+    return [str(t).strip() for t in items]
+
+
+def test_tools_helper_can_fail():
+    assert "Edit" in _tools({"allowed-tools": "Read, Edit, Write"})
+    assert "Edit" in _tools({"allowed-tools": ["Read", "Edit"]})
+    assert "Edit" not in _tools({"allowed-tools": "Read, Bash(python3 *)"})
+
+
 def test_proofread_contract():
     text = _skill("proofread")
     assert "ploma:proofreader" in text and "<outputs.dir>/<stem>_report.md" in text
@@ -399,7 +415,9 @@ def test_proofread_contract():
     for phase in ("Propose", "Approve", "Apply"):
         assert phase in text, phase
     fm, _ = split_frontmatter(text)
-    assert "Edit" not in str(fm["allowed-tools"]).replace("Edit,", "")  # no pre-approved edits
+    assert "Edit" not in _tools(fm)  # no pre-approved edits
+    assert "Partial run: proofread gate entry not recorded." in text
+    assert "every `.tex` file under `document.root`" in text
     assert "Agent" in str(fm["allowed-tools"])
 
 
@@ -413,6 +431,16 @@ def test_verify_claims_contract():
     assert "allowHighWarn" not in text and "--no-fail-closed" not in text
     assert "context: fork" not in text and "context=fork" not in text
     assert "commit anyway" in text  # the gate override replaces the old opt-outs
+    # Traces outcome rule: LOW never makes PARTIAL; MED does; HIGH fails.
+    assert "**PASS**: 0 HIGH-WARN and 0 MED-WARN, whatever the LOW-WARN count." in text
+    assert "**PARTIAL**: 0 HIGH-WARN and at least one MED-WARN." in text
+    assert "**FAIL**: at least one HIGH-WARN" in text
+    assert "## LOW-WARN (advisory, non-gating)" in text
+    for match, verdict in (("yes", "SUPPORTED"), ("partial", "PARTIAL"), ("no", "CONTRADICTED"),
+                           ("cannot-verify", "UNVERIFIABLE"), ("not-verifiable-claim-type", "excluded")):
+        assert re.search(rf"\| `{re.escape(match)}` \| {verdict}", text), match
+    assert "--max <floor(cap / batches)>" in text and "at least 1" in text
+    assert "Partial run: claims gate entry not recorded." in text
     fm, _ = split_frontmatter(text)
     assert "Agent" in str(fm["allowed-tools"])
 

@@ -77,10 +77,10 @@ For each matched claim compute `diff = |reported - computed|` and compare it wit
 
 Read `references/passport.md` in this skill's directory for the schema and the writing rules. The passport lives at `<outputs.dir>/passports/<slug>.yaml`.
 
-1. Show the inferred mapping (claim, location, output file and field, status) for every claim that is new to the passport. Ask once with `AskUserQuestion`: "Write the passport" (Recommended) or "Report only, leave the passport unchanged". Without `AskUserQuestion`, write it and show the mapping in the reply.
+1. Show the inferred mapping (claim, location, output file and field, status) for every claim that is new to the passport. Ask once with `AskUserQuestion`: "Write the passport" (Recommended) or "Report only, leave the passport unchanged". Without `AskUserQuestion`, write it and show the mapping in the reply. If the user picks "Report only", skip steps 2 to 4 entirely and go to Phase 6; the report says the passport was left unchanged.
 2. Absent: create it with the Write tool (the paper block and the claims). Present: update it in place with the Edit tool. Never delete an entry. A claim that no longer appears in the manuscript keeps its entry with status STALE and a note.
 3. Statuses are PASS, FAIL, STALE or UNVERIFIED. An UNMATCHED claim is written as UNVERIFIED. Never promote UNVERIFIED to PASS without the Phase 4 check.
-4. Validate the file:
+4. Validate the file. Run this only when the passport file exists:
 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/consistency.py" --root . --passport <outputs.dir>/passports/<slug>.yaml --record --json

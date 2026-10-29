@@ -54,7 +54,7 @@ Then a summary at `<outputs.dir>/proofread_summary_<slug>.md` with the same head
 
 ## Record
 
-`open_high` is the total HIGH count across all reports. Status PASS when it is 0, otherwise WARN:
+`open_high` is the total HIGH count across all reports. Status PASS when it is 0, otherwise WARN. The gate entry is recorded only when the run covered the whole manuscript (every `.tex` file under `document.root`, all proofread). A partial run (a file argument, or a file whose agent failed) records only the state event and says so in the reply: "Partial run: proofread gate entry not recorded."
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" record proofread <PASS|WARN> --artifact <outputs.dir>/proofread_summary_<slug>.md --extra open_high=<N>
