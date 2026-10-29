@@ -8,12 +8,14 @@ Usage:
 
 A query is a \\section title (case-insensitive), a \\label (for example sec:intro), or a .tex path
 under document.root. A section runs from its \\section line to the line before the next \\section,
-\\appendix, \\chapter, \\part, \\bibliography, \\printbibliography or \\end{document}, or before the
-\\input line that leads to the next section; trailing blank lines are left out. A file under
+\\appendix, \\chapter, \\part, \\bibliographystyle, \\bibliography, \\printbibliography,
+\\begin{thebibliography}, an acknowledgments environment (acks, acknowledgments) or \\end{document}, or
+before the \\input line that leads to the next section; trailing blank lines and page or column breaks
+(\\clearpage, \\newpage, \\cleardoublepage, \\onecolumn, \\twocolumn) are left out. A file under
 document.root with no \\section is one span covering the whole file.
 
 check splices the draft body (the draft without its leading comment header) over the section in a
-copy of the manuscript under .ploma/tmp/, runs the consistency pass on that copy and on an unspliced
+copy of the manuscript under .ploma/tmp/ (first removing write-* copies older than an hour), runs the consistency pass on that copy and on an unspliced
 copy, deletes the copies, and reports: consistency findings (marked new or unchanged against the
 current manuscript, with draft lines mapped to the draft file), numbers the draft introduces that
 appear nowhere else in the manuscript or the results files, new \\includegraphics without a
@@ -33,6 +35,7 @@ import json
 import re
 import shutil
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +49,10 @@ import ploma_config  # noqa: E402
 import style_check  # noqa: E402
 
 _SECTION_RE = re.compile(r"\\section(\*?)\s*(?:\[[^\]]*\])?\s*\{")
-_BOUNDARY_RE = re.compile(r"\\(?:appendix|chapter|part|bibliography|printbibliography)(?![A-Za-z])|\\end\s*\{document\}")
+_BOUNDARY_RE = re.compile(r"\\(?:appendix|chapter|part|bibliography|bibliographystyle|printbibliography)(?![A-Za-z])"
+                          r"|\\(?:begin|end)\s*\{document\}"
+                          r"|\\begin\s*\{(?:thebibliography|acks|acknowledgments|acknowledgements)\}")
+_NON_PROSE_RE = re.compile(r"^\s*(?:\\(?:clearpage|newpage|cleardoublepage|onecolumn|twocolumn)\b\s*)*$")
 _APPENDIX_RE = re.compile(r"\\appendix(?![A-Za-z])")
 _BEGIN_DOC_RE = re.compile(r"\\begin\s*\{document\}")
 _LABEL_RE = re.compile(r"\\label\s*\{([^}]*)\}")
@@ -159,8 +165,8 @@ def _end_index(events: list[_Event], i: int, is_stop) -> tuple[int, int]:
 def _trim(path: Path, start: int, end: int) -> int:
     lines = _raw_lines(path)
     end = min(end, len(lines))
-    while end > start and not lines[end - 1].strip():
-        end -= 1
+    while end > start and _NON_PROSE_RE.match(bib_check.strip_comment(lines[end - 1])):
+        end -= 1  # blank lines and page or column breaks belong to no section
     return max(end, start)
 
 
@@ -342,6 +348,20 @@ def _graphics(lines: list[str]) -> list[tuple[int, str, bool]]:
     return out
 
 
+STALE_TMP_SECONDS = 3600
+
+
+def _sweep(tmp_root: Path) -> None:
+    """Remove write-* copies left by an interrupted check (older than STALE_TMP_SECONDS)."""
+    cutoff = time.time() - STALE_TMP_SECONDS
+    for d in tmp_root.glob("write-*"):
+        try:
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+
+
 def check(root: Path, main: Path, query: str, draft: Path) -> dict:
     root = Path(root).resolve()
     cfg = ploma_config.load(root)
@@ -363,6 +383,7 @@ def check(root: Path, main: Path, query: str, draft: Path) -> dict:
     srcs = bib_check.tex_sources(main)
     base = main.parent
     main_rel_file = _rel(sec.file, base)
+    _sweep(root / ".ploma" / "tmp")
     tmp = root / ".ploma" / "tmp" / f"write-{uuid.uuid4().hex[:8]}"
     try:
         _copy_manuscript(srcs, base, tmp / "current", None)

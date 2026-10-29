@@ -31,6 +31,21 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/profiles.py" --root . --json show <venue.
 
 An entry not in either table: list it as SKIP, "no automatic check; check by hand".
 
+## Exit codes
+
+Read each command's exit code before its output. A result (findings or none) goes into the merge; a check that did not run is SKIP with the reason, never PASS.
+
+| Command | Clean | Result with findings | Did not run |
+|---|---|---|---|
+| placeholders.py, bib_check.py, arxiv_rules.py | 0 | 1 = findings (a result) | 2 = did not run |
+| style_check.py, latex_log.py, profiles.py | 0 | 1 = findings (a result; latex_log.py: errors in the log) | 2 = did not run |
+| chktex | 0 | non-zero with output = findings (a result) | non-zero with no output = did not run |
+| lacheck | 0, no output | any output = findings (a result) | |
+| texcount | 0 | | non-zero = did not run |
+| any | | | 127 = not installed: SKIP with the install hint |
+
+For a script that did not run (exit 2), quote its error message as the SKIP reason.
+
 ### Anonymization (judgment on Grep hits)
 
 Look for: an `\author{...}` that is not a placeholder such as "Anonymous", `\thanks{`, an acknowledgments section or paragraph, a personal or institutional URL (a code host user name, a lab page), and self-citations phrased in the first person ("our previous work [n]"). Each hit is a WARN with `file:line` and the verbatim text. No hit: PASS.

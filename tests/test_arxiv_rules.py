@@ -59,9 +59,20 @@ def test_graphicspath_and_extensionless_targets(sample_paper):
 
 def test_hidden_files_warn_but_git_is_ignored(sample_paper):
     (sample_paper / ".DS_Store").write_text("x")
-    (sample_paper / ".git").mkdir()
+    for d in (".git", ".ploma", ".claude", ".vscode", ".idea"):
+        (sample_paper / d).mkdir()
+        (sample_paper / d / ".inner").write_text("x")
+    (sample_paper / ".gitattributes").write_text("x")
     ids = _ids(arxiv_rules.run(sample_paper))
-    assert "arxiv.hidden..DS_Store" in ids and not any(".git/" in i or i.endswith(".git") for i in ids)
+    hidden = [i for i in ids if i.startswith("arxiv.hidden.")]
+    assert hidden == ["arxiv.hidden..DS_Store"], hidden  # .gitignore, .gitattributes and tool dirs excluded
+
+
+def test_suggestion_drafts_warn(sample_paper):
+    (sample_paper / "sections" / "intro_suggestion.tex").write_text("draft")
+    found = {f.id: f for f in arxiv_rules.run(sample_paper)}
+    f = found["arxiv.suggestion.sections/intro_suggestion.tex"]
+    assert f.status == "WARN" and "draft sibling would be uploaded" in f.summary
 
 
 def test_bbl_present_or_biber(sample_paper):

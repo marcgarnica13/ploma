@@ -10,7 +10,10 @@ document.root:
   arxiv.figure_format.<target>    FAIL  an \\includegraphics file that is not .pdf, .png, .jpg or .jpeg
                                         (pdflatex on arXiv reads no other format)
   arxiv.figure_missing.<target>   WARN  an \\includegraphics target with no file (\\graphicspath honoured)
-  arxiv.hidden.<path>             WARN  a hidden file or directory under document.root (.git excepted)
+  arxiv.hidden.<path>             WARN  a hidden file or directory under document.root, except .git*
+                                        (.git, .gitignore, .gitattributes) and the tool directories
+                                        .ploma, .claude, .vscode and .idea
+  arxiv.suggestion.<path>         WARN  a *_suggestion.tex draft under document.root (it would be uploaded)
   arxiv.bbl_missing               FAIL  no <main>.bbl and the bibliography is built with biber
                                   WARN  no <main>.bbl; arXiv would have to run BibTeX on the .bib files
   arxiv.today                     WARN  \\today in the source (the date changes when arXiv rebuilds)
@@ -41,6 +44,11 @@ _GRAPHICSPATH_RE = re.compile(r"\\graphicspath\s*\{((?:\s*\{[^}]*\})+)\s*\}")
 _BIB_USED_RE = re.compile(r"\\(?:bibliography|addbibresource)\b")
 _TODAY_RE = re.compile(r"\\today(?![A-Za-z])")
 PDFOUTPUT_LINES = 5
+TOOL_DIRS = {".ploma", ".claude", ".vscode", ".idea"}
+
+
+def _ignored_hidden(name: str) -> bool:
+    return name.startswith(".git") or name in TOOL_DIRS
 
 
 def _rel(path: Path, root: Path) -> str:
@@ -115,11 +123,17 @@ def run(root: Path) -> list[Finding]:
     doc_root = Path(paths["root"]) if paths.get("root") else root
     for dirpath, dirnames, filenames in os.walk(doc_root):
         for name in sorted(dirnames + filenames):
-            if name.startswith(".") and name != ".git":
+            if name.startswith(".") and not _ignored_hidden(name):
                 rel = _rel(Path(dirpath) / name, root)
                 out.append(Finding(f"arxiv.hidden.{rel}", WARN, f"hidden {'directory' if name in dirnames else 'file'} "
                                    f"{rel}", observed=rel, remediation="Leave it out of the arXiv upload.",
                                    group="arxiv"))
+        for name in sorted(filenames):
+            if name.endswith("_suggestion.tex"):
+                rel = _rel(Path(dirpath) / name, root)
+                out.append(Finding(f"arxiv.suggestion.{rel}", WARN, f"draft sibling would be uploaded: {rel}",
+                                   observed=rel, remediation="Merge it with /ploma:write --merge or delete it, and "
+                                   "leave it out of the arXiv upload.", group="arxiv"))
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
     bib_used = any(_BIB_USED_RE.search(line) for lines in code.values() for line in lines)

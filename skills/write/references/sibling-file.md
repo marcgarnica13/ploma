@@ -41,12 +41,12 @@ The draft opens with a block of comment lines, then one blank line, then the bod
 
 ## Merge rules
 
-A merge happens only on `--merge` and only after the user says yes in the conversation to the shown diff.
+A merge happens only in a run invoked with `--merge`, and only after the user says yes in that run to the shown diff. A "yes" after a run without `--merge` is answered with the command to rerun: `/ploma:write <query> --merge`.
 
 1. Run `sections.py resolve` again and `sections.py check` on the draft. If `stale` is true, the section changed after the draft was written: say so, show the new diff, and ask again. Never merge a stale draft without a fresh yes.
 2. Read the section's current lines (Read with offset and limit on the range) and the draft body.
 3. Replace exactly that line range with the body (everything after the header) using one Edit: `old_string` is the current section text, `new_string` is the body. Nothing outside the range changes.
-4. Confirm with `sections.py resolve`: the section now spans the body's length and its first line is the body's first line.
+4. Confirm with `sections.py resolve` and a Read of the new span: it equals the body, ignoring trailing blank lines.
 5. Delete the sibling file (`rm <sibling>`), then recommend `/ploma:compile`.
 
 When the Edit fails (the old text is no longer there), stop and say so. Never patch around it.

@@ -103,7 +103,7 @@ In this order:
    - each `figures_without_source` entry: "<location>: no `% ploma:source` line; which script and arguments make this figure?"
    - contradictions with other sections you noticed (a different count, a symbol defined two ways, a claim the results do not support), each with both locations and the verbatim text of both. Never edit the other section.
    - a label or `\ref` target the body dropped that another section still uses.
-5. **Next:** "Reply yes to merge it (/ploma:write <query> --merge), or tell me what to change."
+5. **Next:** "To merge it, rerun with `/ploma:write <query> --merge` (with the actual query); or tell me what to change." This run never merges.
 
 Record the state event (PASS when no open flag and no CRITICAL or MAJOR finding remains, WARN otherwise):
 
@@ -113,13 +113,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record write <PASS|WARN> --arti
 
 ## Merge
 
-Only with `--merge`, and only after the user said yes to this draft in this conversation.
+Merging happens only in a run invoked with `--merge`, and only after the user says yes to this draft in that run. A bare "yes" after a run without `--merge` does not merge: tell the user to rerun with `/ploma:write <query> --merge` (spell out the actual query) and stop.
 
 1. The sibling does not exist: say "No draft at <sibling>. Run /ploma:write <query> first." and stop.
-2. Run the self-check of step 4 on the sibling as it is now. If the user has not yet said yes to its diff in this conversation, show steps 5.2 to 5.4 and ask with AskUserQuestion: "Merge this draft" or "Keep the draft, do not merge". Without AskUserQuestion, ask in text and stop; merge only after a later explicit yes. Silence, "looks good" about something else, or a yes given before a later change to the draft is not a yes to merge.
+2. Run the self-check of step 4 on the sibling as it is now, show steps 5.2 to 5.4, and ask with AskUserQuestion: "Merge this draft" or "Keep the draft, do not merge". Without AskUserQuestion, ask in text and wait: an explicit yes in the user's next message completes this `--merge` run; any other reply ends it without merging. Silence, "looks good" about something else, or a yes given before a later change to the draft is not a yes to merge.
 3. `stale` true: say the section changed after the draft was written, show the new diff and ask again. Never merge a stale draft without a fresh yes.
 4. Apply the merge rules in the reference: Read the section's current lines, then one Edit whose `old_string` is exactly those lines and whose `new_string` is the draft body (the sibling without its header). Nothing outside the line range changes.
-5. Confirm: run `sections.py --json resolve "<query>"` again; the section now starts with the body's first line and spans the body's length. Then delete the sibling (`rm "<sibling>"`).
+5. Confirm: run `sections.py --json resolve "<query>"` again and Read the new span. It must equal the draft body, ignoring trailing blank lines on both sides (the span never ends in blank lines, the body may). Then delete the sibling (`rm "<sibling>"`).
 6. Record and reply:
 
    ```bash

@@ -201,3 +201,51 @@ def test_cli_check_json_and_bad_draft(sample_paper, capsys):
     data = json.loads(capsys.readouterr().out)
     assert rc == 0 and "diff" in data and "consistency" in data
     assert sections.main(["--root", str(sample_paper), "check", "Introduction", "missing.tex"]) == 2
+
+
+# ---------------------------------------------------------------- fix round 1: end-matter and tmp sweep
+
+def _last_section(tmp_path, tail: str, extra: dict | None = None):
+    main = _write(tmp_path / "main.tex", "\\begin{document}\n\\section{One}\nA.\n\\section{Last}\nB.\nC.\n\n"
+                  + tail + "\\end{document}\n")
+    for name, text in (extra or {}).items():
+        _write(tmp_path / name, text)
+    return next(s for s in sections.outline(main) if s.title == "Last")
+
+
+def test_last_section_stops_before_bibliographystyle(tmp_path):
+    sec = _last_section(tmp_path, "\\bibliographystyle{plain}\n\\bibliography{refs}\n")
+    assert (sec.start, sec.end) == (4, 6)
+
+
+def test_last_section_stops_before_thebibliography(tmp_path):
+    sec = _last_section(tmp_path, "\\begin{thebibliography}{9}\n\\bibitem{a} A.\n\\end{thebibliography}\n")
+    assert (sec.start, sec.end) == (4, 6)
+
+
+def test_last_section_stops_before_acknowledgment_environments(tmp_path):
+    assert _last_section(tmp_path, "\\begin{acks}\nThanks.\n\\end{acks}\n").end == 6
+    assert _last_section(tmp_path / "b", "\\begin{acknowledgments}\nThanks.\n\\end{acknowledgments}\n").end == 6
+
+
+def test_last_section_trims_page_breaks_before_an_input(tmp_path):
+    sec = _last_section(tmp_path, "\\clearpage\n\\onecolumn\n\\input{app}\n", {"app.tex": "\\section{Appendix}\nAppendix text.\n"})
+    assert (sec.start, sec.end) == (4, 6)
+
+
+def test_check_sweeps_stale_tmp_dirs(sample_paper):
+    import os
+    import time
+    old = sample_paper / ".ploma" / "tmp" / "write-deadbeef"
+    old.mkdir(parents=True)
+    (old / "x.tex").write_text("x")
+    past = time.time() - 7200
+    os.utime(old, (past, past))
+    fresh = sample_paper / ".ploma" / "tmp" / "write-cafecafe"
+    fresh.mkdir()
+    draft = _draft(sample_paper, "\\section{Introduction}\n\\label{sec:intro}\n\nShort.\n")
+    sections.check(sample_paper, sample_paper / "main.tex", "Introduction", draft)
+    assert not old.exists() and fresh.exists()
+    fresh.rmdir()
+    sections.check(sample_paper, sample_paper / "main.tex", "Introduction", draft)
+    assert not (sample_paper / ".ploma" / "tmp").exists()

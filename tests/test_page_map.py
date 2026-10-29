@@ -109,3 +109,19 @@ def test_text_output_has_a_table(sample_paper, monkeypatch, capsys):
     assert page_map.main(["--root", str(sample_paper)]) == 0
     out = capsys.readouterr().out
     assert "| 2 | Method | 2 |" in out and "budget: PASS (3/8;" in out
+
+
+def test_heading_match_ignores_prose_mentions():
+    pages = ["1 Introduction\nOur method is new.\nII. METHOD\nText.\n"]
+    hits = pdf_pages.heading_positions(pages, [["1 Introduction", "Introduction"], ["2 Method", "Method"]])
+    assert hits[1]["line"] == 3
+    pages = ["1 Introduction\nSee Section 2 Method for details.\n2 Method\nText.\n"]
+    hits = pdf_pages.heading_positions(pages, [["1 Introduction"], ["2 Method", "Method"]])
+    assert hits[1]["line"] == 3 and hits[1]["needle"] == "2 Method"
+
+
+def test_heading_match_allows_numbers_and_trailing_space():
+    pages = ["2.1 Setup   \nA.\nB. Method\n"]
+    hits = pdf_pages.heading_positions(pages, [["Setup"], ["Method"]])
+    assert [h and h["line"] for h in hits] == [1, 3]
+    assert pdf_pages.heading_positions(["Methods and data\n"], [["Method"]]) == [None]

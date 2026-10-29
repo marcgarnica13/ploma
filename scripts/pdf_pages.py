@@ -97,11 +97,27 @@ def page_texts(pdf: Path) -> tuple[list[str] | None, str]:
     return text.split("\f"), "pdftotext"
 
 
+# An optional heading number before the title: "2", "2.1", "2.1.", "II.", "A.", "B".
+_HEAD_PREFIX = r"(?:(?:\d+(?:\.\d+)*|[IVXLCDM]+|[A-Z])\.?\s+)?"
+
+
+def _heading_re(needle: str) -> re.Pattern:
+    """A heading line: the needle, after an optional number prefix, alone on the line. A numbered needle
+    ("2 Method") may also be followed by a wide gap, where a two-column layout continues with the
+    other column; a bare title must fill the line."""
+    words = needle.split()
+    body = r"\s+".join(re.escape(w) for w in words)
+    numbered = bool(words) and re.fullmatch(r"\d+(?:\.\d+)*\.?|[IVXLCDM]+\.?|[A-Z]\.?", words[0]) is not None
+    tail = r"(?:\s*$|\s{2,}\S)" if numbered else r"\s*$"
+    return re.compile(r"^\s*" + ("" if numbered else _HEAD_PREFIX) + body + tail, re.I)
+
+
 def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict | None]:
     """Where each heading starts, searching in order: each heading is looked for after the previous one
     found, so a heading word in the abstract or a running head before it is not taken for the heading.
 
     Each heading is a list of candidate needles tried in turn (for example "2 Method", then "Method").
+    A line matches only when it is the heading itself (see _heading_re), never a mention in prose.
     A hit is {page, line, lines, position, needle}: 1-based page and line, the page's line count, and
     position = page - 1 + (line - 1) / lines (fractional pages from the start of the PDF).
     """
@@ -111,13 +127,13 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
     for candidates in headings:
         hit = None
         for needle in candidates:
-            norm = _norm(needle)
-            if not norm:
+            if not needle.strip():
                 continue
+            pattern = _heading_re(needle)
             for pi in range(cur_page, len(split)):
                 first = cur_line if pi == cur_page else 0
                 for li in range(first, len(split[pi])):
-                    if norm in _norm(split[pi][li]):
+                    if pattern.match(split[pi][li]):
                         lines = max(1, len(split[pi]))
                         hit = {"page": pi + 1, "line": li + 1, "lines": lines,
                                "position": round(pi + li / lines, 3), "needle": needle}

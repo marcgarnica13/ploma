@@ -47,7 +47,7 @@ Follow `${CLAUDE_PLUGIN_ROOT}/skills/format/references/presubmit.md`. Read it fi
 
 1. Read the venue profile's `submission_checks` (`profiles.py ... show <venue.profile>`) and the list of `.tex` files.
 2. Run every check as a separate Bash call, all in one message so they run in parallel: chktex, lacheck, texcount, `placeholders.py`, `bib_check.py`, `style_check.py`, and for the submission checks `latex_log.py` (undefined_refs) and `arxiv_rules.py` (when `arxiv_rules` is listed). `page_budget` reuses the page map of section 1; anonymization is the Grep pass the reference describes, only when `document.anonymized` is true. No subagents: these are deterministic tools.
-3. A tool that is not installed (command not found, exit 127) is SKIP with the install hint from the reference. Never report a check that did not run as clean.
+3. Read each exit code with the reference's Exit codes table: it says which codes are a result (findings) and which mean the check did not run. In short: the ploma scripts exit 1 for findings and 2 when they did not run; chktex exits non-zero with output for findings; any lacheck output is findings; texcount non-zero did not run; 127 is not installed, SKIP with the install hint. Never report a check that did not run as clean.
 4. Merge by severity into `<outputs.dir>/presubmit_<slug>.md` in the reference's format: the verdict line, the checks table, then FAIL, WARN and INFO findings, each with its location, the verbatim message and the fix, then the checks not run.
 
 ## 4. Record

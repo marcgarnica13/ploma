@@ -549,3 +549,25 @@ def test_compile_points_to_format():
     import compile as compile_mod
     assert "/ploma:format" in compile_mod.__loader__.get_source("compile")
     assert "/ploma:format for the page map" in _skill("compile")
+
+
+def test_presubmit_exit_codes_are_tabled():
+    """Fix round 1: which exit codes are results and which mean the check did not run."""
+    for text in (_skill("format"), (REPO / "skills" / "format" / "references" / "presubmit.md").read_text(encoding="utf-8")):
+        assert "## Exit codes" in text or "Exit codes" in text
+    ref = (REPO / "skills" / "format" / "references" / "presubmit.md").read_text(encoding="utf-8")
+    table = ref.split("## Exit codes", 1)[1].split("\n## ", 1)[0]
+    for row in ("| placeholders.py, bib_check.py, arxiv_rules.py | 0 | 1 = findings (a result) | 2 = did not run |",
+                "| chktex | 0 | non-zero with output = findings (a result) | non-zero with no output = did not run |",
+                "| lacheck | 0, no output | any output = findings (a result) |",
+                "| texcount | 0 | | non-zero = did not run |",
+                "| any | | | 127 = not installed: SKIP with the install hint |"):
+        assert row in table, row
+
+
+def test_write_merge_needs_a_merge_run():
+    """R131: a bare yes after a draft run never merges; the user reruns with --merge."""
+    text = _skill("write")
+    assert "Merging happens only in a run invoked with `--merge`" in text
+    assert "rerun with `/ploma:write <query> --merge`" in text
+    assert "ignoring trailing blank lines" in text
