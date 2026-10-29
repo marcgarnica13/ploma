@@ -836,3 +836,57 @@ def test_same_value_in_two_columns_gives_one_entry_per_cell(tmp_path):
     entries = f.observed.split("; ")
     assert len(entries) == len(set(entries)) == 2, entries
     assert "Fitness" in entries[0] and "Score" in entries[1]
+
+
+# ---------------------------------------------------------------- field fixes 3: R169 attribution
+
+def _runs_paper(tmp_path, city="Manchester City & 0.91 & 0.55"):
+    """Two run directories holding cc_results.json with different values (the real repo's shape)."""
+    runs = {"run_a": {"28": ("AFC Bournemouth", 0.77, 0.48), "93": ("Brentford", 0.85, 0.77),
+                      "1": ("Manchester City", 0.91, 0.55)},
+            "run_b": {"28": ("AFC Bournemouth", 0.69, 0.77), "93": ("Brentford", 0.81, 0.66),
+                      "1": ("Manchester City", 0.88, 0.60)}}
+    for run_name, teams in runs.items():
+        d = tmp_path / "results" / run_name
+        d.mkdir(parents=True)
+        (d / "cc_results.json").write_text(json.dumps({"teams": {
+            k: {"name": n, "hm_fitness": f, "hm_precision": p} for k, (n, f, p) in teams.items()}}))
+    main = tmp_path / "main.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\nTeam & Fitness & Precision \\\\\n"
+                    "AFC Bournemouth & 0.77 & 0.48 \\\\\nBrentford & 0.85 & 0.77 \\\\\n" + city + " \\\\\n"
+                    "\\end{tabular}\n\\end{document}\n")
+    return main, tmp_path / "results"
+
+
+def test_runs_fixture_unplanted_passes(tmp_path):
+    main, res = _runs_paper(tmp_path)
+    rep = _run(main, results_dir=res, metric_keys=["hm_fitness", "hm_precision"])
+    assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+
+
+def test_attribution_names_the_record_and_cites_the_rows_own_run(tmp_path):
+    main, res = _runs_paper(tmp_path, city="Manchester City & 0.91 & 0.77")
+    rep = _run(main, results_dir=res, metric_keys=["hm_fitness", "hm_precision"])
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Manchester_City")
+    assert "results/run_a/cc_results.json:teams.93.hm_precision (Brentford)" in f.observed, f.observed
+    assert "run_b" not in f.observed, f.observed
+    assert "Bournemouth" not in f.observed and "(cc_results)" not in f.observed, f.observed
+
+
+def test_numeric_id_without_name_field_is_named_by_its_key(tmp_path):
+    files = {"r.json": {"teams": {"7": {"label_x": 1, "acc": 0.70}, "8": {"acc": 0.80}}}}
+    main, res = _tables(tmp_path, [("Team & Acc & x", ["7 & 0.70 & 0.70", "8 & 0.80 & 0.80"])], files)
+    loc = next(l for l in consistency.load_results(res, ["acc"]).located if l.value == 0.80)
+    assert consistency._display_entity(loc, ("depth", 0), "r") == "teams.8"
+    assert consistency._display_entity(loc, ("depth", 2), "8") == "teams.8"
+
+
+def test_results_paths_are_relative_to_the_repo_root(tmp_path):
+    main, res = _runs_paper(tmp_path / "pipe", city="Manchester City & 0.91 & 0.77")
+    paper = tmp_path / "paper"
+    paper.mkdir()
+    moved = paper / "main.tex"
+    main.rename(moved)
+    rep = _run(moved, results_dir=res, metric_keys=["hm_fitness", "hm_precision"], root=tmp_path)
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Manchester_City")
+    assert "pipe/results/run_a/cc_results.json:teams.93.hm_precision" in f.observed, f.observed

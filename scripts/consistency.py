@@ -21,7 +21,10 @@ A "%" in a column header makes that column's bare numbers percents.
 Table rows are tied to results entities by their label (Ruling R164): a label word must equal a word of
 an entity key or string field above the metric key. Row labels must therefore use the results' entity
 names or their words: a label "BERT-L" does not name "bert_large", so that row gets only the per-cell
-check and a value copied from another entity is missed.
+check and a value copied from another entity is missed. A finding names the other entity by its
+record's name-like field (name, team, model, method, label, title) or else its key, cites results files
+relative to the repo root, keeps to the keys carrying the column header's word (Precision: *_precision)
+when any match, and to the row's own results file when it holds a match (Ruling R169).
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -305,12 +308,14 @@ class Located:
     left out), every word of the path and of the string fields of its object and every enclosing object
     (for the column check), and its entity slots: (level, name) pairs a row label can name. A level is a
     path depth, ("depth", d), for the path components above the first metric key, or a string field,
-    ("field", name), of its object or an enclosing one (a CSV row's string cells, by column)."""
+    ("field", name), of its object or an enclosing one (a CSV row's string cells, by column; innermost
+    last). where and file give the results file relative to the repo root (Ruling R169)."""
     value: float
     where: str
     path: tuple[str, ...]
     words: frozenset[str]
     slots: tuple[tuple[tuple, str], ...]
+    file: str = ""
 
 
 @dataclass
@@ -371,17 +376,24 @@ def _csv_number(cell: str):
     return number if math.isfinite(number) else None
 
 
-def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
+def load_results(results_dir: Path, metric_keys: list[str], root: Path | None = None) -> Results:
     """Every numeric value at any depth of every .json, and every numeric .csv cell, under results_dir;
     keyed_values holds those with any component of their key path in metric_keys, or whose .csv
-    column header is one."""
+    column header is one. Located values name their file relative to root (default: the parent of
+    results_dir; a file outside root is named relative to that parent too)."""
     res = Results()
     if results_dir is None or not Path(results_dir).is_dir():
         return res
     keys = set(metric_keys)
+    fallback = Path(results_dir).resolve().parent
+    base = Path(root).resolve() if root else fallback
     for path in sorted(Path(results_dir).rglob("*")):
         if not path.is_file() or path.suffix.lower() not in (".json", ".csv"):
             continue
+        try:
+            rel = path.resolve().relative_to(base).as_posix()
+        except ValueError:
+            rel = _rel(path, fallback)
         try:
             text = path.read_text(encoding="utf-8")
             if path.suffix.lower() == ".json":
@@ -390,7 +402,7 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
                 found: list[Located] = []
                 _json_located(data, keys, (path.stem,), "", (), False, found)
                 for loc in found:
-                    loc.where = f"{path.name}:{loc.where or '(top level)'}"
+                    loc.where, loc.file = f"{rel}:{loc.where or '(top level)'}", rel
                 res.located += found
             else:
                 rows = list(csv.reader(text.splitlines()))
@@ -410,8 +422,10 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
                             res.keys_found.add(header[i].strip())
                             if row is not header:
                                 res.keyed_values.append(number)
-                                res.located.append(_locate((path.stem, header[i].strip()), strings, number,
-                                                           f"{path.name} row {r + 1} {header[i].strip()}", keys))
+                                loc = _locate((path.stem, header[i].strip()), strings, number,
+                                              f"{rel} row {r + 1} {header[i].strip()}", keys)
+                                loc.file = rel
+                                res.located.append(loc)
         except (OSError, UnicodeDecodeError, ValueError, csv.Error) as exc:
             res.unreadable.append((path, str(exc).splitlines()[0] if str(exc) else type(exc).__name__))
             continue
@@ -823,15 +837,38 @@ def _entity(label: str, located: list[Located]) -> tuple[list[bool], dict[tuple,
     return own, levels
 
 
-def _other_entity(loc: Located, levels: dict[tuple, set[str]]) -> str | None:
+def _other_entity(loc: Located, levels: dict[tuple, set[str]]) -> tuple[tuple, str] | None:
     """The other entity a value belongs to: its name at a level where the row's own entity was named,
     when that name is not one of the row's best-cover names (model_b is another entity for a row
     "Model A" although it shares "model"). None for a value above the per-entity level or beside it (a
     shared count)."""
     for level, name in loc.slots:
         if level in levels and _norm(name) not in levels[level]:
-            return name
+            return level, name
     return None
+
+
+NAME_FIELD_WORDS = frozenset({"name", "team", "model", "method", "label", "title"})
+
+
+def _display_entity(loc: Located, level: tuple, name: str) -> str:
+    """How a finding names the entity a value belongs to (Ruling R169): the name given at a string-field
+    level as is; else the record's innermost name-like field (name, team, model, method, label, title,
+    or a field such as team_name); else its key, with the parent key in front when the key is a number
+    ("teams.93"). The file stem is printed only when the value has no deeper key."""
+    if level[0] == "field":
+        return name
+    for lvl, value in reversed(loc.slots):
+        if lvl[0] == "field" and NAME_FIELD_WORDS & set(_tokens(lvl[1])):
+            return value
+    depths = [(lvl[1], value) for lvl, value in loc.slots if lvl[0] == "depth"]
+    if level[1] == 0 and len(depths) > 1:
+        level, name = ("depth", depths[-1][0]), depths[-1][1]
+    if name.isdigit():
+        above = [value for d, value in depths if 0 < d < level[1]]
+        if above:
+            return f"{above[-1]}.{name}"
+    return name
 
 
 def _cell_list(items: list[tuple[dict, str]]) -> str:
@@ -868,6 +905,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     for i, c in enumerate(cells):
         rows.setdefault(c.get("row", f"{c['file']}:{c['line']}"), []).append(i)
     located = results.located if metric_keys else []
+    key_words = {w for k in metric_keys for w in _tokens(k)}
     entities: dict[str, Any] = {}
 
     out: list[Finding] = []
@@ -895,12 +933,14 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
         ent = [loc for loc, m in zip(located, own) if m]
         other_entity: list[tuple[dict, str]] = []
         other_column: list[tuple[dict, str]] = []
+        found_by = {i: [loc for loc in ent if _vkey(loc.value) in hits[i]] for i in idxs if hits[i]}
+        row_files = {loc.file for found in found_by.values() for loc in found}  # where the row's own cells sit
         for i in idxs:
             c = cells[i]
             if not hits[i]:
                 missed.setdefault(c["raw"], []).append(c)
                 continue
-            found = [loc for loc in ent if _vkey(loc.value) in hits[i]]
+            found = found_by[i]
             if found:
                 want = set(c.get("distinct") or ())
                 if want and any(want & loc.words for loc in ent) and not any(want & loc.words for loc in found):
@@ -909,10 +949,16 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                                             + f", which lacks '{'/'.join(sorted(want))}'"))
                 continue
             elsewhere = [loc for loc in located if _vkey(loc.value) in hits[i]]
+            # R169: the column header picks the key first (a Precision cell goes to *_precision keys).
+            col = set(_tokens(c.get("header") or "")) & key_words
+            by_column = [loc for loc in elsewhere if col & {w for part in loc.path for w in _tokens(part)}]
+            elsewhere = by_column or elsewhere
             owners = [_other_entity(loc, levels) for loc in elsewhere]
             if elsewhere and all(owners):
+                pairs = list(zip(elsewhere, owners))
+                pairs = [x for x in pairs if x[0].file in row_files] or pairs  # the row's own file first
                 other_entity.append((c, "matches only " + ", ".join(
-                    f"{loc.where} ({o})" for loc, o in zip(elsewhere[:3], owners[:3]))))
+                    f"{loc.where} ({_display_entity(loc, *o)})" for loc, o in pairs[:3])))
         for rule, items, summary, fix in (
                 ("table_row_cell_other_entity", other_entity,
                  "holds a value the results give for another row's entity",
@@ -956,7 +1002,8 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
 
 
 def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] | None = None,
-        tolerances: dict | None = None, passport: Path | None = None) -> ConsistencyReport:
+        tolerances: dict | None = None, passport: Path | None = None, root: Path | None = None) -> ConsistencyReport:
+    """The consistency pass; findings cite results files relative to root (default: the main file's folder)."""
     main = Path(main).resolve()
     if not main.is_file():
         raise FileNotFoundError(f"cannot read main file {main}")
@@ -964,7 +1011,7 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
     metric_keys = list(metric_keys or [])
     abstract, intro, rest, cells, names = _scan(main)
     body = intro + rest
-    results = load_results(results_dir, metric_keys) if results_dir else Results()
+    results = load_results(results_dir, metric_keys, root or main.parent) if results_dir else Results()
     findings: list[Finding] = []
     for part, numbers, against, where_text in (
             ("abstract", abstract, body, "the body"),
@@ -1094,7 +1141,7 @@ def run_recorded(root: Path, cfg: dict) -> tuple[ConsistencyReport, Path]:
     if inp["main"] is None or not inp["main"].is_file():
         raise FileNotFoundError(f"cannot read main file {inp['main'] or '(document.main not set)'}")
     rep = run(inp["main"], results_dir=inp["results_dir"], metric_keys=inp["metric_keys"],
-              tolerances=inp["tolerances"], passport=inp["passport"])
+              tolerances=inp["tolerances"], passport=inp["passport"], root=root)
     return rep, record_report(root, cfg, rep, inp["main"], inp["slug"])
 
 
@@ -1149,7 +1196,8 @@ def main(argv: list[str] | None = None) -> int:
         passport = None
 
     try:
-        rep = run(main_path, results_dir=results_dir, metric_keys=keys, tolerances=tolerances, passport=passport)
+        rep = run(main_path, results_dir=results_dir, metric_keys=keys, tolerances=tolerances, passport=passport,
+                  root=root)
     except (OSError, ValueError) as exc:
         return fail(str(exc))
 
