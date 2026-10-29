@@ -3,7 +3,8 @@
 
 Usage:
   python3 scripts/commit_gate.py [--root R] prepare [--json]
-  python3 scripts/commit_gate.py [--root R] override --reason R [--json]
+  python3 scripts/commit_gate.py [--root R] override (--reason R | --reason-file F) [--json]
+  python3 scripts/commit_gate.py check-override [--json] < message.txt
 
 prepare runs the gate check; every deterministic entry (compile, bib, consistency) that is missing or
 stale is produced again (scripts/compile.py, the structural part of scripts/validate_bib.py,
@@ -14,9 +15,13 @@ missing or stale (claims, proofread) are named with the skill that refreshes the
 
 override records a `commit anyway: <reason>` override for the failing required checks through
 scripts/gate.py; it is refused when the gate passes and after three consecutive overrides.
+--reason-file - reads the reason from stdin (safe for quotes, $ and backticks).
 
-Exit codes: 0 prepare PASS or override recorded, 1 prepare FAIL or INCOMPLETE, or override refused,
-2 usage error or unreadable input.
+check-override reads a user message on stdin and prints the override reason when a line of the
+message starts with `commit anyway: <reason>` (parse_override is the reference matcher).
+
+Exit codes: 0 prepare PASS, override recorded, or check-override found a reason; 1 prepare FAIL or
+INCOMPLETE, override refused, or no override phrase; 2 usage error or unreadable input.
 """
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ import validate_bib  # noqa: E402
 
 REFRESHED_HERE = ("compile", "bib", "consistency")
 NEXT_COMMAND = {"claims": "/ploma:verify-claims", "proofread": "/ploma:proofread"}
-_OVERRIDE_RE = re.compile(r"\bcommit\s+anyway\s*:[ \t]*(\S[^\r\n]*)", re.I)
+_OVERRIDE_RE = re.compile(r"^\s*commit\s+anyway\s*:\s*(\S.*)$", re.I | re.M)
 
 
 @dataclasses.dataclass
@@ -59,8 +64,13 @@ class GatePrep:
         return dataclasses.asdict(self)
 
 
+class OverrideRefused(gate.OverrideRefused):
+    """The gate passes, so there is nothing to override (CLI exit 1)."""
+
+
 def parse_override(message: str) -> str | None:
-    """The reason in a `commit anyway: <reason>` phrase (case-insensitive), or None without a reason."""
+    """The reference matcher: the reason of the first line that starts with `commit anyway: <reason>`
+    (case-insensitive, leading whitespace allowed), or None. Mid-line mentions never count."""
     m = _OVERRIDE_RE.search(message or "")
     if not m:
         return None
@@ -145,7 +155,7 @@ def override(root: Path, cfg: dict, reason: str) -> dict:
     """Record an override of the required checks that do not pass; ValueError when refused."""
     rep = gate.check(root, cfg)
     if rep.verdict == "PASS":
-        raise ValueError("the gate passes; nothing to override")
+        raise OverrideRefused("the gate passes; nothing to override")
     checks = [n for n in gate.REQUIRED
               if not (rep.checks[n]["present"] and rep.checks[n]["fresh"]
                       and rep.checks[n]["status"] in ("PASS", "WARN"))]
@@ -168,8 +178,12 @@ def main(argv: list[str] | None = None) -> int:
     prep_p = sub.add_parser("prepare", help="refresh missing or stale compile, bib, consistency; give the verdict")
     prep_p.add_argument("--json", action="store_true", dest="json_sub")
     ovr = sub.add_parser("override", help="record a commit anyway override")
-    ovr.add_argument("--reason", required=True)
+    src = ovr.add_mutually_exclusive_group(required=True)
+    src.add_argument("--reason", help="the override reason (manual use)")
+    src.add_argument("--reason-file", help="read the reason from this file; - for stdin")
     ovr.add_argument("--json", action="store_true", dest="json_sub")
+    chk = sub.add_parser("check-override", help="read a user message on stdin; print the override reason")
+    chk.add_argument("--json", action="store_true", dest="json_sub")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -178,6 +192,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_usage(sys.stderr)
         return 2
     as_json = args.json or args.json_sub
+    if args.action == "check-override":
+        reason = parse_override(sys.stdin.read())
+        if as_json:
+            print(json.dumps({"override": reason is not None, "reason": reason}))
+        else:
+            print(f"override reason: {reason}" if reason else "no override phrase")
+        return 0 if reason else 1
     root = Path(args.root)
     try:
         cfg = ploma_config.load(root)
@@ -185,11 +206,16 @@ def main(argv: list[str] | None = None) -> int:
         return _error(exc.message, as_json)
     if args.action == "override":
         try:
-            data = override(root, cfg, args.reason)
-        except ValueError as exc:
-            msg = str(exc)
-            refused = "consecutive" in msg or "nothing to override" in msg
-            return _error(msg, as_json, code=1 if refused else 2)
+            if args.reason_file is not None:
+                reason = sys.stdin.read() if args.reason_file == "-" else \
+                    Path(args.reason_file).read_text(encoding="utf-8")
+            else:
+                reason = args.reason
+            data = override(root, cfg, reason)
+        except gate.OverrideRefused as exc:
+            return _error(str(exc), as_json, code=1)
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            return _error(str(exc), as_json, code=2)
         last = data["overrides"][-1]
         if as_json:
             print(json.dumps({"override": last, "override_streak": data["override_streak"]}))

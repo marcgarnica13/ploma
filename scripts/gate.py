@@ -139,6 +139,10 @@ def reset_streak(root: Path, cfg: dict) -> dict:
     return data
 
 
+class OverrideRefused(ValueError):
+    """An override the gate refuses (consecutive-override cap reached); CLI exit 1, not a usage error."""
+
+
 def override(root: Path, cfg: dict, reason: str, checks: list[str]) -> dict:
     """Record a `commit anyway: <reason>` override; refused once the streak reaches the cap."""
     if not reason or not reason.strip():
@@ -146,7 +150,7 @@ def override(root: Path, cfg: dict, reason: str, checks: list[str]) -> dict:
     data = load(root, cfg)
     streak = int(data.get("override_streak") or 0)
     if streak >= MAX_CONSECUTIVE_OVERRIDES:
-        raise ValueError(f"{streak} consecutive overrides; a required check must pass before the next commit")
+        raise OverrideRefused(f"{streak} consecutive overrides; a required check must pass before the next commit")
     data["overrides"].append({"at": _now(), "reason": reason.strip(), "checks": list(checks)})
     data["override_streak"] = streak + 1
     _write(root, cfg, data)
@@ -268,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 data = override(root, cfg, args.reason, checks)
             except ValueError as exc:
-                return _error(str(exc), as_json, code=1 if "consecutive" in str(exc) else 2)
+                return _error(str(exc), as_json, code=1 if isinstance(exc, OverrideRefused) else 2)
             if as_json:
                 print(json.dumps({"override": data["overrides"][-1], "override_streak": data["override_streak"]}))
             else:

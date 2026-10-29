@@ -1,6 +1,6 @@
 ---
 name: analysis-pipeline
-description: Run, extend or debug this paper's analysis pipeline ({{ pipeline.language }}, run from {{ _derived.run_from }}) and produce results, tables and figures under {{ pipeline.outputs_dir }}. Starts with a pre-flight report of the configured pipeline facts, follows the declared stage chain, respects the env contract and the known gotchas, and has the code reviewed before results are presented. Use when the user asks to analyse data, run or rerun the pipeline, add an analysis step, or regenerate results for the paper.
+description: Run, extend or debug this paper's analysis pipeline and produce results, tables and figures in its results directory (language, run directory and results directory are listed in the skill from ploma.yaml). Starts with a pre-flight report of the configured pipeline facts, follows the declared stage chain, respects the env contract and the known gotchas, and has the code reviewed before results are presented. Use when the user asks to analyse data, run or rerun the pipeline, add an analysis step, or regenerate results for the paper.
 argument-hint: "[analysis goal, data source or stage]"
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Agent, Monitor
 ---

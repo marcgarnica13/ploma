@@ -680,7 +680,7 @@ def test_pipeline_skill_carries_the_configured_values(sample_paper, cfg):
               "Language: python", "## Pre-flight report", "ploma:code-reviewer", "Monitor", "run_in_background"):
         assert s in text, s
     fm = _yamlio.loads_yaml(text.split("\n---\n", 1)[0].removeprefix("---\n"))
-    assert fm["name"] == "analysis-pipeline" and "results" in fm["description"]
+    assert fm["name"] == "analysis-pipeline" and "results directory" in fm["description"]
     assert "{{" not in text and "}}" not in text
     assert not BANNED_RE.search(text) and not EM_DASH_RE.search(text)
 
@@ -710,3 +710,15 @@ def test_pipeline_stages_in_schema_and_defaults(tmp_path):
     assert ploma_config.DEFAULTS["pipeline"]["stages"] == []
     schema = json.loads(ploma_config.SCHEMA_PATH.read_text(encoding="utf-8"))
     assert schema["properties"]["pipeline"]["properties"]["stages"]["items"] == {"type": "string"}
+
+
+def test_pipeline_skill_frontmatter_survives_yaml_special_values(sample_paper, cfg):
+    """Config values never reach the frontmatter, so ': ' and ' #' in them cannot break it."""
+    import _yamlio
+    cfg["pipeline"].update(run_from="code: v2 #main", outputs_dir="out: x #y", language="r: 4 #lang")
+    text = {s.path: s.content for s in project_files.render_all(cfg, sample_paper)}[PIPELINE_SKILL]
+    head, body = text.split("\n---\n", 1)
+    fm = _yamlio.loads_yaml(head.removeprefix("---\n"))
+    assert fm["name"] == "analysis-pipeline" and fm["argument-hint"] == "[analysis goal, data source or stage]"
+    assert "code: v2 #main" not in head and "Run from: code: v2 #main" in body
+    assert "Results directory: out: x #y" in body and "Language: r: 4 #lang" in body
