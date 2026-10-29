@@ -21,7 +21,7 @@ This skill follows `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/cove.md`. Re
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ploma_config.py" --json
    ```
 
-2. The file or files to check exist and are readable. `<stem>` is the checked file's name without its extension (the main file's for a manuscript run). A manuscript run checks `document.main` with all its inputs (no file argument, or the main file named); any other file, a single section included, is a partial run.
+2. The file or files to check exist and are readable. `<stem>` is the checked file's name without its extension (the main file's for a manuscript run). A manuscript run checks document.main with all its \input files (no file argument, or the main file named); any other file, a single section included, is a partial run.
 3. Source pointers: every `--source`, plus the bibliography files in `build.bib_files`, plus any local copies of cited works the user names. With no pointer at all, say so and stop.
 
 ## Phase 1: Extract claims
@@ -109,7 +109,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" record claims <PASS|FAIL> --arti
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record verify-claims <PASS|WARN|FAIL> --artifact <outputs.dir>/verify_claims_<stem>.md
 ```
 
-Record the gate entry only for a manuscript run (the main file with all its inputs). A partial run (one section file, or a draft outside the manuscript) records the state event only and says so in the reply: "Partial run: claims gate entry not recorded." There is no flag that softens a HIGH-WARN. When the author judges a HIGH-WARN wrong, the commit gate override covers it: `commit anyway: <reason>` at `/ploma:commit`, which logs the reason.
+Record the gate entry only for a manuscript run (Pre-flight step 2). A partial run (one section file, or a draft outside the manuscript) records the state event only and says so in the reply: "Partial run: claims gate entry not recorded." There is no flag that softens a HIGH-WARN. A claims FAIL never blocks a commit: claims is a recommended gate check, so `/ploma:commit` shows it as a warning and goes on, with no override needed. Fix the HIGH-WARN entries, or leave them when the author judges them wrong, and run this skill again to refresh the entry.
 
 ## Reply
 

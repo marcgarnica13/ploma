@@ -459,7 +459,7 @@ def test_verify_claims_contract():
     assert "HIGH-WARN" in text and "never" in text.lower()
     assert "allowHighWarn" not in text and "--no-fail-closed" not in text
     assert "context: fork" not in text and "context=fork" not in text
-    assert "commit anyway" in text  # the gate override replaces the old opt-outs
+    assert "never blocks a commit" in text  # claims is recommended: a FAIL warns at /ploma:commit
     # Traces outcome rule: LOW never makes PARTIAL; MED does; HIGH fails.
     assert "**PASS**: 0 HIGH-WARN and 0 MED-WARN, whatever the LOW-WARN count." in text
     assert "**PARTIAL**: 0 HIGH-WARN and at least one MED-WARN." in text
@@ -1491,3 +1491,11 @@ def test_review_round_without_prior_simulated_round_points_to_respond():
     assert "/ploma:respond --audit" in phase0
     help_lines = [ln for ln in _skill("help").splitlines() if "--r<N>" in ln and "/ploma:respond --audit" in ln]
     assert len(help_lines) == 1 and "simulated" in help_lines[0]
+
+
+def test_verify_claims_fail_never_blocks_and_one_manuscript_run_definition():
+    text = _skill("verify-claims")
+    assert "commit anyway" not in text
+    assert "never blocks a commit" in text
+    assert text.count("document.main with all its \\input files") == 1
+    assert "all its inputs" not in text
