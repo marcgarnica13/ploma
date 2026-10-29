@@ -811,3 +811,28 @@ def test_docs_say_row_labels_must_use_entity_names(repo_root):
     skill = (repo_root / "skills" / "audit-reproducibility" / "SKILL.md").read_text(encoding="utf-8")
     assert "Row labels must therefore use the results' entity" in doc and '"BERT-L"' in doc
     assert "row labels use the results' entity names" in skill
+
+
+# ---------------------------------------------------------------- fix round 3: best cover only, distinct entries
+
+@pytest.mark.parametrize("keys_,labels", [(("model_a", "model_b"), ("Model A", "Model B")),
+                                          (("run_1", "run_2"), ("Run 1", "Run 2"))])
+def test_sibling_sharing_a_generic_word_is_another_entity(tmp_path, keys_, labels):
+    files = {"r.json": {keys_[0]: {"acc": 0.7}, keys_[1]: {"acc": 0.8}}}
+    rows = [f"{labels[0]} & 0.7 & 0.7", f"{labels[1]} & 0.8 & 0.8"]
+    main, res = _tables(tmp_path, [("Row & Acc & x", rows)], files)
+    assert _run(main, results_dir=res, metric_keys=["acc"]).verdict == "PASS"
+    main.write_text(main.read_text().replace(f"{labels[0]} & 0.7", f"{labels[0]} & 0.8"))
+    rep = _run(main, results_dir=res, metric_keys=["acc"])
+    f = next(f for f in rep.findings if f.id == f"consistency.table_row_cell_other_entity.{labels[0].replace(' ', '_')}")
+    assert f"({keys_[1]})" in f.observed
+
+
+def test_same_value_in_two_columns_gives_one_entry_per_cell(tmp_path):
+    rows = ["Alpha HM & 0.71 & 0.71", "Beta HM & 0.71 & 0.71"]
+    main, res = _tables(tmp_path, [("Run & Fitness & Score", rows)], MT)
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Alpha_HM")
+    entries = f.observed.split("; ")
+    assert len(entries) == len(set(entries)) == 2, entries
+    assert "Fitness" in entries[0] and "Score" in entries[1]

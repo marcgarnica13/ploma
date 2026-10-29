@@ -823,17 +823,29 @@ def _entity(label: str, located: list[Located]) -> tuple[list[bool], dict[tuple,
     return own, levels
 
 
-def _other_entity(loc: Located, label: str, levels: dict[tuple, set[str]]) -> str | None:
+def _other_entity(loc: Located, levels: dict[tuple, set[str]]) -> str | None:
     """The other entity a value belongs to: its name at a level where the row's own entity was named,
-    when that name differs. None for a value above the per-entity level or beside it (a shared count)."""
+    when that name is not one of the row's best-cover names (model_b is another entity for a row
+    "Model A" although it shares "model"). None for a value above the per-entity level or beside it (a
+    shared count)."""
     for level, name in loc.slots:
-        if level in levels and _norm(name) not in levels[level] and not _covers(name, label):
+        if level in levels and _norm(name) not in levels[level]:
             return name
     return None
 
 
 def _cell_list(items: list[tuple[dict, str]]) -> str:
-    return "; ".join(f"{c['raw']} ({_where(c)}) {note}" for c, note in items)
+    """One entry per distinct cell; the column header is added when two cells share value and line."""
+    seen: dict[tuple, int] = {}
+    for c, _ in items:
+        seen[(c["raw"], _where(c))] = seen.get((c["raw"], _where(c)), 0) + 1
+    out: list[str] = []
+    for c, note in items:
+        col = f", column {c.get('header')}" if seen[(c["raw"], _where(c))] > 1 and c.get("header") else ""
+        entry = f"{c['raw']} ({_where(c)}{col}) {note}"
+        if entry not in out:
+            out.append(entry)
+    return "; ".join(out)
 
 
 def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], tolerances: dict) -> list[Finding]:
@@ -897,7 +909,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                                             + f", which lacks '{'/'.join(sorted(want))}'"))
                 continue
             elsewhere = [loc for loc in located if _vkey(loc.value) in hits[i]]
-            owners = [_other_entity(loc, label, levels) for loc in elsewhere]
+            owners = [_other_entity(loc, levels) for loc in elsewhere]
             if elsewhere and all(owners):
                 other_entity.append((c, "matches only " + ", ".join(
                     f"{loc.where} ({o})" for loc, o in zip(elsewhere[:3], owners[:3]))))
