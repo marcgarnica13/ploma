@@ -12,6 +12,7 @@ from cite_lookup import LookupResult, default_cache_path, lookup, run
 
 API = Path(__file__).resolve().parent / "fixtures" / "api"
 CROSSREF_HIT = (API / "crossref_hit.json").read_text(encoding="utf-8")
+CROSSREF_SUBTITLE = (API / "crossref_subtitle.json").read_text(encoding="utf-8")
 CROSSREF_MISS = (API / "crossref_miss.json").read_text(encoding="utf-8")
 OPENALEX_HIT = (API / "openalex_hit.json").read_text(encoding="utf-8")
 S2_HIT = (API / "s2_hit.json").read_text(encoding="utf-8")
@@ -156,7 +157,8 @@ def test_run_persists_cache_and_reuses_it(tmp_path):
     path = tmp_path / "sub" / "c.json"
     fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, CROSSREF_HIT)})
     run([ENTRY_WITH_DOI], max_lookups=5, delay_s=0, cache_path=path, mailto="", keys={}, fetch=fetch)
-    assert json.loads(path.read_text())["doi:10.1/x"]["status"] == "verified"
+    record = json.loads(path.read_text())["doi:10.1/x"]
+    assert record["doi"]["hit"]["title"] == "Sequence Models for Event Logs" and "checked_at" in record
     calls = []
     out = run([ENTRY_WITH_DOI], max_lookups=0, delay_s=0, cache_path=path, mailto="", keys={},
               fetch=recording_fetch(calls))
@@ -272,3 +274,78 @@ def test_delay_only_between_network_calls(tmp_path, monkeypatch):
     run([ENTRY_WITH_DOI, ENTRY_NO_DOI], max_lookups=5, delay_s=0.5, cache_path=path, mailto="", keys={},
         fetch=recording_fetch([], miss_all=True))
     assert sleeps == [0.5, 0.5]                           # cache hit free; three title-search calls, two gaps
+
+
+# ---------------------------------------------------------------- fix round 1
+
+def _doi_entry(title: str, author: str = r"M{\"u}ller, Ana", year: str = "2021", doi: str = "10.1/x"):
+    return parse_bib(f"@article{{K, author = {{{author}}}, title = {{{title}}}, year = {year}, doi = {{{doi}}}}}")[0]
+
+
+def _work(**message) -> str:
+    return json.dumps({"status": "ok", "message": {"DOI": "10.1/x", **message}})
+
+
+def test_hit_without_author_or_year_is_verified():
+    fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=["Sequence Models for Event Logs"]))})
+    r = lookup(_doi_entry("Sequence Models for Event Logs"), fetch=fetch, cache={})
+    assert r.status == "verified", r.evidence
+
+
+def test_crossref_subtitle_is_joined_and_verified():
+    e = _doi_entry("Process Mining: Discovery, Conformance and Enhancement of Business Processes",
+                   author="van der Aalst, Wil", year="2011", doi="10.2/pm")
+    r = lookup(e, fetch=fake_fetch({"api.crossref.org/works/10.2/pm": (200, CROSSREF_SUBTITLE)}), cache={})
+    assert (r.status, r.source) == ("verified", "crossref"), r.evidence
+
+
+def test_bib_subtitle_against_bare_crossref_title_is_verified():
+    fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=["Deep Learning"],
+                                                                      issued={"date-parts": [[2021]]}))})
+    r = lookup(_doi_entry("Deep Learning: A Survey", author="Ana Muller"), fetch=fetch, cache={})
+    assert r.status == "verified", r.evidence
+
+
+def test_cached_facts_are_rejudged_after_bib_fix():
+    cache: dict = {}
+    bad = _doi_entry("Protein Folding in Yeast")
+    first = lookup(bad, fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, CROSSREF_HIT)}), cache=cache)
+    assert first.status == "mismatch"
+
+    def must_not_fetch(url, headers):
+        raise AssertionError(f"fetched {url}")
+    fixed = _doi_entry("Sequence Models for Event Logs")
+    assert lookup(fixed, fetch=must_not_fetch, cache=cache).status == "verified"
+
+
+def test_unexpected_shapes_count_as_source_failure():
+    empty = {"api.openalex.org": (200, OPENALEX_EMPTY), "api.semanticscholar.org": (200, S2_EMPTY)}
+    r = lookup(ENTRY_NO_DOI, fetch=fake_fetch({"api.crossref.org": (200, json.dumps({"message": {"items": ["x"]}})),
+                                               **empty}), cache={})
+    assert r.status == "missing"
+    r = lookup(_doi_entry("Sequence Models for Event Logs"),
+               fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=[None]))}), cache={})
+    assert r.status == "mismatch"                       # parsed as an empty title, no TypeError
+    for body in (_work(title=["Sequence Models for Event Logs"], author=["x"]), "not json", "[1, 2]"):
+        r = lookup(_doi_entry("Sequence Models for Event Logs"),
+                   fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, body), "api.crossref.org/works?": (503, ""),
+                                     "api.": (503, "")}), cache={})
+        assert r.status == "unreachable", body
+
+
+def test_run_survives_exception_per_entry_and_saves_cache(tmp_path):
+    def fetch(url, headers):
+        if "10.1/x" in url:
+            return (200, CROSSREF_HIT)
+        raise RuntimeError("boom")
+    path = tmp_path / "c.json"
+    out = run([ENTRY_NO_DOI, ENTRY_WITH_DOI], max_lookups=5, delay_s=0, cache_path=path, mailto="", keys={}, fetch=fetch)
+    assert out[0].status == "unreachable" and "boom" in out[0].evidence
+    assert out[1].status == "verified"
+    assert "doi:10.1/x" in json.loads(path.read_text())
+
+
+def test_html_tags_are_stripped_from_titles():
+    assert cite_lookup.norm_title("<i>In vivo</i> imaging of H<sub>2</sub>O") == "in vivo imaging of h2o"
+    fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=["<i>Sequence Models</i>"]))})
+    assert lookup(_doi_entry("Sequence Models"), fetch=fetch, cache={}).status == "verified"

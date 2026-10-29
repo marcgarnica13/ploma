@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "message-type": "work",
+  "message": {
+    "DOI": "10.2/pm",
+    "type": "book",
+    "title": ["Process Mining"],
+    "subtitle": ["Discovery, Conformance and Enhancement of Business Processes"],
+    "author": [{"given": "Wil", "family": "van der Aalst", "sequence": "first"}],
+    "issued": {"date-parts": [[2011]]}
+  }
+}

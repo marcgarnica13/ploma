@@ -36,7 +36,7 @@ TITLE_MISMATCH = 0.6
 CACHE_MAX_AGE = timedelta(days=90)
 USER_AGENT = "ploma/0.1"
 TIMEOUT_S = 10
-NOT_CACHED = {"unreachable", "skipped"}
+NOT_CACHED = {"unreachable", "skipped"}  # never cached, and a replay giving these refetches
 
 
 @dataclass
@@ -62,7 +62,8 @@ class _Hit:
 # ---------------------------------------------------------------- normalisation
 
 def _plain(text: str) -> str:
-    """Lowercase ASCII text with LaTeX commands, braces and accents removed; non-alphanumerics become spaces."""
+    """Lowercase ASCII text with HTML/JATS tags, LaTeX commands, braces and accents removed; non-alphanumerics become spaces."""
+    text = re.sub(r"<[^>]+>", "", str(text or ""))
     text = re.sub(r"\\[A-Za-z]+\s*|\\.", "", text)
     text = unicodedata.normalize("NFKD", text.replace("{", "").replace("}", ""))
     text = "".join(c for c in text if not unicodedata.combining(c)).lower()
@@ -97,15 +98,34 @@ def _year(text: str) -> int | None:
     return int(m.group(0)) if m else None
 
 
+def _main_title(title: str) -> str:
+    """Part of a title before the first colon or " - " (the whole title when there is neither)."""
+    return re.split(r":| - ", title, maxsplit=1)[0]
+
+
 def _ratio(a: str, b: str) -> float:
-    return difflib.SequenceMatcher(None, norm_title(a), norm_title(b)).ratio()
+    """Max of the full-title similarity and the similarity of the parts before the first colon (subtitles)."""
+    full = difflib.SequenceMatcher(None, norm_title(a), norm_title(b)).ratio()
+    ma, mb = norm_title(_main_title(a)), norm_title(_main_title(b))
+    main = difflib.SequenceMatcher(None, ma, mb).ratio() if ma and mb else 0.0
+    return max(full, main)
 
 
 # ---------------------------------------------------------------- response parsing
+# Parsers may raise on unexpected shapes; callers treat any exception as that source failing.
+
+def _first(value) -> str:
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    return value if isinstance(value, str) else ""
+
 
 def _crossref_item(item: dict) -> _Hit:
-    titles = item.get("title") or [""]
-    authors = [" ".join(p for p in (a.get("given", ""), a.get("family", "")) if p) or a.get("name", "")
+    title = _first(item.get("title"))
+    subtitle = _first(item.get("subtitle"))
+    if subtitle:
+        title = f"{title}: {subtitle}"
+    authors = [" ".join(p for p in (a.get("given") or "", a.get("family") or "") if p) or a.get("name") or ""
                for a in item.get("author") or []]
     year = None
     for k in ("issued", "published", "published-print", "published-online"):
@@ -113,7 +133,7 @@ def _crossref_item(item: dict) -> _Hit:
         if parts and parts[0] and parts[0][0]:
             year = int(parts[0][0])
             break
-    return _Hit(titles[0] if isinstance(titles, list) else str(titles), authors, year, _norm_doi(item.get("DOI", "")))
+    return _Hit(title, authors, year, _norm_doi(item.get("DOI") or ""))
 
 
 def _crossref_search(data: dict) -> list[_Hit]:
@@ -124,27 +144,36 @@ def _openalex(data: dict) -> list[_Hit]:
     out = []
     for r in data.get("results") or []:
         authors = [((a.get("author") or {}).get("display_name") or "") for a in r.get("authorships") or []]
-        out.append(_Hit(r.get("title") or r.get("display_name") or "", authors, r.get("publication_year"),
+        year = r.get("publication_year")
+        out.append(_Hit(r.get("title") or r.get("display_name") or "", authors, int(year) if year else None,
                         _norm_doi(r.get("doi") or "")))
     return out
 
 
 def _s2(data: dict) -> list[_Hit]:
-    return [_Hit(r.get("title") or "", [a.get("name") or "" for a in r.get("authors") or []], r.get("year"),
+    return [_Hit(r.get("title") or "", [a.get("name") or "" for a in r.get("authors") or []],
+                 int(r["year"]) if r.get("year") else None,
                  _norm_doi((r.get("externalIds") or {}).get("DOI") or "")) for r in data.get("data") or []]
+
+
+def _crossref_work(data: dict) -> _Hit | None:
+    message = data.get("message")
+    return _crossref_item(message) if isinstance(message, dict) else None
 
 
 # ---------------------------------------------------------------- matching
 
 def _judge(entry: Entry, hit: _Hit) -> tuple[float, list[str], str]:
-    """Title ratio, list of author/year problems, and an evidence string."""
+    """Title ratio, list of author/year problems, and an evidence string.
+
+    Author and year are checked only when both the entry and the hit carry them."""
     ratio = _ratio(entry.fields.get("title", ""), hit.title)
     problems = []
     fam = first_family(entry.fields.get("author", ""))
-    if fam and f" {fam} " not in f" {_plain(' '.join(hit.authors))} ":
-        problems.append(f"author {fam!r} not in {', '.join(hit.authors[:3]) or 'no authors'}")
+    if fam and hit.authors and f" {fam} " not in f" {_plain(' '.join(hit.authors))} ":
+        problems.append(f"author {fam!r} not in {', '.join(hit.authors[:3])}")
     year = _year(entry.fields.get("year") or entry.fields.get("date", ""))
-    if year is not None and (hit.year is None or abs(int(hit.year) - year) > 1):
+    if year is not None and hit.year is not None and abs(int(hit.year) - year) > 1:
         problems.append(f"year {year} vs {hit.year}")
     evidence = f"title {ratio:.2f} vs {hit.title!r}"
     if problems:
@@ -157,56 +186,90 @@ def _failed(status: int) -> bool:
     return status != 200 and status != 404
 
 
-def _get_json(fetch: Fetch, url: str, headers: dict) -> tuple[bool, dict | None]:
-    """(failed, data). data is None on 404 or empty; a body that is not JSON counts as a failure."""
-    status, body = fetch(url, headers)
-    if _failed(status):
-        return True, None
-    if status == 404 or not body:
-        return False, None
-    try:
-        data = json.loads(body)
-    except ValueError:
-        return True, None
-    return False, data if isinstance(data, dict) else None
-
-
 def _with(url: str, params: dict) -> str:
     params = {k: v for k, v in params.items() if v}
     return url + ("?" + urlencode(params, quote_via=quote) if params else "")
 
 
-def _title_sources(title: str, mailto: str, keys: dict) -> list[tuple[str, str, dict, Callable[[dict], list[_Hit]]]]:
-    s2_headers = {"x-api-key": keys["semantic_scholar"]} if keys.get("semantic_scholar") else {}
-    return [
-        ("crossref", _with("https://api.crossref.org/works",
-                           {"query.bibliographic": title, "rows": "3", "mailto": mailto}), {}, _crossref_search),
-        ("openalex", _with("https://api.openalex.org/works",
-                           {"search": title, "per-page": "3", "api_key": keys.get("openalex", ""), "mailto": mailto}),
-         {}, _openalex),
-        ("semantic_scholar", _with("https://api.semanticscholar.org/graph/v1/paper/search",
-                                   {"query": title, "limit": "3", "fields": "title,authors,year,externalIds"}),
-         s2_headers, _s2),
-    ]
+SOURCES = ("crossref", "openalex", "semantic_scholar")
+_PARSERS = {"crossref": _crossref_search, "openalex": _openalex, "semantic_scholar": _s2}
 
 
-def _title_search(entry: Entry, fetch: Fetch, mailto: str, keys: dict) -> LookupResult:
+def _search_request(name: str, title: str, mailto: str, keys: dict) -> tuple[str, dict]:
+    if name == "crossref":
+        return _with("https://api.crossref.org/works", {"query.bibliographic": title, "rows": "3", "mailto": mailto}), {}
+    if name == "openalex":
+        return _with("https://api.openalex.org/works", {"search": title, "per-page": "3",
+                                                        "api_key": keys.get("openalex", ""), "mailto": mailto}), {}
+    headers = {"x-api-key": keys["semantic_scholar"]} if keys.get("semantic_scholar") else {}
+    return _with("https://api.semanticscholar.org/graph/v1/paper/search",
+                 {"query": title, "limit": "3", "fields": "title,authors,year,externalIds"}), headers
+
+
+class _Incomplete(Exception):
+    """A cached record lacks a fact the judgement now needs; fall back to the network."""
+
+
+class _Facts:
+    """Raw API facts (hits or not-found or failed), fetched live and recorded, or replayed from a cache record.
+
+    Record shape: {"doi": {"failed": bool, "hit": hit-dict | None},
+                   "search": {source: {"failed": bool, "hits": [hit-dict, ...]}}}."""
+
+    def __init__(self, record: dict, *, fetch: Fetch | None = None, mailto: str = "", keys: dict | None = None):
+        self.record, self.fetch, self.mailto, self.keys = record, fetch, mailto, keys or {}
+
+    def _get(self, url: str, headers: dict, parse: Callable[[dict], object]) -> tuple[bool, object]:
+        status, body = self.fetch(url, headers)
+        if _failed(status):
+            return True, None
+        if status == 404 or not body:
+            return False, None
+        try:
+            data = json.loads(body)
+            return False, parse(data) if isinstance(data, dict) else None
+        except Exception:
+            return True, None  # not JSON or an unexpected shape: the source counts as failing
+
+    def doi(self, doi: str) -> tuple[bool, _Hit | None]:
+        if self.fetch is None:
+            fact = self.record.get("doi")
+            if not isinstance(fact, dict):
+                raise _Incomplete("doi")
+            return bool(fact["failed"]), _Hit(**fact["hit"]) if fact.get("hit") else None
+        url = _with("https://api.crossref.org/works/" + quote(doi, safe="/"), {"mailto": self.mailto})
+        failed, hit = self._get(url, {}, _crossref_work)
+        self.record["doi"] = {"failed": failed, "hit": asdict(hit) if hit else None}
+        return failed, hit
+
+    def search(self, name: str, title: str) -> tuple[bool, list[_Hit]]:
+        if self.fetch is None:
+            fact = (self.record.get("search") or {}).get(name)
+            if not isinstance(fact, dict):
+                raise _Incomplete(name)
+            return bool(fact["failed"]), [_Hit(**h) for h in fact.get("hits") or []]
+        url, headers = _search_request(name, title, self.mailto, self.keys)
+        failed, hits = self._get(url, headers, _PARSERS[name])
+        hits = hits or []
+        self.record.setdefault("search", {})[name] = {"failed": failed, "hits": [asdict(h) for h in hits]}
+        return failed, hits
+
+
+def _title_search(entry: Entry, facts: _Facts) -> LookupResult:
     title = query_title(entry.fields.get("title", ""))
     failures, best = 0, None
-    sources = _title_sources(title, mailto, keys)
-    for name, url, headers, parse in sources:
-        failed, data = _get_json(fetch, url, headers)
+    for name in SOURCES:
+        failed, hits = facts.search(name, title)
         if failed:
             failures += 1
             continue
-        hits = parse(data) if data else []
         judged = sorted((_judge(entry, h) + (h,) for h in hits), key=lambda t: t[0], reverse=True)
         if judged and judged[0][0] >= TITLE_MATCH:
             ratio, problems, evidence, hit = judged[0]
             return LookupResult(entry.key, "partial" if problems else "verified", name, evidence, hit.doi)
         if judged and (best is None or judged[0][0] > best[0]):
             best = (judged[0][0], name, judged[0][2])
-    if failures == len(sources):
+    if failures == len(SOURCES):
         return LookupResult(entry.key, "unreachable", "", "every source failed (network, rate limit or server error)")
     evidence = "no title match on any reachable source"
     if best:
@@ -214,12 +277,9 @@ def _title_search(entry: Entry, fetch: Fetch, mailto: str, keys: dict) -> Lookup
     return LookupResult(entry.key, "missing", "", evidence)
 
 
-def _doi_lookup(entry: Entry, doi: str, fetch: Fetch, mailto: str, keys: dict) -> LookupResult:
-    url = _with("https://api.crossref.org/works/" + quote(doi, safe="/"), {"mailto": mailto})
-    failed, data = _get_json(fetch, url, {})
-    message = (data or {}).get("message")
-    if not failed and isinstance(message, dict):
-        hit = _crossref_item(message)
+def _doi_lookup(entry: Entry, doi: str, facts: _Facts) -> LookupResult:
+    failed, hit = facts.doi(doi)
+    if not failed and hit is not None:
         if not entry.fields.get("title"):
             return LookupResult(entry.key, "partial", "crossref", f"DOI resolves to {hit.title!r}; entry has no title",
                                 hit.doi or doi)
@@ -236,12 +296,17 @@ def _doi_lookup(entry: Entry, doi: str, fetch: Fetch, mailto: str, keys: dict) -
     if not entry.fields.get("title"):
         status = "unreachable" if failed else "missing"
         return LookupResult(entry.key, status, "", f"{reason}; entry has no title", doi)
-    res = _title_search(entry, fetch, mailto, keys)
+    res = _title_search(entry, facts)
     if res.status == "verified" and not failed:
         res.status = "partial"  # the work exists, but the DOI in the entry does not resolve
     res.evidence = f"{reason} {doi}; {res.evidence}"
     res.doi = res.doi or doi
     return res
+
+
+def _resolve(entry: Entry, facts: _Facts) -> LookupResult:
+    doi = _norm_doi(entry.fields.get("doi", ""))
+    return _doi_lookup(entry, doi, facts) if doi else _title_search(entry, facts)
 
 
 # ---------------------------------------------------------------- cache
@@ -269,11 +334,15 @@ def _fresh(record: dict) -> bool:
 
 
 def _cached(entry: Entry, cache: dict) -> LookupResult | None:
+    """Judge ``entry`` afresh against the cached raw facts; None when absent, stale, incomplete or unreadable."""
     record = cache.get(cache_key(entry))
-    if not isinstance(record, dict) or not _fresh(record) or record.get("status") not in STATUSES:
+    if not isinstance(record, dict) or not _fresh(record):
         return None
-    return LookupResult(entry.key, record["status"], record.get("source", ""), record.get("evidence", ""),
-                        record.get("doi", ""))
+    try:
+        res = _resolve(entry, _Facts(record))
+    except Exception:  # _Incomplete, an old-format record, or a hand-edited one
+        return None
+    return None if res.status in NOT_CACHED else res
 
 
 def load_cache(path: Path) -> dict:
@@ -333,18 +402,16 @@ def default_fetch(url: str, headers: dict) -> tuple[int, str]:
 
 
 def lookup(entry: Entry, *, fetch: Fetch, mailto: str = "", keys: dict | None = None, cache: dict) -> LookupResult:
-    """Existence check for one entry, served from ``cache`` when fresh; definite results are stored in ``cache``."""
-    keys = keys or {}
+    """Existence check for one entry. Raw API facts are cached; the verdict is re-judged against the entry on every read."""
     ckey = cache_key(entry)
     if not ckey:
         return LookupResult(entry.key, "skipped", "", "entry has neither DOI nor title")
     hit = _cached(entry, cache)
     if hit is not None:
         return hit
-    doi = _norm_doi(entry.fields.get("doi", ""))
-    res = _doi_lookup(entry, doi, fetch, mailto, keys) if doi else _title_search(entry, fetch, mailto, keys)
+    record: dict = {}
+    res = _resolve(entry, _Facts(record, fetch=fetch, mailto=mailto, keys=keys))
     if res.status not in NOT_CACHED:
-        record = res.to_dict()
         record["checked_at"] = _now().isoformat()
         cache[ckey] = record
     return res
@@ -380,7 +447,10 @@ def run(entries: list[Entry], *, max_lookups: int, delay_s: float = 0.5, cache_p
                 results.append(LookupResult(entry.key, "skipped", "", f"over the lookup cap of {max_lookups} per run"))
                 continue
             used += 1
-        results.append(lookup(entry, fetch=net, mailto=mailto, keys=keys, cache=cache))
+        try:
+            results.append(lookup(entry, fetch=net, mailto=mailto, keys=keys, cache=cache))
+        except Exception as exc:  # one bad entry must not abort the run or lose the cache
+            results.append(LookupResult(entry.key, "unreachable", "", f"lookup error: {exc!r}"))
     save_cache(cache_path, cache)
     return results
 
