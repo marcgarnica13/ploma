@@ -398,7 +398,8 @@ def test_audit_reproducibility_contract():
     assert "Monitor" in text and "run_in_background" in text
     assert "AskUserQuestion" in text
     assert 'If the user picks "Report only", skip steps 2 to 4 entirely' in text
-    for rule in ("table_row_not_in_one_record", "table_check_uninformative", "placed_by_unkeyed_value"):
+    for rule in ("table_row_cell_other_entity", "table_cell_other_column", "table_check_uninformative",
+                 "placed_by_unkeyed_value"):
         assert rule in text, rule
     assert "Run this only when the passport file exists" in text
     # Tolerance numbers come from config and the limits rule, never restated here.

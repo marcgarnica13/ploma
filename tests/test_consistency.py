@@ -252,8 +252,8 @@ def test_table_cell_vs_results(sample_paper):
     res = sample_paper / "sections" / "results.tex"
     res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.85"))
     rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=["avg_fitness"])
-    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.Ours")
-    assert f.status == "WARN" and "0.85 (sections/results.tex:" in f.observed and "no results value" in f.observed
+    f = next(f for f in rep.findings if f.id == "consistency.table_cell_not_in_results.0.85")
+    assert f.status == "WARN" and "results.tex:" in f.observed
     assert rep.verdict == "WARN"
 
 
@@ -437,8 +437,8 @@ def test_wrong_cell_is_not_hidden_by_history_values(sample_paper):
     res = sample_paper / "sections" / "results.tex"
     res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.86"))
     rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=KEYS)
-    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.Ours")
-    assert f.status == "WARN" and "0.86" in f.observed and rep.verdict == "WARN"
+    f = next(f for f in rep.findings if f.id == "consistency.table_cell_not_in_results.0.86")
+    assert f.status == "WARN" and rep.verdict == "WARN"
     info = next(f for f in rep.findings if f.id == "consistency.placed_by_unkeyed_value.0.86")
     assert info.status == "INFO"
 
@@ -529,31 +529,30 @@ def test_team_table_matches_one_record_per_row(tmp_path):
     assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
 
 
-def test_cell_from_another_record_warns_row_not_in_one_record(tmp_path):
+def test_cell_from_another_entity_warns(tmp_path):
     main, res = _team_paper(tmp_path, a_gen="0.71")  # 0.71 is team B's generalization
     rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
-    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.A")
-    assert f.status == "WARN" and "0.71" in f.observed and "0.81" not in f.summary + f.observed.split(";")[0]
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.A")
+    assert f.status == "WARN" and "0.71" in f.summary and "teams.772" in f.observed
     assert rep.verdict == "WARN"
     assert not any(f.id.endswith((".B", ".C")) for f in rep.findings)
 
 
-def test_row_cell_matching_nothing_is_named_in_the_row_finding(tmp_path):
+def test_row_cell_matching_nothing_is_a_cell_finding(tmp_path):
     main, res = _team_paper(tmp_path, a_gen="0.55")
     rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
-    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.A")
-    assert "0.55" in f.observed and "no results value" in f.observed
+    assert "consistency.table_cell_not_in_results.0.55" in _ids(rep)
 
 
-def test_csv_row_is_one_record(tmp_path):
+def test_csv_row_string_cells_name_the_entity(tmp_path):
     main = tmp_path / "m.tex"
-    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\nA & 0.81 & 0.71 \\\\\n\\end{tabular}\n"
-                    "\\end{document}\n")
+    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\nA & 0.81 & 0.71 \\\\\nB & 0.79 & 0.74 \\\\\n"
+                    "\\end{tabular}\n\\end{document}\n")
     res = tmp_path / "res"
     res.mkdir()
     (res / "t.csv").write_text("team,fit,gen\nA,0.81,0.74\nB,0.79,0.71\n")
     rep = _run(main, results_dir=res, metric_keys=["fit", "gen"])
-    assert "consistency.table_row_not_in_one_record.A" in _ids(rep)
+    assert {"consistency.table_row_cell_other_entity.A", "consistency.table_row_cell_other_entity.B"} <= _ids(rep)
     (res / "t.csv").write_text("team,fit,gen\nA,0.81,0.71\nB,0.79,0.74\n")
     assert _run(main, results_dir=res, metric_keys=["fit", "gen"]).verdict == "PASS"
 
@@ -586,7 +585,7 @@ def test_dense_pool_makes_per_cell_check_uninformative(tmp_path):
     (res / "r.json").write_text(json.dumps({"score": [round(i / 100 + 0.001, 3) for i in range(80)]}))
     rep = _run(main, results_dir=res, metric_keys=["score"])
     f = next(f for f in rep.findings if f.id == "consistency.table_check_uninformative")
-    assert f.status == "INFO" and "79%" in f.summary + f.observed
+    assert f.status == "INFO" and "80%" in f.summary + f.observed  # 0.00 to 0.80 within 0.01 of a value
     text = consistency.render_report(rep, "m.tex")
     assert "numeric table cells match a results value" not in text
     assert "uninformative" in text
@@ -657,3 +656,85 @@ def test_passport_invalid_names_expected_type(tmp_path, sample_paper):
     p.write_text('paper: {slug: m}\nclaims:\n  - id: C1\n    claim: "0.81"\n    status: PASS\n    source_line: twelve\n')
     f = next(f for f in _run(sample_paper / "main.tex", passport=p).findings if f.id == "consistency.passport_invalid")
     assert "claims[0].source_line (claim C1) must be integer or null" in f.summary and "twelve" in f.summary
+
+
+# ---------------------------------------------------------------- R164: row label identifies the entity
+
+def _layout(tmp_path, files: dict, rows=("T1 & 0.74 & 0.62", "T2 & 0.71 & 0.58"),
+            header="Team & HM fitness & DFG fitness"):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\n" + header + " \\\\\n"
+                    + " \\\\\n".join(rows) + " \\\\\n\\end{tabular}\n\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    for name, content in files.items():
+        (res / name).write_text(content if isinstance(content, str) else json.dumps(content))
+    return main, res
+
+
+LAYOUTS = {
+    "two_files": {"hm.json": {"t1": {"fitness": 0.74}, "t2": {"fitness": 0.71}},
+                  "dfg.json": {"t1": {"fitness": 0.62}, "t2": {"fitness": 0.58}}},
+    "team_method": {"r.json": {"t1": {"hm": {"fitness": 0.74}, "dfg": {"fitness": 0.62}},
+                               "t2": {"hm": {"fitness": 0.71}, "dfg": {"fitness": 0.58}}}},
+    "method_team": {"r.json": {"hm": {"t1": {"fitness": 0.74}, "t2": {"fitness": 0.71}},
+                               "dfg": {"t1": {"fitness": 0.62}, "t2": {"fitness": 0.58}}}},
+    "long_csv": {"r.csv": "team,method,fitness\nt1,hm,0.74\nt1,dfg,0.62\nt2,hm,0.71\nt2,dfg,0.58\n"},
+}
+
+
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
+def test_correct_multi_method_layouts_pass(tmp_path, layout):
+    main, res = _layout(tmp_path, LAYOUTS[layout])
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+
+
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
+def test_value_from_another_team_warns(tmp_path, layout):
+    main, res = _layout(tmp_path, LAYOUTS[layout], rows=("T1 & 0.71 & 0.62", "T2 & 0.71 & 0.58"))
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    assert "consistency.table_row_cell_other_entity.T1" in _ids(rep), [(f.id, f.observed) for f in rep.findings]
+    assert not any(i.endswith(".T2") for i in _ids(rep))
+
+
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
+def test_value_from_the_same_teams_other_column_warns(tmp_path, layout):
+    """The field-test case: the HM cell holds the same team's DFG value."""
+    main, res = _layout(tmp_path, LAYOUTS[layout], rows=("T1 & 0.62 & 0.62", "T2 & 0.71 & 0.58"))
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    f = next(f for f in rep.findings if f.id == "consistency.table_cell_other_column.T1")
+    assert f.status == "WARN" and "0.62" in f.summary and "hm" in f.summary.lower()
+
+
+def test_named_records_and_global_counts(tmp_path):
+    files = {"r.json": [{"team": "Manchester City", "hm_precision": 0.55, "dfg_precision": 0.12},
+                        {"team": "Leeds", "hm_precision": 0.48, "dfg_precision": 0.31}],
+             "cfg.json": {"runs": 30}}
+    keys = ["hm_precision", "dfg_precision", "runs"]
+    main, res = _layout(tmp_path, files, rows=("Manchester City & 0.55 & 0.12 & 30", "Leeds & 0.48 & 0.31 & 30"),
+                        header="Team & HM precision & DFG precision & Runs")
+    assert _run(main, results_dir=res, metric_keys=keys).verdict == "PASS"
+    main.write_text(main.read_text().replace("City & 0.55", "City & 0.12"))
+    assert "consistency.table_cell_other_column.Manchester_City" in _ids(_run(main, results_dir=res, metric_keys=keys))
+
+
+def test_unknown_row_labels_fall_back_to_per_cell(tmp_path):
+    main, res = _layout(tmp_path, LAYOUTS["two_files"], rows=("Foo & 0.74 & 0.62", "Bar & 0.71 & 0.58"))
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    assert not any(f.status == "WARN" for f in rep.findings), [(f.id, f.observed) for f in rep.findings]
+
+
+def test_row_rule_needs_metric_keys(tmp_path):
+    main, res = _layout(tmp_path, LAYOUTS["two_files"], rows=("T1 & 0.71 & 0.62", "T2 & 0.71 & 0.58"))
+    assert not any(f.status == "WARN" for f in _run(main, results_dir=res, metric_keys=[]).findings)
+
+
+def test_density_counts_values_within_tolerance(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nX & 0.12 \\\\\n\\end{tabular}\n\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "r.json").write_text(json.dumps({"runs": [{"fit": round(0.03 * i, 2)} for i in range(34)]}))
+    rep = _run(main, results_dir=res, metric_keys=["fit"])
+    assert "consistency.table_check_uninformative" in _ids(rep)
