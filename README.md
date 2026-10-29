@@ -91,25 +91,20 @@ claude plugin validate .
 
 Tests need Python 3.10 or later and pytest. CI runs pytest on Python 3.10 and 3.12; `claude plugin validate .` runs locally, since the Claude CLI is not assumed in CI.
 
-## Running the evals
+## Testing
 
-Evals bill model calls. Run one case first and set a cost ceiling on any full run.
-
-Each case under `evals/` stages a clean copy of `examples/sample-paper` with its `scaffold.sh`, so the runner needs `--scaffold`, and the skills call their scripts through Bash, so it needs `--allow-tools 'Bash(python3 *)'`. Smoke run, one case, one run, no baseline arm:
+The maintainers test ploma with the pytest suite above plus headless field tests on real paper repos, without billed eval runs:
 
 ```
-claude plugin eval . --trust-plugin --scaffold --allow-tools 'Bash(python3 *)' --case <case-name> --runs 1 --ablation none --keep-temp
+cd <paper-repo>
+claude -p --plugin-dir /path/to/ploma "/ploma:doctor"
 ```
 
-Full run, with a cost ceiling:
+Swap in any skill. A field test passes when the skill's report and verdict match what a careful author would conclude about that repo.
 
-```
-claude plugin eval . --trust-plugin --scaffold --allow-tools 'Bash(python3 *)' --max-cost-usd 5
-```
+## Evals (optional, not run by the maintainers)
 
-`<case-name>` is the `name` in a case's `case.yaml` (for example `doctor-sample-paper`). Results go to `evals/results/`, which is gitignored. Without a TeX installation the compile case expects a correctly reported FAIL.
-
-On Ubuntu 23.10 or later the eval sandbox needs unprivileged user namespaces, which AppArmor restricts by default. Allow them with `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` (add it to `/etc/sysctl.d/` to keep it across reboots). The sandbox's network proxy also needs `socat` (`sudo apt install socat`).
+`evals/` holds one `claude plugin eval` case per skill, staged on `examples/sample-paper`. They bill model calls and are not part of the release process. If you run them, use `--scaffold --allow-tools 'Bash(python3 *)'`, one case at a time (`--case <name> --runs 1 --ablation none`), and a `--max-cost-usd` ceiling. On Ubuntu 23.10 or later the eval sandbox needs `kernel.apparmor_restrict_unprivileged_userns=0` and `socat`.
 
 ## Licence
 

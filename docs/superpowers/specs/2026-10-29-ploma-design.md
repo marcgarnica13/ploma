@@ -425,6 +425,7 @@ Tests run on r2d2 with `python3 -m pytest tests/`. Compile-dependent paths are c
 
 ## 14. Evals, validation, CI
 
+- Amended 2026-10-29 (R166): Marc decided billed `claude plugin eval` runs are never run, for release or smoke. Testing is pytest plus headless field tests on real paper repos (`claude -p --plugin-dir`). The eval cases stay in `evals/` as optional material for other users.
 - `evals/<skill>/prompt.md` plus graders for every skill: `tool_used: Skill` with the skill name, a `file_exists` grader for the report path where applicable, and an `llm` rubric from the skill's output contract. Cases run against `examples/sample-paper/`.
 - `claude plugin validate .` locally before every release; a GitHub Actions workflow runs pytest and a Python manifest validator (`tests/test_manifest.py`) on every push, since the Claude CLI is not assumed in CI.
 - Release: bump `version` in `plugin.json`, add a `CHANGELOG.md` entry, tag `ploma--v<version>`.

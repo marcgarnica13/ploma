@@ -80,10 +80,6 @@ On a host without SSH keys for GitHub, the first two lines set up HTTPS; with SS
 
 Update: `/plugin marketplace update ploma`, then `/reload-plugins`.
 
-## Evals
+## Testing
 
-Each skill has an eval case under `evals/`. Evals bill model calls, so run one case at a time unless you mean to spend more. Smoke run of one case:
-
-```
-claude plugin eval . --trust-plugin --scaffold --allow-tools 'Bash(python3 *)' --case <case-name> --runs 1 --ablation none
-```
+ploma is tested with `python3 -m pytest -q` and headless field tests (`claude -p --plugin-dir <ploma>` in a real paper repo). The `evals/` cases are optional and bill model calls; the maintainers do not run them.

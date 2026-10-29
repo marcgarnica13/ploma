@@ -246,6 +246,8 @@ Expected: no output
 - [ ] **Step 2: Full suite, validator, evals**
 
 Run: `python3 -m pytest -q && claude plugin validate . && claude plugin eval . --trust-plugin --max-cost-usd 20 --json /tmp/claude-1001/-home-mgarnica-papers/b4e0a978-aa5b-4d23-9754-bdfd063a6d19/scratchpad/evals-m2.json`
+
+> Superseded by R166: no billed eval runs. Run `python3 -m pytest -q && claude plugin validate .` and a headless field test instead.
 Expected: tests pass, validate clean, every case passes its `tool_used` grader
 
 - [ ] **Step 3: Tell `traces-16` the port is complete and wait for its confirmation that `extraction/` may go**
