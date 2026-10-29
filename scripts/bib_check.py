@@ -15,12 +15,16 @@ from pathlib import Path
 from _findings import FAIL, INFO, WARN, Finding, render
 
 SKIPPED_TYPES = {"comment", "preamble", "string"}
-NATBIB = {"citep", "citet", "citealp", "citealt", "citeauthor", "citeyear"}
-BIBLATEX = {"parencite", "textcite", "autocite", "Parencite", "Textcite", "Autocite"}
-CITE_COMMANDS = {"cite", "nocite"} | NATBIB | BIBLATEX
+# Style families for bib.cite_style_mix; everything else in CITE_COMMANDS is neutral.
+NATBIB = {"citep", "citet", "citealp", "citeyearpar", "Citep", "Citet", "Citealp"}
+BIBLATEX = {"parencite", "textcite", "autocite", "footcite", "smartcite", "supercite", "fullcite", "cites",
+            "Parencite", "Textcite", "Autocite", "Footcite", "Smartcite", "Cites"}
+NEUTRAL = {"cite", "nocite", "citealt", "citeauthor", "Citeauthor", "citeyear", "citenum", "citetitle"}
+CITE_COMMANDS = NEUTRAL | NATBIB | BIBLATEX
+MULTI_CITE = {"cites", "Cites"}  # every braced group after the command holds keys
 
-_CITE_RE = re.compile(r"\\(" + "|".join(sorted(CITE_COMMANDS, key=len, reverse=True))
-                      + r")\*?\s*((?:\[[^\]]*\]\s*)*)\{([^}]*)\}")
+_CMD_RE = re.compile(r"\\([A-Za-z]+)\*?")
+_ARG_RE = re.compile(r"\s*(?:\[([^\]]*)\]|\{([^}]*)\})")
 _INCLUDE_RE = re.compile(r"\\(?:input|include)\s*\{([^}]+)\}")
 _BIBLIO_RE = re.compile(r"\\bibliography\s*\{([^}]+)\}")
 _ADDBIB_RE = re.compile(r"\\addbibresource\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
@@ -179,16 +183,43 @@ def tex_sources(main: Path) -> list[Path]:
     return seen
 
 
+def _cite_groups(line: str) -> list[tuple[str, list[str]]]:
+    """(command, [key group, ...]) per citation command on a comment-stripped line.
+
+    Optional ``[...]`` arguments are skipped; ordinary commands take their first braced group,
+    multi-citation commands (``\\cites``) take every braced group that follows.
+    """
+    out = []
+    for m in _CMD_RE.finditer(line):
+        cmd = m.group(1)
+        if cmd not in CITE_COMMANDS:
+            continue
+        pos, groups = m.end(), []
+        while True:
+            a = _ARG_RE.match(line, pos)
+            if not a:
+                break
+            pos = a.end()
+            if a.group(2) is not None:
+                groups.append(a.group(2))
+                if cmd not in MULTI_CITE:
+                    break
+        if groups:
+            out.append((cmd, groups))
+    return out
+
+
 def _citations(tex_files: list[Path]) -> list[tuple[str, str, Path, int]]:
     """(command, key, path, line) for every citation outside comments."""
     out = []
     for path in tex_files:
         for n, line in enumerate(_code_lines(Path(path)), 1):
-            for cmd, _opts, keys in _CITE_RE.findall(line):
-                for key in keys.split(","):
-                    key = key.strip()
-                    if key:
-                        out.append((cmd, key, Path(path), n))
+            for cmd, groups in _cite_groups(line):
+                for keys in groups:
+                    for key in keys.split(","):
+                        key = key.strip()
+                        if key:
+                            out.append((cmd, key, Path(path), n))
     return out
 
 
@@ -252,8 +283,19 @@ def _norm_title(title: str) -> str:
 
 
 def check_entries(entries: list[Entry]) -> list[Finding]:
-    """Bib-only checks: duplicate DOIs and duplicate normalised titles (each later entry against the first)."""
+    """Bib-only checks: duplicate keys, duplicate DOIs and duplicate normalised titles (later entry against the first)."""
     findings: list[Finding] = []
+    seen_keys: set[str] = set()
+    reported: set[str] = set()
+    for e in entries:
+        if e.key in seen_keys and e.key not in reported:
+            reported.add(e.key)
+            findings.append(Finding(
+                f"bib.duplicate_key.{e.key}", WARN, f"key {e.key} is defined more than once",
+                observed=f"{sum(x.key == e.key for x in entries)} entries with key {e.key}",
+                remediation="keep one entry per key; BibTeX uses the first and ignores the rest",
+                group="bib"))
+        seen_keys.add(e.key)
     for fld, norm, kind in (("doi", _norm_doi, "doi"), ("title", _norm_title, "title")):
         first: dict[str, Entry] = {}
         for e in entries:
@@ -315,12 +357,11 @@ def check(main: Path, bib_files: list[Path]) -> list[Finding]:
     findings.extend(check_entries(entries))
 
     commands = {cmd for cmd, *_ in cites}
-    styles = [name for name, cmds in (("\\cite", {"cite"}), ("natbib", NATBIB), ("biblatex", BIBLATEX))
-              if commands & cmds]
-    if "\\cite" in styles and len(styles) > 1:
-        findings.append(Finding("bib.cite_style_mix", WARN, "plain \\cite mixed with " + " and ".join(styles[1:]) + " commands",
-                                observed=", ".join(sorted("\\" + c for c in commands - {"nocite"})),
-                                remediation="use one citation command family throughout", group="bib"))
+    natbib, biblatex = commands & NATBIB, commands & BIBLATEX
+    if natbib and biblatex:
+        findings.append(Finding("bib.cite_style_mix", WARN, "natbib and biblatex citation commands are mixed",
+                                observed=", ".join(sorted("\\" + c for c in natbib | biblatex)),
+                                remediation="use one citation package's commands throughout", group="bib"))
     return findings
 
 

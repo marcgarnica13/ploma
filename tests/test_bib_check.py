@@ -106,9 +106,39 @@ def test_declared_missing_bib_file_fails(sample_paper):
 
 
 def test_cite_style_mix(sample_paper):
-    (sample_paper / "sections/results.tex").write_text(r"\citep{Bradley1952}")
+    (sample_paper / "sections/results.tex").write_text(r"\citep{Bradley1952} \parencite{Elo1978}")
     ids = {f.id: f for f in check(sample_paper / "main.tex", [])}
     assert ids["bib.cite_style_mix"].status == WARN
+
+
+def test_plain_cite_with_biblatex_is_not_a_mix(sample_paper):
+    (sample_paper / "sections/results.tex").write_text(r"\parencite{Elo1978} \citeauthor{Elo1978}")
+    assert "bib.cite_style_mix" not in {f.id for f in check(sample_paper / "main.tex", [])}
+
+
+def test_citeyearpar_key_missing_fails(sample_paper):
+    (sample_paper / "sections/results.tex").write_text(r"as shown \citeyearpar{Ghost2001}")
+    ids = {f.id: f for f in check(sample_paper / "main.tex", [])}
+    assert ids["bib.missing.Ghost2001"].status == FAIL
+
+
+def test_extended_cite_commands(tmp_path):
+    t = tmp_path / "a.tex"
+    t.write_text(r"\cites[see][1]{a}[2]{b,c} \Citet{d} \footcite[p.~2]{e} \citenum{f} \supercite{g} "
+                 r"\Textcite{h} \citetitle{i} \smartcite{j} \fullcite{k} \Citealp{l} \citetext{no}")
+    assert set(cite_keys([t])) == set("abcdefghijkl")
+
+
+def test_duplicate_key_within_one_file():
+    text = "@misc{K, title = {One}}\n@misc{K, title = {Two}}\n@misc{K, title = {Three}}"
+    fs = [f for f in check_entries(parse_bib(text)) if f.id.startswith("bib.duplicate_key.")]
+    assert [(f.id, f.status) for f in fs] == [("bib.duplicate_key.K", WARN)]
+
+
+def test_duplicate_key_across_bib_files(sample_paper):
+    (sample_paper / "extra.bib").write_text("@book{Elo1978, title = {Another Book}, year = {1999}}\n")
+    ids = {f.id: f for f in check(sample_paper / "main.tex", [sample_paper / "extra.bib"])}
+    assert ids["bib.duplicate_key.Elo1978"].status == WARN
 
 
 def test_no_style_mix_on_plain_cite(sample_paper):
