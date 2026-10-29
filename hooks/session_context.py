@@ -95,7 +95,7 @@ def _status_block(root: Path, cfg: dict) -> str:
     lines = ["## ploma status"]
     try:
         import state
-        lines.append(state.render(state.load(root, cfg), cfg))
+        lines.append(state.render(state.load(root, cfg), cfg, root))
     except Exception as exc:  # noqa: BLE001
         lines.append(f"lifecycle state unavailable: {exc}")
     try:

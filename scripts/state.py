@@ -170,8 +170,21 @@ def _latest_for_stage(st: dict, stage: str) -> dict | None:
     return None
 
 
-def next_stage(st: dict, cfg: dict | None) -> dict:
-    """Recommend the next stage: repeat the current one unless its latest event passed, else advance."""
+def has_reports(cfg: dict | None, root: Path | None) -> bool:
+    """Whether reviews.glob (relative to the repo root) matches at least one file."""
+    pattern = (cfg or {}).get("reviews", {}).get("glob") if isinstance((cfg or {}).get("reviews"), dict) else None
+    if not isinstance(pattern, str) or not pattern.strip():
+        return False
+    base = Path(root) if root is not None else Path.cwd()
+    try:
+        return any(p.is_file() for p in base.glob(pattern))
+    except (OSError, ValueError, NotImplementedError):
+        return False
+
+
+def next_stage(st: dict, cfg: dict | None, root: Path | None = None) -> dict:
+    """Recommend the next stage: repeat the current one unless its latest event passed, else advance.
+    respond is recommended only when reviews.glob matches a file under root (default: cwd)."""
     current = st.get("stage")
     if current not in STAGES:
         if cfg is None:
@@ -183,10 +196,13 @@ def next_stage(st: dict, cfg: dict | None) -> dict:
     idx = STAGES.index(current)
     if idx == len(STAGES) - 1:
         return {"stage": "commit", "reason": "cycle complete"}
-    return {"stage": STAGES[idx + 1], "reason": f"{current} passed"}
+    nxt = STAGES[idx + 1]
+    if nxt == "respond" and not has_reports(cfg, root):
+        return {"stage": "commit", "reason": f"{current} passed; no referee reports match reviews.glob"}
+    return {"stage": nxt, "reason": f"{current} passed"}
 
 
-def render(st: dict, cfg: dict | None) -> str:
+def render(st: dict, cfg: dict | None, root: Path | None = None) -> str:
     """Short human summary (under 600 characters) for the SessionStart hook and /ploma:status."""
     lines = [f"ploma stage: {st.get('stage') or 'none'}"]
     events = _events(st)[-5:]
@@ -194,7 +210,7 @@ def render(st: dict, cfg: dict | None) -> str:
         lines.append("recent:")
         for ev in events:
             lines.append(f"- {ev.get('skill')} {ev.get('status')} {str(ev.get('at', ''))[:10]}")
-    rec = next_stage(st, cfg)
+    rec = next_stage(st, cfg, root)
     lines.append(f"next: {rec['stage']} ({rec['reason']})")
     text = "\n".join(lines)
     return text if len(text) < RENDER_LIMIT else text[:RENDER_LIMIT - 4] + "..."
@@ -257,10 +273,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         return _error(str(exc), as_json)
     if args.action == "next":
-        rec_ = next_stage(st, cfg)
+        rec_ = next_stage(st, cfg, root)
         print(json.dumps(rec_) if as_json else f"{rec_['stage']}: {rec_['reason']}")
         return 0
-    text = render(st, cfg)
+    text = render(st, cfg, root)
     print(json.dumps({"render": text, "state": st}, indent=2) if as_json else text)
     return 0
 

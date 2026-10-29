@@ -450,7 +450,7 @@ def _state(root: Path, cfg: dict) -> list[Finding]:
         out.append(_f(g, "next_stage", WARN, "the lifecycle state file is unreadable", observed=str(exc),
                       remediation="Fix or delete the state file; ploma starts a fresh one."))
         return out
-    nxt = state.next_stage(st, cfg)
+    nxt = state.next_stage(st, cfg, root)
     out.append(_f(g, "next_stage", INFO, f"next stage: {nxt['stage']}", observed=nxt["reason"]))
     return out
 

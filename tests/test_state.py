@@ -196,3 +196,22 @@ def test_round_increments_only_without_an_explicit_round(sample_paper, cfg):
     st = state.record(sample_paper, cfg, "respond", "PASS", round=1)
     st = state.record(sample_paper, cfg, "respond", "WARN", mode="audit")
     assert st["rounds"]["respond"] == 1 and st["events"][-1]["mode"] == "audit"
+
+
+# ---------------------------------------------------------------- respond needs referee reports
+
+def test_review_passed_goes_to_respond_only_with_reports(sample_paper, cfg):
+    st = state.record(sample_paper, cfg, "review", "PASS")
+    assert state.next_stage(st, cfg, root=sample_paper)["stage"] == "respond"  # review/review1.md exists
+    for p in (sample_paper / "review").glob("*.md"):
+        p.unlink()
+    rec = state.next_stage(st, cfg, root=sample_paper)
+    assert rec["stage"] == "commit" and "reviews.glob" in rec["reason"]
+    cfg["reviews"]["glob"] = None
+    assert state.next_stage(st, cfg, root=sample_paper)["stage"] == "commit"
+
+
+def test_render_skips_respond_without_reports(sample_paper, cfg):
+    st = state.record(sample_paper, cfg, "review", "PASS")
+    (sample_paper / "review" / "review1.md").unlink()
+    assert "next: commit" in state.render(st, cfg, root=sample_paper)
