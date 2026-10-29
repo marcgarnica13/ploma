@@ -318,3 +318,63 @@ def test_cli_json_and_exit_codes(onboarded_sample, tmp_path, capsys):
     out = capsys.readouterr().out
     assert out.startswith("Overall verdict: ")
     assert code == (1 if "NOT_READY" in out.splitlines()[0] else 0)
+
+
+def test_gate_fail_warns_and_incomplete_stays_info(onboarded_sample):
+    import gate
+    import ploma_config
+    cfg = ploma_config.load(onboarded_sample)
+    assert _by_id(_run(onboarded_sample), "state.gate").status == INFO
+    sha = gate.manuscript_sha(onboarded_sample, cfg)
+    out = onboarded_sample / "quality_reports" / "verdicts"
+    out.mkdir(parents=True)
+    entry = {"at": "2026-10-29T00:00:00Z", "artifact": "x", "manuscript_sha": sha}
+    (out / "commit-gate.json").write_text(json.dumps({
+        "checks": {"compile": dict(entry, status="FAIL"), "bib": dict(entry, status="PASS")},
+        "overrides": [], "override_streak": 0}), encoding="utf-8")
+    r = _run(onboarded_sample)
+    f = _by_id(r, "state.gate")
+    assert f.status == WARN and "compile" in f.summary
+    assert f.remediation == "fix the failing check and re-run it (e.g. /ploma:compile, /ploma:validate-bib)"
+    assert r.verdict == "READY_WITH_WARNINGS", r.render()
+
+
+def test_gate_error_keeps_other_state_findings(onboarded_sample, monkeypatch):
+    import gate
+
+    def boom(root, cfg):
+        raise OSError("cannot read sections/x.tex")
+    monkeypatch.setattr(gate, "manuscript_sha", boom)
+    r = _run(onboarded_sample)
+    f = _by_id(r, "state.gate")
+    assert f.status == WARN and "cannot read sections/x.tex" in f.observed
+    assert _by_id(r, "state.override_streak").status == PASS
+    assert _by_id(r, "state.next_stage").status == INFO
+
+
+def test_crash_in_blocking_groups_is_fail(onboarded_sample, monkeypatch):
+    def boom(*a, **k):
+        raise TypeError("unexpected shape")
+    for target, attr, group in ((doctor.ploma_config, "validate", "config"), (doctor, "_uses", "toolchain"),
+                                (doctor.bib_check, "check", "manuscript")):
+        with monkeypatch.context() as m:
+            m.setattr(target, attr, boom)
+            r = _run(onboarded_sample)
+            f = _by_id(r, f"{group}.error")
+            assert f.status == FAIL and f.observed == "TypeError: unexpected shape"
+            assert r.verdict == "NOT_READY"
+
+
+def test_crash_in_other_groups_is_warn(onboarded_sample, monkeypatch):
+    def boom(*a, **k):
+        raise TypeError("unexpected shape")
+    monkeypatch.setattr(doctor.inventory, "detect_legacy_harness", boom)
+    f = _by_id(_run(onboarded_sample), "legacy-harness.error")
+    assert f.status == WARN
+
+
+def test_missing_document_root_skips_pdf_freshness(onboarded_sample):
+    _set_cfg(onboarded_sample, 'root: "."', 'root: "paper"')
+    r = _run(onboarded_sample)
+    f = _by_id(r, "manuscript.pdf_fresh")
+    assert f.status == SKIP and f.summary == "document.root missing"

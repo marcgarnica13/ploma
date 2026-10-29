@@ -261,6 +261,9 @@ def _manuscript(root: Path, cfg: dict) -> list[Finding]:
     if pdf is None or not pdf.is_file():
         out.append(_f(g, "pdf_stale", WARN, "no compiled PDF", observed=f"missing: {_get(cfg, 'build.pdf')}",
                       remediation="Run /ploma:compile"))
+    elif not base.is_dir():
+        out.append(_f(g, "pdf_fresh", SKIP, "document.root missing",
+                      observed=f"document.root: {_get(cfg, 'document.root')}"))
     elif newest is not None and newest[0] > pdf.stat().st_mtime:
         out.append(_f(g, "pdf_stale", WARN, "the PDF is older than its sources",
                       observed=f"{newest[1].relative_to(base).as_posix()} changed after {_get(cfg, 'build.pdf')}",
@@ -344,27 +347,40 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
 def _state(root: Path, cfg: dict) -> list[Finding]:
     g = "state"
     out = []
+    streak: int | None = None
     try:
         rep = gate.check(root, cfg)
-    except ValueError as exc:
-        out.append(_f(g, "gate", WARN, "the commit gate file is unreadable", observed=str(exc),
+    except Exception as exc:  # unreadable gate file or a manuscript_sha error: report, keep the other checks
+        out.append(_f(g, "gate", WARN, "the commit gate could not be evaluated",
+                      observed=f"{type(exc).__name__}: {exc}",
                       remediation="Re-run /ploma:compile and /ploma:validate-bib to rewrite it."))
-        rep = None
-    if rep is not None:
+        try:
+            streak = int(gate.load(root, cfg).get("override_streak") or 0)
+        except Exception:
+            streak = None
+    else:
+        streak = rep.override_streak
         if rep.verdict == "PASS":
             out.append(_f(g, "gate", PASS, "commit gate verdict PASS and fresh for the current manuscript",
                           observed="; ".join(rep.warnings)))
+        elif rep.verdict == "FAIL":
+            failed = [r for r in rep.reasons if ": FAIL" in r]
+            out.append(_f(g, "gate", WARN, "commit gate verdict FAIL: "
+                          + ", ".join(r.split(":", 1)[0] for r in failed) + " failed",
+                          observed="; ".join(rep.reasons),
+                          remediation="fix the failing check and re-run it (e.g. /ploma:compile, /ploma:validate-bib)"))
         else:
             out.append(_f(g, "gate", INFO, f"commit gate verdict {rep.verdict}", observed="; ".join(rep.reasons),
                           remediation="Run the missing or stale checks (/ploma:compile, /ploma:validate-bib) "
                                       "before committing."))
-        if rep.override_streak >= 2:
-            out.append(_f(g, "override_streak", WARN, f"{rep.override_streak} consecutive gate overrides",
-                          observed=f"override_streak: {rep.override_streak}; the gate refuses at "
+    if streak is not None:
+        if streak >= 2:
+            out.append(_f(g, "override_streak", WARN, f"{streak} consecutive gate overrides",
+                          observed=f"override_streak: {streak}; the gate refuses at "
                                    f"{gate.MAX_CONSECUTIVE_OVERRIDES}",
                           remediation="Fix the failing checks instead of overriding the gate again."))
         else:
-            out.append(_f(g, "override_streak", PASS, f"override streak {rep.override_streak}"))
+            out.append(_f(g, "override_streak", PASS, f"override streak {streak}"))
     try:
         st = state.load(root, cfg)
     except ValueError as exc:
@@ -399,11 +415,16 @@ def _legacy(root: Path) -> list[Finding]:
 
 # ---------------------------------------------------------------- entry points
 
+# A crash in these groups could hide a FAIL, so it counts as one (Ruling R61).
+FAIL_ON_ERROR = ("config", "toolchain", "manuscript")
+
+
 def _guard(group: str, fn: Callable[[], list[Finding]]) -> list[Finding]:
     try:
         return fn()
     except Exception as exc:  # one broken group must not hide the others
-        return [_f(group, "error", WARN, "doctor could not complete this group",
+        status = FAIL if group in FAIL_ON_ERROR else WARN
+        return [_f(group, "error", status, "doctor could not complete this group",
                    observed=f"{type(exc).__name__}: {exc}",
                    remediation="Report this; the other groups are unaffected.")]
 
