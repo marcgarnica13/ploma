@@ -196,3 +196,79 @@ def test_cli_passes_keys_and_ignores_unsubstituted_placeholders(sample_paper, mo
                        "--openalex-key", "${user_config.openalex_api_key}"])
     assert seen["semantic"] is True and seen["mailto"] == "a@b.org"
     assert seen["keys"] == {"semantic_scholar": "S2"}
+
+
+def _doi_fetch(transform):
+    """Crossref answers DOI lookups with the sample entry as transformed; searches find nothing."""
+    entries = parse_bib((Path(__file__).resolve().parent.parent / "examples" / "sample-paper" / "refs.bib")
+                        .read_text(encoding="utf-8"))
+    by_doi = {e.fields["doi"].lower(): e for e in entries if e.fields.get("doi")}
+
+    def fetch(url, headers):
+        u = urlparse(url)
+        if u.netloc == "api.crossref.org" and u.path.startswith("/works/"):
+            e = by_doi.get(unquote(u.path[len("/works/"):]).lower())
+            return (200, json.dumps({"message": transform(_item(e))})) if e else (404, "")
+        return missing_fetch(url, headers)
+    return fetch
+
+
+def test_lookup_mismatch_is_fail(sample_paper, cfg, cache):
+    def other_work(item):
+        item["title"] = ["Deep Reinforcement Learning for Protein Folding Simulations"]
+        return item
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=_doi_fetch(other_work), cache_path=cache, delay_s=0)
+    assert _ids(rep)["bib.lookup.mismatch.Hunter2004"] == "FAIL"
+    assert rep.verdict == "FAIL"
+    assert gate.load(sample_paper, cfg)["checks"]["bib"]["status"] == "FAIL"
+
+
+def test_lookup_partial_is_warn(sample_paper, cfg, cache):
+    def wrong_year(item):
+        item["issued"] = {"date-parts": [[item["issued"]["date-parts"][0][0] + 6]]}
+        return item
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=_doi_fetch(wrong_year), cache_path=cache, delay_s=0)
+    ids = _ids(rep)
+    assert ids["bib.lookup.partial.Hunter2004"] == "WARN" and ids["bib.lookup.partial.Bradley1952"] == "WARN"
+    assert not any(k.startswith("bib.lookup.") and v == "FAIL" for k, v in ids.items() if "Elo1978" not in k)
+
+
+def _set_limit(root: Path, value: str):
+    import ploma_config
+    p = root / "ploma.yaml"
+    p.write_text(p.read_text(encoding="utf-8") + f"limits:\n  doi_lookups_per_run: {value}\n", encoding="utf-8")
+    return ploma_config.load(root)
+
+
+def test_zero_lookup_cap_means_no_lookups(sample_paper, cache):
+    """R89: an explicit 0 is not coerced to the default 50."""
+    cfg = _set_limit(sample_paper, "0")
+
+    def boom(url, headers):
+        raise AssertionError("network used")
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=boom, cache_path=cache, delay_s=0)
+    assert [r.status for r in rep.lookups] == ["skipped"] * 3 and rep.verdict == "PASS"
+
+
+def test_non_integer_lookup_cap_is_usage_error(sample_paper, capsys):
+    _set_limit(sample_paper, "lots")
+    assert validate_bib.main(["--root", str(sample_paper), "--semantic", "--skip-doi"]) == 2
+    assert "limits.doi_lookups_per_run" in capsys.readouterr().err
+
+
+def test_cache_defaults_under_root_without_plugin_data(sample_paper, cfg, tmp_path, monkeypatch):
+    """R86: CLAUDE_PLUGIN_DATA unset and cwd elsewhere: the cache lands in <root>/.ploma, not in cwd."""
+    monkeypatch.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    validate_bib.run(sample_paper, cfg, semantic=True, fetch=verifying_fetch(sample_paper / "refs.bib"), delay_s=0)
+    assert (sample_paper / ".ploma" / "cite_lookup.json").is_file()
+    assert not (elsewhere / ".ploma").exists()
+
+
+def test_cache_uses_plugin_data_when_set(sample_paper, cfg, tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "pdata"))
+    validate_bib.run(sample_paper, cfg, semantic=True, fetch=verifying_fetch(sample_paper / "refs.bib"), delay_s=0)
+    assert (tmp_path / "pdata" / "cache" / "cite_lookup.json").is_file()
+    assert not (sample_paper / ".ploma").exists()

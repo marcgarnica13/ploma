@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -43,7 +44,26 @@ _MISSING_TOOL = re.compile(r"^(?:make(?:\[\d+\])?: |(?:/bin/)?(?:ba|da)?sh: (?:l
                            r"(?:No such file or directory|not found|command not found)\s*$", re.M)
 _REFS_HEADING = re.compile(r"^\s*(?:\d+\.?\s+)?(?:references|bibliography)\s*$", re.I | re.M)
 
-_default_runner: Callable[..., Any] = subprocess.run
+def _group_runner(cmd: str | list[str], *, cwd: str, shell: bool = False, capture_output: bool = True,
+                  text: bool = True, timeout: float = TIMEOUT_S) -> subprocess.CompletedProcess:
+    """subprocess.run in a new session; on timeout the whole process group is killed and reaped,
+    so grandchildren (pdflatex under make, biber under latexmk) cannot outlive the report."""
+    pipe = subprocess.PIPE if capture_output else None
+    proc = subprocess.Popen(cmd, cwd=cwd, shell=shell, stdout=pipe, stderr=pipe, text=text,
+                            start_new_session=True)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        out, err = proc.communicate()
+        raise subprocess.TimeoutExpired(cmd, timeout, output=out, stderr=err) from None
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+
+_default_runner: Callable[..., Any] = _group_runner
 
 
 @dataclass
@@ -154,17 +174,18 @@ def _execute(runner: Callable[..., Any], cmd: str | list[str], shell: bool, cwd:
 
 # ---------------------------------------------------------------- pages
 
-def _body_pages(pdf: Path, total: int) -> tuple[int, str]:
-    """Pages up to and including the page where the references heading starts; total when not found."""
+def _body_pages(pdf: Path) -> tuple[int | None, str]:
+    """(pages up to and including the page where the references heading starts, note);
+    (None, why) when the start of the references cannot be located."""
     if not pdf_pages._which("pdftotext"):
-        return total, "references not located (pdftotext not found); total pages compared"
+        return None, "the start of the references could not be located (pdftotext not found)"
     try:
         text = pdf_pages._run(["pdftotext", "-layout", str(pdf), "-"])
     except (OSError, subprocess.SubprocessError):
-        return total, "references not located (pdftotext failed); total pages compared"
+        return None, "the start of the references could not be located (pdftotext failed)"
     found = [i for i, page in enumerate(text.split("\f"), 1) if _REFS_HEADING.search(page)]
     if not found:
-        return total, "references heading not found; total pages compared"
+        return None, "no References or Bibliography heading found in the PDF text"
     return found[-1], f"references start on page {found[-1]}; pages 1 to {found[-1]} compared"
 
 
@@ -180,9 +201,13 @@ def _pages(cfg: dict, pdf: Path, started: float, root: Path) -> tuple[int | None
             notes.append(f"the PDF at {pdf.name} is older than this build (left from a previous run)")
     except OSError:
         pass
-    counted = pages
+    counted: int | None = pages
     if budget is not None and not venue.get("page_budget_includes_refs", False):
-        counted, note = _body_pages(pdf, pages)
+        counted, note = _body_pages(pdf)
+        if counted is None:
+            # The budget excludes references and we cannot tell where they start: unverified, never FAIL (R83).
+            return pages, {"pages": pages, "budget": budget, "over_by": None, "status": "SKIP",
+                           "unverified": True, "reason": note, "total_pages": pages}, notes
         notes.append(note)
     report = pdf_pages.budget_report(counted, budget if isinstance(budget, int) else None)
     report["total_pages"] = pages
@@ -249,6 +274,9 @@ def _render(rep: CompileReport, cfg: dict, threshold: float) -> str:
     b = rep.budget
     if rep.pages is None:
         out.append(f"Page count unavailable: {b.get('reason', 'no PDF')}.")
+    elif b.get("unverified"):
+        out.append(f"{rep.pages} pages in total; page budget could not be checked: {b['reason']}. "
+                   f"The budget of {b['budget']} excludes references; run /ploma:format for the page map.")
     elif b.get("budget") is None:
         out.append(f"{rep.pages} pages; no page budget set (SKIP).")
     else:
@@ -309,6 +337,8 @@ def run(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, clea
         log_missing = f"log not found at {_rel(log_path, root)}" if log_path else "build.log is not set"
     else:
         try:
+            if log_path.stat().st_mtime < started - 1:
+                log_missing = f"log was not written by this build: {_rel(log_path, root)}"
             text = log_path.read_bytes().decode("utf-8", errors="replace")
             log_report = latex_log.parse_log(text, threshold)
         except OSError as exc:
@@ -352,6 +382,8 @@ def run(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, clea
 
     artifact = report_path.relative_to(root).as_posix() if root in report_path.parents else str(report_path)
     extras = {"pages": pages, "overfull": len(log_report.overfull), "undefined": n_undef}
+    if budget.get("unverified"):
+        extras["budget_unverified"] = True
     gate.record(root, cfg, "compile", status, artifact, **extras)
     state.record(root, cfg, "compile", status, artifact, **extras)
     return rep

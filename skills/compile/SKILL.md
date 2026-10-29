@@ -34,6 +34,7 @@ Read the report file. Quote its `**Status:**` line and its Pages vs budget line.
 - **Undefined.** List the undefined citation keys and the undefined reference labels.
 - **Overfull.** One line with the count above the threshold; name the worst box and its width.
 - **Rerun WARN.** One line: build again before submitting.
+- **Budget unchecked.** When the Pages vs budget line says the page budget could not be checked, quote it and point to /ploma:format; it is not a failure.
 
 ## 3. Rebuild, at most twice
 
@@ -47,5 +48,6 @@ End with one line, the first that applies:
 
 - errors remain: "Fix `<file>:<line>` and run /ploma:compile."
 - undefined citations: "Run /ploma:validate-bib to find the missing or misspelt keys."
+- undefined references (no errors): "Check the \label and \ref names, then run /ploma:compile."
 - over the page budget: "Run /ploma:format for the page map and a cut plan."
 - PASS: "Compile is clean. Run /ploma:validate-bib next."

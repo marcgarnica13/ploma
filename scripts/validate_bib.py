@@ -8,7 +8,8 @@ Structural: cite keys against entries in every resolved bib file, near misses, d
 entries, natbib/biblatex mixing (scripts/bib_check.py). Semantic adds a lookup of every cited entry
 (scripts/cite_lookup.py, at most limits.doi_lookups_per_run network lookups); --skip-doi leaves the
 lookups out. Writes <outputs.dir>/bib_audit_<structural|semantic>.md, records the "bib" gate entry
-and a state event. Only --semantic without --skip-doi uses the network.
+and a state event. Only --semantic without --skip-doi uses the network. Lookup cache: the plugin
+data dir when CLAUDE_PLUGIN_DATA is set, else <root>/.ploma/cite_lookup.json.
 
 Exit codes: 0 verdict PASS, 1 verdict FAIL, 2 usage error, unreadable ploma.yaml or main file.
 """
@@ -51,8 +52,29 @@ LOOKUP_FIX = {
 }
 
 
-class MainFileError(Exception):
+class UsageError(Exception):
+    """Bad input the user must fix (CLI exit 2)."""
+
+
+class MainFileError(UsageError):
     pass
+
+
+def lookup_cap(cfg: dict) -> int:
+    """limits.doi_lookups_per_run: absent or null means 50; 0 means no lookups; anything else must be an int >= 0."""
+    value = (cfg.get("limits") or {}).get("doi_lookups_per_run")
+    if value is None:
+        return 50
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise UsageError(f"limits.doi_lookups_per_run must be a whole number >= 0, got {value!r}")
+    return value
+
+
+def default_cache(root: Path) -> Path:
+    """The plugin data cache when CLAUDE_PLUGIN_DATA is set, else <root>/.ploma/cite_lookup.json (R86)."""
+    if os.environ.get("CLAUDE_PLUGIN_DATA"):
+        return cite_lookup.default_cache_path()
+    return Path(root) / ".ploma" / "cite_lookup.json"
 
 
 @dataclass
@@ -225,6 +247,7 @@ def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto
         keys: dict | None = None, fetch: cite_lookup.Fetch | None = None, cache_path: Path | None = None,
         delay_s: float = 0.5) -> BibReport:
     root = Path(root).resolve()
+    cap = lookup_cap(cfg)
     paths = ploma_config.resolve(cfg, root)["_paths"]
     main = Path(paths["main"]) if paths["main"] else None
     if main is None or not main.is_file():
@@ -252,9 +275,8 @@ def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto
                 findings.append(Finding(f"bib.no_doi.{e.key}", INFO, f"{e.key} has no DOI",
                                         remediation="add the DOI when the work has one", group="bib"))
         if not skip_doi:
-            cap = int(((cfg.get("limits") or {}).get("doi_lookups_per_run")) or 50)
             lookups = cite_lookup.run(targets, max_lookups=cap, delay_s=delay_s,
-                                      cache_path=cache_path or cite_lookup.default_cache_path(),
+                                      cache_path=cache_path or default_cache(root),
                                       mailto=mailto, keys=keys or {}, fetch=fetch)
             findings.extend(_lookup_findings(lookups, cited, root))
 
@@ -322,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
     mailto = _option(args.mailto, "CLAUDE_PLUGIN_OPTION_CROSSREF_MAILTO")
     try:
         rep = run(root, cfg, semantic=args.semantic, skip_doi=args.skip_doi, mailto=mailto, keys=keys)
-    except MainFileError as exc:
+    except UsageError as exc:
         return fail(str(exc))
     except (OSError, ValueError) as exc:
         return fail(f"cannot record the bib result: {exc}")

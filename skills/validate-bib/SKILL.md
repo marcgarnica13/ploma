@@ -23,13 +23,13 @@ Structural (no arguments):
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_bib.py"
 ```
 
-Semantic: add `--semantic`, plus `--skip-doi` when the arguments contain it, plus the user's lookup settings:
+Semantic: add `--semantic`, plus `--skip-doi` when the arguments contain it, plus the contact address for the polite pools:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_bib.py" --semantic --mailto "${user_config.crossref_mailto}" --openalex-key "${user_config.openalex_api_key}" --s2-key "${user_config.semantic_scholar_api_key}"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/validate_bib.py" --semantic --mailto "${user_config.crossref_mailto}"
 ```
 
-Pass nothing else from the arguments. An empty or unset setting is ignored by the script. Never print the API keys in the reply.
+Pass nothing else from the arguments. An empty mailto is ignored by the script. The OpenAlex and Semantic Scholar API keys are read by the script from the plugin's configured options; never type them into the conversation or the command.
 
 Exit 0 is verdict PASS, exit 1 is verdict FAIL (a result, not an error), exit 2 is a usage error, an unreadable `ploma.yaml` or a missing main file: quote the message and stop.
 

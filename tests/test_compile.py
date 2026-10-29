@@ -56,7 +56,7 @@ def test_clean_run_passes_and_records_gate_with_pages(sample_paper, cfg):
     runner = Runner(sample_paper)
     rep = compile_mod.run(sample_paper, cfg, runner=runner)
     assert rep.ok and rep.status == "PASS"
-    assert rep.pages == 3 and rep.budget["status"] == "PASS"
+    assert rep.pages == 3 and rep.budget["status"] == "SKIP" and rep.budget["unverified"]
     assert rep.returncode == 0
     cmd, kw = runner.calls[0]
     assert cmd == "make" and kw.get("shell") is True
@@ -97,6 +97,7 @@ def test_undefined_citation_fails_and_recommends_validate_bib(sample_paper, cfg)
 
 def test_over_budget_fails_with_over_by(sample_paper):
     _set_cfg(sample_paper, "page_budget: 8", "page_budget: 2")
+    _set_cfg(sample_paper, "page_budget_includes_refs: false", "page_budget_includes_refs: true")
     cfg = ploma_config.load(sample_paper)
     rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper))
     assert rep.status == "FAIL"
@@ -209,3 +210,62 @@ def test_budget_excludes_references_when_pdftotext_finds_them(sample_paper, monk
     rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper))
     assert rep.pages == 3 and rep.budget["pages"] == 2 and rep.budget["status"] == "PASS"
     assert rep.status == "PASS"
+
+
+def test_budget_unverified_when_references_cannot_be_located(sample_paper):
+    """R83: pdftotext absent, budget excludes references, total over budget: PASS, budget unverified."""
+    _set_cfg(sample_paper, "page_budget: 8", "page_budget: 2")
+    cfg = ploma_config.load(sample_paper)
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper))
+    assert rep.status == "PASS" and rep.pages == 3
+    assert rep.budget["unverified"] is True and rep.budget["status"] == "SKIP"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "3 pages in total; page budget could not be checked: " in text and "pdftotext not found" in text
+    assert gate.load(sample_paper, cfg)["checks"]["compile"]["budget_unverified"] is True
+    assert state.load(sample_paper, cfg)["events"][-1]["budget_unverified"] is True
+
+
+def test_budget_located_has_no_unverified_flag(sample_paper, cfg):
+    _set_cfg(sample_paper, "page_budget_includes_refs: false", "page_budget_includes_refs: true")
+    cfg = ploma_config.load(sample_paper)
+    compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper))
+    assert "budget_unverified" not in gate.load(sample_paper, cfg)["checks"]["compile"]
+
+
+def test_old_log_not_written_by_this_build_fails(sample_paper, cfg):
+    """R88: the build ran but left a log from an earlier run."""
+    import os
+    log = sample_paper / "main.log"
+    shutil.copyfile(FIXTURES / "logs" / "clean.log", log)
+    os.utime(log, (1_000_000_000, 1_000_000_000))
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log=None))
+    assert rep.status == "FAIL"
+    assert "log was not written by this build: main.log" in rep.report_path.read_text(encoding="utf-8")
+
+
+def test_default_runner_kills_the_process_group_on_timeout(tmp_path):
+    """Grandchildren (pdflatex under make) must not outlive a timed-out build."""
+    import os
+    import time
+    pidfile = tmp_path / "child.pid"
+    cmd = f"sleep 30 & echo $! > {pidfile}; wait"
+    started = time.time()
+    with pytest.raises(subprocess.TimeoutExpired):
+        compile_mod._group_runner(cmd, cwd=str(tmp_path), shell=True, capture_output=True, text=True, timeout=1)
+    assert time.time() - started < 10, "the runner waited for the orphaned child instead of killing it"
+    pid = int(pidfile.read_text().strip())
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(pid, 9)
+        pytest.fail("background child survived the timeout")
+
+
+def test_default_runner_returns_completed_process(tmp_path):
+    res = compile_mod._group_runner("echo hi; exit 3", cwd=str(tmp_path), shell=True, timeout=10)
+    assert res.returncode == 3 and res.stdout == "hi\n"
