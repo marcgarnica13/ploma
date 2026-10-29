@@ -8,7 +8,7 @@ import pytest
 
 import _yamlio
 import ploma_config
-from _findings import FAIL
+from _findings import FAIL, WARN
 
 FIXTURES = Path(__file__).parent / "fixtures" / "yaml"
 MINIMAL = (FIXTURES / "ploma_minimal.yaml").read_text()
@@ -121,7 +121,9 @@ def test_reviews_glob_prefix_checked(tmp_path):
     root = _minimal_repo(tmp_path)
     cfg = ploma_config.load(root)
     cfg["reviews"]["glob"] = "review/round*/*.md"
-    assert "config.path.reviews.glob" in _ids(cfg, root)
+    f = _ids(cfg, root)
+    assert f["config.path.reviews.glob"].status == WARN
+    assert f["config.path.reviews.glob"].observed == "review"
     (root / "review").mkdir()
     assert "config.path.reviews.glob" not in _ids(cfg, root)
     cfg["reviews"]["glob"] = "*.md"

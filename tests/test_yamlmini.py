@@ -44,3 +44,10 @@ def test_tab_indent_raises():
 def test_dump_round_trips_spec_example():
     data = _yamlmini.load(FIXTURE.read_text())
     assert _yamlmini.load(_yamlmini.dump(data)) == data
+
+
+@pytest.mark.parametrize("value", [">gt", ">= 0.5", "|pipe", "&amp", "*star", "!tag", "%pct", "@at", "`tick",
+                                   "- dash", "-", "a: b", "x #y", "", " pad", "yes", "1.5", "null", "2026-10-29"])
+def test_dump_round_trips_indicator_strings(value):
+    data = {"k": value, "l": [value], "m": {value or "e": value}}
+    assert _yamlmini.load(_yamlmini.dump(data)) == data

@@ -193,7 +193,13 @@ def validate(cfg: dict, root: Path) -> list[Finding]:
     root = Path(root)
     for key, rels in _input_paths(cfg):
         missing = [r for r in rels if not (root / r).exists()]
-        if missing:
+        if missing and key == "reviews.glob":
+            findings.append(Finding(f"config.path.{key}", WARN, "reviews.glob points into a directory that does not exist",
+                                    observed=", ".join(missing),
+                                    remediation="Create the reviews directory when referee reports arrive, "
+                                                "or fix or remove reviews.glob in ploma.yaml.",
+                                    group="config"))
+        elif missing:
             findings.append(Finding(f"config.path.{key}", FAIL, f"{key} points at a path that does not exist",
                                     observed=", ".join(missing),
                                     remediation=f"Fix {key} in ploma.yaml (paths are relative to the repo root).",

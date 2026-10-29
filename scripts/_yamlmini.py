@@ -14,7 +14,7 @@ _FLOAT = re.compile(r"^[-+]?([0-9][0-9_]*)?\.[0-9_]*([eE][-+][0-9]+)?$")
 _WORDS = {"true": True, "yes": True, "on": True, "false": False, "no": False, "off": False,
           "~": None, "null": None, ".inf": float("inf"), "+.inf": float("inf"),
           "-.inf": float("-inf"), ".nan": float("nan")}
-_PLAIN_OK = re.compile(r"^[A-Za-z0-9_./()+$^=~<>-][^:#\n]*$")
+_PLAIN_OK = re.compile(r"^[A-Za-z0-9_./()+$^=~<-][^:#\n]*$")  # no indicator may start a plain scalar
 _ESC = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "/": "/", "0": "\0"}
 _ANCHOR = "anchors, aliases and tags are not supported"
 _BAD_START = {"&": _ANCHOR, "*": _ANCHOR, "!": _ANCHOR, "|": "block scalars (| and >) are not supported",
