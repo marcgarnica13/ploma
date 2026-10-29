@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
 import doctor
+import ploma_config
 import project_files
 import receipt
 from _banned import BANNED_RE, EM_DASH_RE, LLNCS_RE
@@ -272,11 +274,31 @@ def test_gitignore_created_when_absent(sample_paper, cfg):
 
 def test_gitignore_coverage_rule():
     covers = project_files.gitignore_covers
-    for line in (".ploma/", ".ploma", "/.ploma/", "/.ploma", "  .ploma/  "):
+    for line in (".ploma/", ".ploma", "/.ploma/", "/.ploma", "  .ploma/  ", ".ploma/**", ".ploma/*", "/.ploma/**"):
         assert covers([line], ".ploma/"), line
-    for line in ("# .ploma/", "!.ploma/", ".ploma/*", "ploma/", "quality_reports/"):
+    for line in ("# .ploma/", "!.ploma/", "ploma/", "quality_reports/", ".ploma/x", "*.ploma"):
         assert not covers([line], ".ploma/"), line
-    assert not covers(["quality_reports/"], "quality_reports/session_logs/")
+    assert covers(["quality_reports/"], "quality_reports/session_logs/")
+
+
+def test_gitignore_ancestor_forms_cover():
+    covers = project_files.gitignore_covers
+    entry = "quality_reports/session_logs/"
+    for line in ("quality_reports", "quality_reports/", "/quality_reports", "quality_reports/**",
+                 "quality_reports/*", "/quality_reports/**", "quality_reports/session_logs/**",
+                 "quality_reports/session_logs"):
+        assert covers([line], entry), line
+    for line in ("!quality_reports/", "# quality_reports/", "quality_reports/session", "session_logs/",
+                 "reports/"):
+        assert not covers([line], entry), line
+    assert covers(["out/", "!keep"], "out/reports/.cache/")
+
+
+def test_gitignore_merge_leaves_covering_file_unchanged(sample_paper, cfg):
+    text = ".ploma/\nquality_reports/\n"
+    assert project_files.merge_gitignore(text, cfg) == text
+    (sample_paper / ".gitignore").write_text(text, encoding="utf-8")
+    assert _actions(sample_paper, cfg)[".gitignore"] == "unchanged"
 
 
 def test_settings_suggestion(cfg):
@@ -371,12 +393,111 @@ def test_claude_md_unbalanced_markers_warn(onboarded_sample):
 
 
 def test_gitignore_coverage_uses_shared_check(onboarded_sample):
-    (onboarded_sample / ".gitignore").write_text("/.ploma\nquality_reports/\n", encoding="utf-8")
+    (onboarded_sample / ".gitignore").write_text("/.ploma\nreports/\n", encoding="utf-8")
     f = _ids(_doctor(onboarded_sample))["project-files.gitignore"]
     assert f.status == WARN
     assert "quality_reports/session_logs/" in f.observed and ".ploma/" not in f.observed.split(": ", 1)[1]
 
 
+def test_doctor_gitignore_ancestor_dir_passes(onboarded_sample):
+    gi = onboarded_sample / ".gitignore"
+    gi.write_text(".ploma/\nquality_reports/\n", encoding="utf-8")
+    assert _ids(_doctor(onboarded_sample))["project-files.gitignore"].status == PASS
+    cfg = ploma_config.load(onboarded_sample)
+    assert project_files.merge_gitignore(gi.read_text(encoding="utf-8"), cfg) == gi.read_text(encoding="utf-8")
+
+
 def test_receipt_missing_is_info(onboarded_sample, cfg):
     receipt.path(onboarded_sample, cfg).unlink()
     assert _ids(_doctor(onboarded_sample))["project-files.receipt"].status == INFO
+
+
+# ---------------------------------------------------------------- fix round 1
+
+FENCED_PAIR = "```\n<!-- ploma:begin -->\nexample\n<!-- ploma:end -->\n```\n"
+
+
+def test_fenced_marker_pair_is_not_a_section(sample_paper, cfg):
+    claude = sample_paper / "CLAUDE.md"
+    claude.write_text("# Mine\n\n" + FENCED_PAIR, encoding="utf-8")
+    assert project_files.marker_span(claude.read_text(encoding="utf-8")) is None
+    _apply(sample_paper, cfg)
+    t = claude.read_text(encoding="utf-8")
+    section = (project_files.TEMPLATES / "claude-md-section.md").read_text(encoding="utf-8")
+    assert t == "# Mine\n\n" + FENCED_PAIR + "\n" + section
+
+
+def test_fenced_example_plus_real_pair_replaces_only_the_real_one(sample_paper, cfg):
+    claude = sample_paper / "CLAUDE.md"
+    tilde = FENCED_PAIR.replace("```", "~~~~")
+    claude.write_text("# Mine\n" + FENCED_PAIR + tilde + "<!-- ploma:begin -->\nold\n<!-- ploma:end -->\ntail\n",
+                      encoding="utf-8")
+    _apply(sample_paper, cfg)
+    t = claude.read_text(encoding="utf-8")
+    section = (project_files.TEMPLATES / "claude-md-section.md").read_text(encoding="utf-8")
+    assert t == "# Mine\n" + FENCED_PAIR + tilde + section + "tail\n"
+
+
+def test_unclosed_fence_hides_markers_after_it():
+    assert project_files.marker_span("```\n<!-- ploma:begin -->\n<!-- ploma:end -->\n") is None
+    assert project_files.marker_span("```\nx\n```\n<!-- ploma:begin -->\n<!-- ploma:end -->\n") == (3, 4)
+
+
+def test_created_once_appearing_between_plan_and_apply_survives(sample_paper, cfg):
+    rows = project_files.plan(sample_paper, cfg)
+    assert next(r for r in rows if r["path"] == "quality_reports/learnings.md")["action"] == "create"
+    led = sample_paper / "quality_reports" / "learnings.md"
+    led.parent.mkdir()
+    led.write_text("written meanwhile\n", encoding="utf-8")
+    result = project_files.apply(sample_paper, cfg, rows)
+    assert led.read_text(encoding="utf-8") == "written meanwhile\n"
+    assert next(r for r in result if r["path"] == "quality_reports/learnings.md")["written"] is False
+    assert next(r for r in result if r["path"] == "quality_reports/README.md")["written"] is True
+
+
+@pytest.mark.parametrize("bad", ["/tmp/reports", "../reports", "reports/../../x", "C:\\reports"])
+def test_outputs_dir_outside_repo_is_rejected_before_writing(sample_paper, cfg, bad):
+    good_plan = project_files.plan(sample_paper, cfg)
+    before = sorted(p.relative_to(sample_paper).as_posix() for p in sample_paper.rglob("*"))
+    cfg["outputs"]["dir"] = bad
+    with pytest.raises(ValueError, match="outputs.dir"):
+        project_files.plan(sample_paper, cfg)
+    with pytest.raises(ValueError, match=re.escape(repr(bad))):
+        project_files.apply(sample_paper, cfg, good_plan)
+    assert sorted(p.relative_to(sample_paper).as_posix() for p in sample_paper.rglob("*")) == before
+
+
+def _disable_pipeline(root):
+    p = root / "ploma.yaml"
+    p.write_text(p.read_text(encoding="utf-8").replace("enabled: true", "enabled: false"), encoding="utf-8")
+    return ploma_config.load(root)
+
+
+def test_stale_generated_pipeline_rule_is_removed(onboarded_sample):
+    cfg = _disable_pipeline(onboarded_sample)
+    row = next(r for r in project_files.plan(onboarded_sample, cfg) if r["path"] == PIPELINE)
+    assert row["action"] == "remove" and row["mode"] == "enforced" and row["diff"]
+    assert (onboarded_sample / PIPELINE).is_file()  # plan writes nothing
+    result = _apply(onboarded_sample, cfg)
+    assert next(r for r in result if r["path"] == PIPELINE)["written"] is True
+    assert not (onboarded_sample / PIPELINE).exists()
+    assert PIPELINE not in {f["path"] for f in receipt.load(onboarded_sample, cfg)["files"]}
+    assert {r["action"] for r in project_files.plan(onboarded_sample, cfg)} == {"unchanged"}
+
+
+def test_pipeline_rule_without_marker_is_left_alone(onboarded_sample):
+    cfg = _disable_pipeline(onboarded_sample)
+    (onboarded_sample / PIPELINE).write_text("---\npaths:\n  - \"**\"\n---\nmy own rule\n", encoding="utf-8")
+    row = next(r for r in project_files.plan(onboarded_sample, cfg) if r["path"] == PIPELINE)
+    assert row["action"] == "skip_hand_edited"
+    _apply(onboarded_sample, cfg)
+    assert (onboarded_sample / PIPELINE).read_text(encoding="utf-8").endswith("my own rule\n")
+    assert not any(i.startswith("project-files.stale") for i in _ids(_doctor(onboarded_sample)))
+
+
+def test_stale_pipeline_rule_is_doctor_warn(onboarded_sample):
+    _disable_pipeline(onboarded_sample)
+    r = _doctor(onboarded_sample)
+    f = _ids(r)[f"project-files.stale.{PIPELINE}"]
+    assert f.status == WARN and f.remediation == "Re-run /ploma:onboard"
+    assert "project-files.rules" not in _ids(r)

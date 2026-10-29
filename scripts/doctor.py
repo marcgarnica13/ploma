@@ -298,6 +298,14 @@ def _drift_excerpt(diff: str, limit: int = 6) -> str:
     return "; ".join(body[:limit]) + (f" (and {more} more changed lines)" if more > 0 else "")
 
 
+def _gitignore_finding(g: str, missing: list[str]) -> Finding:
+    if missing:
+        return _f(g, "gitignore", WARN, ".gitignore does not cover ploma's local state",
+                  observed="not ignored: " + ", ".join(missing),
+                  remediation="Add these lines to .gitignore (or re-run /ploma:onboard): " + ", ".join(missing))
+    return _f(g, "gitignore", PASS, ".gitignore covers .ploma/, session logs and caches")
+
+
 def _project_files(root: Path, cfg: dict) -> list[Finding]:
     g = "project-files"
     out = []
@@ -329,8 +337,20 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
                               observed=_drift_excerpt(diff),
                               remediation="Re-run /ploma:onboard to regenerate it; change ploma.yaml, "
                                           "not the generated file."))
+        stale = root / project_files.PIPELINE_RULE
+        if _get(cfg, "pipeline.enabled") is not True and stale.is_file():
+            try:
+                generated = project_files.has_generated_marker(stale.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                generated = False
+            if generated:
+                bad += 1
+                out.append(_f(g, f"stale.{project_files.PIPELINE_RULE}", WARN,
+                              "a generated pipeline rule remains although pipeline.enabled is false",
+                              observed=f"present: {project_files.PIPELINE_RULE}",
+                              remediation="Re-run /ploma:onboard"))
         if not bad:
-            n = sum(s.mode == "enforced" for s in specs)
+            n = len(specs)
             out.append(_f(g, "rules", PASS, f"{n} generated rules match ploma.yaml"))
     try:
         claude = (root / "CLAUDE.md").read_text(encoding="utf-8") if (root / "CLAUDE.md").is_file() else None
@@ -348,12 +368,14 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
         lines = gi.read_text(encoding="utf-8").splitlines() if gi.is_file() else []
     except (OSError, UnicodeDecodeError):
         lines = []
-    missing = project_files.gitignore_missing(lines, cfg)
-    out.append(_f(g, "gitignore", WARN, ".gitignore does not cover ploma's local state",
-                  observed="not ignored: " + ", ".join(missing),
-                  remediation="Add these lines to .gitignore (or re-run /ploma:onboard): " + ", ".join(missing))
-               if missing else
-               _f(g, "gitignore", PASS, ".gitignore covers .ploma/, session logs and caches"))
+    try:
+        missing = project_files.gitignore_missing(lines, cfg)
+    except ValueError as exc:  # outputs.dir outside the repo
+        out.append(_f(g, "gitignore", WARN, "cannot check .gitignore coverage", observed=str(exc),
+                      remediation="Set outputs.dir to a path inside the repo in ploma.yaml."))
+        missing = None
+    if missing is not None:
+        out.append(_gitignore_finding(g, missing))
     try:
         data = receipt.load(root, cfg)
     except ValueError as exc:
