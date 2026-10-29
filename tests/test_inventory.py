@@ -56,7 +56,7 @@ def test_proposal_validates_on_sample(sample_paper):
     prop = inventory.propose_config(inv)
     assert prop["ploma"] == "0.1"
     assert prop["document"] == {"type": "paper", "main": "main.tex", "root": ".", "title": "A Method for Ranking Things",
-                                "slug": "main", "anonymized": True}
+                                "slug": "main", "anonymized": True, "discipline": "generic"}
     assert prop["build"]["command"] == "make" and prop["build"]["bib_files"] == ["refs.bib"]
     assert prop["build"]["pdf"] == "main.pdf" and prop["build"]["log"] == "main.log"
     assert prop["venue"] == {"profile": "generic-journal", "doc_class": "article", "page_budget": None,
@@ -449,3 +449,31 @@ def test_metric_keys_none_plausible_recommends_nothing(tmp_path):
     g = _gaps(_pipeline_repo(tmp_path, {"config.json": cfg}))["pipeline.metric_keys"]
     assert g["recommended"] == [] and g["options"] == []
     assert "could not" in g["question"].lower()
+
+
+def test_discipline_gap_generic_for_plain_article(sample_paper):
+    """R127 D4: onboard proposes document.discipline; a plain article without a pipeline gets generic."""
+    inv = inventory.inventory(sample_paper, home=sample_paper / "nohome")
+    g = _gaps(inv)["document.discipline"]
+    assert g["recommended"] == "generic" and g["options"][0] == "generic"
+    assert set(g["options"]) == {"generic", "ml", "social-science"}
+    assert inventory.propose_config(inv)["document"]["discipline"] == "generic"
+
+
+def test_discipline_gap_ml_for_ml_venue(tmp_path):
+    shutil.copy(FIX_TEX / "llncs_main.tex", tmp_path / "paper.tex")
+    inv = inventory.inventory(tmp_path)
+    g = _gaps(inv)["document.discipline"]
+    assert g["recommended"] == "ml" and g["options"][0] == "ml"
+    assert inventory.propose_config(inv)["document"]["discipline"] == "ml"
+
+
+def test_discipline_ml_for_python_pipeline(tmp_path):
+    inv = _pipeline_repo(tmp_path, {"m.json": {"f1": 0.5}})
+    assert _gaps(inv)["document.discipline"]["recommended"] == "ml"
+
+
+def test_ml_venue_names():
+    assert inventory._ml_venue("springer-ml") and inventory._ml_venue("llncs-conference")
+    assert inventory._ml_venue("neurips-2026") and inventory._ml_venue("ICLR") and inventory._ml_venue("deep-learning-ws")
+    assert not inventory._ml_venue("generic-journal") and not inventory._ml_venue(None)

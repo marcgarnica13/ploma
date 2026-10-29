@@ -514,6 +514,24 @@ def _venue_options(doc_class: str | None, root: Path | None = None) -> list[str]
     return list(dict.fromkeys(opts))
 
 
+_ML_VENUES = {"springer-ml", "llncs-conference"}
+_ML_WORDS = ("learning", "neurips", "icml", "iclr")
+
+
+def _ml_venue(venue: str | None) -> bool:
+    name = (venue or "").lower()
+    return name in _ML_VENUES or any(w in name for w in _ML_WORDS)
+
+
+def _discipline_options(inv: dict, venue: str | None) -> list[str]:
+    """Discipline keys, recommended first: ml for an ML venue or a Python pipeline with results, else generic (R127 D4)."""
+    code = inv.get("code") or {}
+    ml = _ml_venue(venue) or (code.get("language") == "python" and bool(inv.get("results_dir")))
+    rec = "ml" if ml else "generic"
+    keys = profiles.list_disciplines(_inv_root(inv))
+    return [rec] + [k for k in keys if k != rec]
+
+
 def propose_config(inv: dict) -> dict:
     """The ploma.yaml proposal. Unknown values are omitted; venue.page_budget stays null."""
     main = inv.get("main")
@@ -527,6 +545,8 @@ def propose_config(inv: dict) -> dict:
         # document.slug must match ^[A-Za-z0-9._-]+$ (it names report files).
         document["slug"] = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(main).stem).strip("-") or "paper"
     document["anonymized"] = bool(inv.get("anonymized"))
+    venue_profile = _venue_options(inv.get("doc_class"), _inv_root(inv))[0]
+    document["discipline"] = _discipline_options(inv, venue_profile)[0]
 
     b = inv.get("build") or {}
     build: dict[str, Any] = {}
@@ -543,7 +563,7 @@ def propose_config(inv: dict) -> dict:
         build["pdf"] = posixpath.normpath(posixpath.join(cwd, stem + ".pdf"))
         build["log"] = posixpath.normpath(posixpath.join(cwd, stem + ".log"))
 
-    venue: dict[str, Any] = {"profile": _venue_options(inv.get("doc_class"), _inv_root(inv))[0]}
+    venue: dict[str, Any] = {"profile": venue_profile}
     if inv.get("doc_class"):
         venue["doc_class"] = inv["doc_class"]
     venue["page_budget"] = None
@@ -588,6 +608,10 @@ def gaps(inv: dict, proposal: dict) -> list[dict]:
                 "includes_refs": {"key": "venue.page_budget_includes_refs", "recommended": False,
                                   "options": [{"value": False, "label": "references do not count toward the limit"},
                                               {"value": True, "label": "references count toward the limit"}]}})
+    disciplines = _discipline_options(inv, (proposal.get("venue") or {}).get("profile") or opts[0])
+    out.append({"key": "document.discipline",
+                "question": "Which discipline card should referees and checks use for this paper?",
+                "recommended": disciplines[0], "options": disciplines})
     if inv.get("code"):
         out.append({"key": "pipeline.enabled",
                     "question": f"Is the code tree in {inv['code']['dir']} the pipeline that produces this paper's numbers?",
