@@ -722,3 +722,17 @@ def test_pipeline_skill_frontmatter_survives_yaml_special_values(sample_paper, c
     assert fm["name"] == "analysis-pipeline" and fm["argument-hint"] == "[analysis goal, data source or stage]"
     assert "code: v2 #main" not in head and "Run from: code: v2 #main" in body
     assert "Results directory: out: x #y" in body and "Language: r: 4 #lang" in body
+
+
+@pytest.mark.parametrize("language,runner", [("python", "Bash(python3 *)"), ("r", "Bash(Rscript *)"),
+                                             ("R", "Bash(Rscript *)"), ("julia", "Bash(julia *)"), ("other", None)])
+def test_pipeline_skill_bash_is_narrowed_to_the_language(sample_paper, cfg, language, runner):
+    """The project skill pre-approves only its language's interpreter and make, never all of Bash."""
+    import _yamlio
+    cfg["pipeline"]["language"] = language
+    text = {s.path: s.content for s in project_files.render_all(cfg, sample_paper)}[PIPELINE_SKILL]
+    fm = _yamlio.loads_yaml(text.split("\n---\n", 1)[0].removeprefix("---\n"))
+    tools = [t.strip() for t in fm["allowed-tools"].split(",")]
+    assert "Bash" not in tools and "Bash(make *)" in tools
+    bash = [t for t in tools if t.startswith("Bash(")]
+    assert bash == ([runner] if runner else []) + ["Bash(make *)"]

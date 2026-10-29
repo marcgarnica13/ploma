@@ -143,6 +143,17 @@ def _stage_chain(stages: Any) -> str:
     return " -> ".join(names) if names else "not declared"
 
 
+_LANGUAGE_RUNNERS = {"python": "python3", "python3": "python3", "py": "python3", "r": "Rscript",
+                     "julia": "julia"}
+
+
+def _pipeline_bash(language: Any) -> str:
+    """Bash patterns the analysis-pipeline skill pre-approves: the language's interpreter (when known)
+    and make. Only fixed strings reach the frontmatter, never the config value itself."""
+    runner = _LANGUAGE_RUNNERS.get(str(language or "").strip().lower())
+    return ", ".join(([f"Bash({runner} *)"] if runner else []) + ["Bash(make *)"])
+
+
 def _context(cfg: dict) -> dict:
     ctx = _fill(json.loads(ploma_config.SCHEMA_PATH.read_text(encoding="utf-8")), cfg)
     manuscript = [_under(_rel(_get(cfg, "document.root")), "**/*.tex")]
@@ -167,6 +178,7 @@ def _context(cfg: dict) -> dict:
         "env_contract": _bullets(_get(cfg, "pipeline.env_contract"), "none recorded"),
         "gotchas": _bullets(_get(cfg, "pipeline.gotchas"), "none recorded"),
         "stage_chain": _stage_chain(_get(cfg, "pipeline.stages")),
+        "pipeline_bash": _pipeline_bash(_get(cfg, "pipeline.language")),
     }
     return ctx
 

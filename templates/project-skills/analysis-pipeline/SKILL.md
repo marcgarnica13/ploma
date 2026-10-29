@@ -2,7 +2,7 @@
 name: analysis-pipeline
 description: Run, extend or debug this paper's analysis pipeline and produce results, tables and figures in its results directory (language, run directory and results directory are listed in the skill from ploma.yaml). Starts with a pre-flight report of the configured pipeline facts, follows the declared stage chain, respects the env contract and the known gotchas, and has the code reviewed before results are presented. Use when the user asks to analyse data, run or rerun the pipeline, add an analysis step, or regenerate results for the paper.
 argument-hint: "[analysis goal, data source or stage]"
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Agent, Monitor
+allowed-tools: Read, Grep, Glob, Write, Edit, {{ _derived.pipeline_bash }}, Agent, Monitor
 ---
 
 <!-- Created once by /ploma:onboard from ploma.yaml (pipeline block); this file is yours to edit.
@@ -39,6 +39,7 @@ Gotchas:
 - Save new scripts under the run directory with descriptive names; write outputs under the results directory, in a dated or named run subdirectory when the pipeline does not already do so.
 - Preserve every invariant the gotchas name. When a change touches one, say so before making it.
 - No hard-coded absolute paths or credentials; use the env contract.
+- Only the language's interpreter and `make` are pre-approved; any other shell command (an installer, a download, a file removal) asks the user first. Add a narrow pattern to `allowed-tools` above when the pipeline needs one.
 - The `ploma:code-reviewer` agent reviews generated or changed code before results are presented.
 
 ## Phase 0: Pre-flight report
