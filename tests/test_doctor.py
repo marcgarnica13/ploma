@@ -1,0 +1,320 @@
+"""Doctor readiness audit (spec section 9)."""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+
+import doctor
+from _findings import FAIL, INFO, PASS, SKIP, WARN
+
+GROUP_IDS = ["runtime", "config", "toolchain", "manuscript", "project-files", "state", "dependencies",
+             "legacy-harness"]
+PRESENT = ("pdflatex", "bibtex", "pdfinfo", "pdftotext", "make", "git")
+
+
+def _which(present=PRESENT):
+    return lambda n: "/usr/bin/" + n if n in present else None
+
+
+def _run(root, which=None, **kw):
+    return doctor.run(root, which=which or _which(), home=root / "nohome", **kw)
+
+
+def _all(r):
+    return [f for g in r.groups for f in g["findings"]]
+
+
+def _by_id(r, fid):
+    return next(f for f in _all(r) if f.id == fid)
+
+
+def _snapshot(root):
+    return {str(p.relative_to(root)): (p.stat().st_mtime_ns, p.read_bytes() if p.is_file() else None)
+            for p in sorted(root.rglob("*"))}
+
+
+def _set_cfg(root, old, new):
+    p = root / "ploma.yaml"
+    text = p.read_text(encoding="utf-8")
+    assert old in text
+    p.write_text(text.replace(old, new), encoding="utf-8")
+
+
+def test_empty_dir_is_not_ready(tmp_path):
+    r = doctor.run(tmp_path, which=lambda n: None, home=tmp_path / "nohome")
+    assert r.verdict == "NOT_READY"
+    first_fail = next(f for g in r.groups for f in g["findings"] if f.status == FAIL)
+    assert first_fail.id == "config.missing" and "/ploma:onboard" in first_fail.remediation
+
+
+def test_empty_dir_skips_groups_needing_config(tmp_path):
+    r = doctor.run(tmp_path, which=_which(), home=tmp_path / "nohome")
+    assert [g["id"] for g in r.groups] == GROUP_IDS
+    for g in r.groups:
+        if g["id"] in ("toolchain", "manuscript", "project-files", "state", "legacy-harness"):
+            assert [f.status for f in g["findings"]] == [SKIP], g
+            assert g["findings"][0].summary == "no ploma.yaml" or "no ploma.yaml" in g["findings"][0].observed
+    assert [f.id for f in _all(r) if f.status == FAIL] == ["config.missing"]
+    assert any(f.id.startswith("runtime.") for f in _all(r))
+    assert any(f.id == "dependencies.superpowers" for f in _all(r))
+
+
+def test_onboarded_sample_is_ready(onboarded_sample):
+    r = _run(onboarded_sample)
+    assert r.verdict == "READY", r.render()
+    assert [g["id"] for g in r.groups] == GROUP_IDS
+    for f in _all(r):
+        assert f.id.split(".")[0] == f.group, f
+
+
+def test_missing_linters_are_skip_not_warn(onboarded_sample):
+    r = _run(onboarded_sample, which=lambda n: None if n in ("chktex", "lacheck", "texcount") else "/usr/bin/" + n)
+    linters = [f for f in _all(r) if f.id in ("toolchain.chktex", "toolchain.lacheck", "toolchain.texcount")]
+    assert len(linters) == 3 and all(f.status == SKIP for f in linters)
+    assert all(f.summary == "optional linter not installed" or "optional linter not installed" in f.observed
+               for f in linters)
+    assert r.verdict == "READY", r.render()
+
+
+def test_present_linters_pass(onboarded_sample):
+    r = _run(onboarded_sample, which=lambda n: "/usr/bin/" + n)
+    assert _by_id(r, "toolchain.chktex").status == PASS
+
+
+def test_missing_engine_and_bib_tool_fail(onboarded_sample):
+    r = _run(onboarded_sample, which=_which(("pdfinfo", "pdftotext", "make", "git")))
+    assert _by_id(r, "toolchain.engine").status == FAIL
+    assert _by_id(r, "toolchain.bib_tool").status == FAIL
+    assert r.verdict == "NOT_READY"
+
+
+def test_engine_follows_config(onboarded_sample):
+    _set_cfg(onboarded_sample, "engine: pdflatex", "engine: xelatex")
+    r = _run(onboarded_sample)
+    f = _by_id(r, "toolchain.engine")
+    assert f.status == FAIL and "xelatex" in f.summary + f.observed
+
+
+def test_missing_make_fails_when_command_uses_it(onboarded_sample):
+    r = _run(onboarded_sample, which=_which(("pdflatex", "bibtex", "pdfinfo", "pdftotext", "git")))
+    assert _by_id(r, "toolchain.make").status == FAIL
+
+
+def test_null_command_needs_latexmk(onboarded_sample):
+    _set_cfg(onboarded_sample, 'command: "make"', "command: null")
+    r = _run(onboarded_sample)
+    assert _by_id(r, "toolchain.latexmk").status == FAIL
+    assert not any(f.id == "toolchain.make" for f in _all(r))
+    r = _run(onboarded_sample, which=_which(PRESENT + ("latexmk",)))
+    assert _by_id(r, "toolchain.latexmk").status == PASS
+
+
+def test_missing_pdf_tools_warn(onboarded_sample):
+    r = _run(onboarded_sample, which=_which(("pdflatex", "bibtex", "make", "git")))
+    assert _by_id(r, "toolchain.pdfinfo").status == WARN
+    assert _by_id(r, "toolchain.pdftotext").status == WARN
+    assert r.verdict == "READY_WITH_WARNINGS"
+
+
+def test_build_dry_run_is_skip(onboarded_sample):
+    f = _by_id(_run(onboarded_sample), "toolchain.build_dry_run")
+    assert f.status == SKIP and "not run by doctor" in f.summary + f.observed
+
+
+def test_runtime_group(onboarded_sample):
+    r = _run(onboarded_sample)
+    assert _by_id(r, "runtime.python").status == PASS
+    loader = _by_id(r, "runtime.yaml_loader")
+    assert loader.status == INFO and ("pyyaml" in loader.summary or "yamlmini" in loader.summary)
+    assert _by_id(r, "runtime.git").status == PASS
+    r = _run(onboarded_sample, which=_which(("pdflatex", "bibtex", "pdfinfo", "pdftotext", "make")))
+    assert _by_id(r, "runtime.git").status == WARN
+
+
+def test_stale_pdf_warns(onboarded_sample):
+    pdf = onboarded_sample / "main.pdf"
+    old = pdf.stat().st_mtime - 3600
+    os.utime(pdf, (old, old))
+    r = _run(onboarded_sample)
+    f = _by_id(r, "manuscript.pdf_stale")
+    assert f.status == WARN and f.remediation == "Run /ploma:compile"
+    assert r.verdict == "READY_WITH_WARNINGS"
+
+
+def test_missing_pdf_warns(onboarded_sample):
+    (onboarded_sample / "main.pdf").unlink()
+    f = _by_id(_run(onboarded_sample), "manuscript.pdf_stale")
+    assert f.status == WARN and f.remediation == "Run /ploma:compile"
+
+
+def test_proposal_type_is_not_ready(onboarded_sample):
+    _set_cfg(onboarded_sample, "type: paper", "type: proposal")
+    r = _run(onboarded_sample)
+    assert r.verdict == "NOT_READY"
+    assert _by_id(r, "config.document_type_unsupported").status == FAIL
+
+
+def test_config_parse_error(onboarded_sample):
+    (onboarded_sample / "ploma.yaml").write_text("document: [unclosed\n", encoding="utf-8")
+    r = _run(onboarded_sample)
+    f = _by_id(r, "config.parse")
+    assert f.status == FAIL and f.observed
+    assert r.verdict == "NOT_READY"
+
+
+def test_unknown_venue_fails(onboarded_sample):
+    _set_cfg(onboarded_sample, "profile: generic-conference", "profile: no-such-venue")
+    f = _by_id(_run(onboarded_sample), "config.venue")
+    assert f.status == FAIL and "no-such-venue" in f.observed
+
+
+def test_malformed_venue_override_surfaces(onboarded_sample):
+    d = onboarded_sample / "ploma.d" / "venues"
+    d.mkdir(parents=True)
+    (d / "generic-conference.yaml").write_text("key: generic-conference\nkind: banquet\n", encoding="utf-8")
+    r = _run(onboarded_sample)
+    fails = [f for f in _all(r) if f.group == "config" and f.status == FAIL]
+    assert any(f.id.startswith("config.venue.") for f in fails), r.render()
+    assert r.verdict == "NOT_READY"
+
+
+def test_unknown_discipline_fails(onboarded_sample):
+    _set_cfg(onboarded_sample, "  anonymized: true", "  anonymized: true\n  discipline: no-such-field")
+    f = _by_id(_run(onboarded_sample), "config.discipline")
+    assert f.status == FAIL and "no-such-field" in f.observed
+
+
+def test_bib_findings_aggregate(onboarded_sample):
+    sec = onboarded_sample / "sections" / "intro.tex"
+    sec.write_text(sec.read_text(encoding="utf-8") + "\n\\cite{NoSuchKey2020}\n", encoding="utf-8")
+    pdf = onboarded_sample / "main.pdf"
+    os.utime(pdf, (pdf.stat().st_mtime + 3600,) * 2)
+    r = _run(onboarded_sample)
+    bib = [f for f in _all(r) if f.id.startswith("manuscript.bib")]
+    fails = [f for f in bib if f.status == FAIL]
+    assert len(fails) == 1 and "NoSuchKey2020" in fails[0].observed
+    assert sum(f.status == INFO for f in bib) == 1
+
+
+def test_figure_provenance_info_then_warn_when_required(onboarded_sample):
+    m = onboarded_sample / "sections" / "method.tex"
+    m.write_text(m.read_text(encoding="utf-8").replace("% ploma:source", "% source"), encoding="utf-8")
+    pdf = onboarded_sample / "main.pdf"
+    os.utime(pdf, (pdf.stat().st_mtime + 3600,) * 2)
+    f = _by_id(_run(onboarded_sample), "manuscript.figure_provenance")
+    assert f.status == INFO and "figures/fig1.pdf" in f.observed
+    _set_cfg(onboarded_sample, "  outputs_dir: results", "  outputs_dir: results\n  figure_provenance: required")
+    f = _by_id(_run(onboarded_sample), "manuscript.figure_provenance")
+    assert f.status == WARN
+
+
+def test_figure_provenance_only_with_pipeline(onboarded_sample):
+    _set_cfg(onboarded_sample, "enabled: true", "enabled: false")
+    assert not any(f.id == "manuscript.figure_provenance" for f in _all(_run(onboarded_sample)))
+
+
+def test_project_files_renderer_skip_and_receipt_info(onboarded_sample):
+    r = _run(onboarded_sample)
+    f = _by_id(r, "project-files.renderer")
+    assert f.status == SKIP and "renderer not available until onboard support lands" in f.summary + f.observed
+    assert _by_id(r, "project-files.receipt").status == INFO
+
+
+def test_state_group(onboarded_sample):
+    r = _run(onboarded_sample)
+    gate = _by_id(r, "state.gate")
+    assert gate.status == INFO and "INCOMPLETE" in gate.summary + gate.observed
+    stage = _by_id(r, "state.next_stage")
+    assert stage.status == INFO and "compile" in stage.summary
+    out = onboarded_sample / "quality_reports" / "verdicts"
+    out.mkdir(parents=True)
+    (out / "commit-gate.json").write_text(json.dumps({"checks": {}, "overrides": [], "override_streak": 2}),
+                                          encoding="utf-8")
+    r = _run(onboarded_sample)
+    assert _by_id(r, "state.override_streak").status == WARN
+
+
+def test_superpowers_missing_warns(onboarded_sample):
+    (onboarded_sample / ".claude" / "settings.json").unlink()
+    r = _run(onboarded_sample)
+    f = _by_id(r, "dependencies.superpowers")
+    assert f.status == WARN
+    assert "/plugin install superpowers@claude-plugins-official" in f.remediation
+    assert "superpowers-marketplace" in f.remediation
+    assert r.verdict == "READY_WITH_WARNINGS"
+
+
+def test_citation_apis_skip(onboarded_sample):
+    f = _by_id(_run(onboarded_sample), "dependencies.citation_apis")
+    assert f.status == SKIP and "doctor makes no network calls" in f.summary + f.observed
+
+
+def test_legacy_harness_conflict_warns(onboarded_sample):
+    (onboarded_sample / ".claude" / "scripts").mkdir()
+    (onboarded_sample / ".claude" / "scripts" / "statusline.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    r = _run(onboarded_sample)
+    warns = [f for f in _all(r) if f.group == "legacy-harness" and f.status == WARN]
+    assert len(warns) == 1
+    assert "status line" in warns[0].summary
+    assert warns[0].remediation == "retire it (see the onboard retirement checklist)"
+
+
+def test_legacy_harness_clean_passes(onboarded_sample):
+    g = next(g for g in _run(onboarded_sample).groups if g["id"] == "legacy-harness")
+    assert [f.status for f in g["findings"]] == [PASS]
+
+
+def test_render_format(onboarded_sample):
+    r = _run(onboarded_sample)
+    txt = r.render()
+    lines = txt.splitlines()
+    assert lines[0] == f"Overall verdict: {r.verdict}"
+    c = r.counts
+    assert lines[1] == f"Counts: PASS {c['PASS']} WARN {c['WARN']} FAIL {c['FAIL']} INFO {c['INFO']} SKIP {c['SKIP']}"
+    assert "1. Runtime" in lines and "8. Legacy harness" in lines
+    assert any(line.startswith("- PASS runtime.python: ") for line in lines)
+    empty = onboarded_sample.parent / "empty"
+    empty.mkdir()
+    elines = _run(empty).render().splitlines()
+    i = elines.index("- FAIL config.missing: " + _by_id(_run(empty), "config.missing").summary)
+    assert elines[i + 1].startswith("  Observed: ") and elines[i + 2] == "  Remediation: Run /ploma:onboard"
+    assert sum(c.values()) == len(_all(r))
+
+
+def test_render_default_which(onboarded_sample):
+    txt = doctor.run(onboarded_sample).render()
+    assert txt.startswith("Overall verdict: ") and "Counts:" in txt.splitlines()[1]
+
+
+def test_verdict_ladder_ignores_info_and_skip():
+    from _findings import Finding
+    assert doctor.verdict_for([Finding("a.b", INFO, "x"), Finding("a.c", SKIP, "y")]) == "READY"
+    assert doctor.verdict_for([Finding("a.b", WARN, "x")]) == "READY_WITH_WARNINGS"
+    assert doctor.verdict_for([Finding("a.b", WARN, "x"), Finding("a.c", FAIL, "y")]) == "NOT_READY"
+
+
+def test_doctor_writes_nothing(onboarded_sample, tmp_path):
+    before = _snapshot(onboarded_sample)
+    _run(onboarded_sample)
+    doctor.main([str(onboarded_sample), "--json"])
+    assert _snapshot(onboarded_sample) == before
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    doctor.run(empty, which=lambda n: None, home=empty / "nohome")
+    assert list(empty.iterdir()) == []
+
+
+def test_cli_json_and_exit_codes(onboarded_sample, tmp_path, capsys):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert doctor.main([str(empty), "--json"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["verdict"] == "NOT_READY" and [g["id"] for g in data["groups"]] == GROUP_IDS
+    assert data["groups"][1]["findings"][0]["id"] == "config.missing"
+    assert doctor.main([str(tmp_path / "nope")]) == 2
+    capsys.readouterr()
+    code = doctor.main([str(onboarded_sample)])
+    out = capsys.readouterr().out
+    assert out.startswith("Overall verdict: ")
+    assert code == (1 if "NOT_READY" in out.splitlines()[0] else 0)
