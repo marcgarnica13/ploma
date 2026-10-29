@@ -43,7 +43,7 @@ import validate_bib  # noqa: E402
 
 REFRESHED_HERE = ("compile", "bib", "consistency")
 NEXT_COMMAND = {"claims": "/ploma:verify-claims", "proofread": "/ploma:proofread"}
-_OVERRIDE_RE = re.compile(r"^\s*commit\s+anyway\s*:\s*(\S.*)$", re.I | re.M)
+_OVERRIDE_RE = re.compile(r"^[ \t]*commit[ \t]+anyway[ \t]*:[ \t]*(\S.*)$", re.I | re.M)  # one line only
 
 
 @dataclasses.dataclass
