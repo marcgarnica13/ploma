@@ -5,7 +5,8 @@ At 40, 55 and 65 percent it suggests /ploma:checkpoint; at 80 an info note; at 9
 Below 80 percent checks are throttled to one per 60 s. The percentage is a coarse proxy: the
 transcript size (4 bytes per token) against PLOMA_CONTEXT_WINDOW_TOKENS (default 1,000,000),
 else a tool-call counter against PLOMA_CONTEXT_MAX_TOOL_CALLS (default 400).
-State: .ploma/context-monitor-cache.json. Exit code: always 0.
+State: .ploma/context-monitor-cache.json, reset when stdin carries a new session_id.
+Exit code: always 0.
 """
 from __future__ import annotations
 
@@ -14,24 +15,42 @@ import os
 import sys
 
 
-def _early_exit_if_no_config() -> str:
+def _find_project_dir(data: object) -> str:
+    """CLAUDE_PROJECT_DIR, else stdin cwd, else os.getcwd(); then walk up at most 4 parent levels
+    (stopping at a directory holding .git) to the first directory with ploma.yaml. os.path only."""
+    cwd = data.get("cwd") if isinstance(data, dict) else None
+    start = os.environ.get("CLAUDE_PROJECT_DIR") or (cwd if isinstance(cwd, str) and cwd else "") or os.getcwd()
+    d = os.path.abspath(start)
+    for _ in range(5):
+        if os.path.isfile(os.path.join(d, "ploma.yaml")):
+            return d
+        if os.path.exists(os.path.join(d, ".git")):
+            break
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return start
+
+
+def _early_exit_if_no_config() -> tuple[str, str]:
+    """Run as a script: read stdin; exit 0 silently unless a project dir with ploma.yaml is found."""
     try:
         raw = sys.stdin.read()
         try:
             data = json.loads(raw) if raw.strip() else {}
         except ValueError:
             data = {}
-        cwd = data.get("cwd") if isinstance(data, dict) else None
-        d = cwd if isinstance(cwd, str) and cwd else os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+        d = _find_project_dir(data)
         if os.path.isfile(os.path.join(d, "ploma.yaml")):
-            return raw
+            return raw, d
     except Exception:
         pass
     sys.exit(0)
 
 
 if __name__ == "__main__":
-    _RAW = _early_exit_if_no_config()
+    _RAW, _ROOT = _early_exit_if_no_config()
 
 import time  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -102,7 +121,7 @@ def main(stdin: TextIO | str | None = None, root: Path | None = None) -> int:
     if not hu.has_config(root):
         return 0
     path = hu.state_dir(root) / CACHE_FILE
-    cache = hu.load_json(path)
+    cache = hu.session_scoped(hu.load_json(path), data)
     pct = estimate(data, cache)
     now = time.time()
     last = cache.get("last_check_time", 0)
@@ -119,4 +138,4 @@ def main(stdin: TextIO | str | None = None, root: Path | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(_RAW))
+    sys.exit(main(_RAW, Path(_ROOT)))

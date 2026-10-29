@@ -34,7 +34,25 @@ def _has_tex(d: str, depth: int = 2) -> bool:
     return any(_has_tex(s, depth - 1) for s in subdirs)
 
 
-def _early_exit_if_no_config() -> str:
+def _find_project_dir(data: object) -> str:
+    """CLAUDE_PROJECT_DIR, else stdin cwd, else os.getcwd(); then walk up at most 4 parent levels
+    (stopping at a directory holding .git) to the first directory with ploma.yaml. os.path only."""
+    cwd = data.get("cwd") if isinstance(data, dict) else None
+    start = os.environ.get("CLAUDE_PROJECT_DIR") or (cwd if isinstance(cwd, str) and cwd else "") or os.getcwd()
+    d = os.path.abspath(start)
+    for _ in range(5):
+        if os.path.isfile(os.path.join(d, "ploma.yaml")):
+            return d
+        if os.path.exists(os.path.join(d, ".git")):
+            break
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return start
+
+
+def _early_exit_if_no_config() -> tuple[str, str]:
     """Run as a script: read stdin; without ploma.yaml print at most the onboard line and exit 0."""
     try:
         raw = sys.stdin.read()
@@ -44,10 +62,9 @@ def _early_exit_if_no_config() -> str:
             data = {}
         if not isinstance(data, dict):
             data = {}
-        cwd = data.get("cwd")
-        d = cwd if isinstance(cwd, str) and cwd else os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+        d = _find_project_dir(data)
         if os.path.isfile(os.path.join(d, "ploma.yaml")):
-            return raw
+            return raw, d
         if "--subagent" not in sys.argv[1:] and _has_tex(d):
             event = data.get("hook_event_name") if isinstance(data.get("hook_event_name"), str) else "SessionStart"
             sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": event,
@@ -58,9 +75,8 @@ def _early_exit_if_no_config() -> str:
 
 
 if __name__ == "__main__":
-    _RAW = _early_exit_if_no_config()
+    _RAW, _ROOT = _early_exit_if_no_config()
 
-import re  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import TextIO  # noqa: E402
 
@@ -68,7 +84,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _hookutil as hu  # noqa: E402
 
 CAP = 9500
-STATUS_RE = re.compile(r"^\*\*Status:\*\*\s*(DRAFT|APPROVED|COMPLETED)\b", re.MULTILINE)
 
 
 def eager_rules(plugin_root: Path) -> str:
@@ -77,14 +92,14 @@ def eager_rules(plugin_root: Path) -> str:
 
 
 def _status_block(root: Path, cfg: dict) -> str:
-    import gate
-    import state
     lines = ["## ploma status"]
     try:
+        import state
         lines.append(state.render(state.load(root, cfg), cfg))
     except Exception as exc:  # noqa: BLE001
         lines.append(f"lifecycle state unavailable: {exc}")
     try:
+        import gate
         report = gate.check(root, cfg)
         fresh = [n for n, c in report.checks.items() if c["present"] and c["fresh"]]
         line = f"commit gate: {report.verdict}; fresh checks: {', '.join(fresh) or 'none'}"
@@ -96,17 +111,6 @@ def _status_block(root: Path, cfg: dict) -> str:
     except Exception as exc:  # noqa: BLE001
         lines.append(f"commit gate unavailable: {exc}")
     return "\n".join(lines)
-
-
-def _plan_info(plans_dir: Path) -> dict | None:
-    plans = hu.newest(list(plans_dir.glob("*.md"))) if plans_dir.is_dir() else []
-    if not plans:
-        return None
-    text = plans[0].read_text(encoding="utf-8", errors="replace")
-    m = STATUS_RE.search(text)
-    task = next((ln.split("- [ ]", 1)[1].strip() for ln in text.splitlines()
-                 if ln.lstrip().startswith("- [ ]")), None)
-    return {"name": plans[0].name, "status": m.group(1) if m else "unknown", "task": task}
 
 
 def _resume_block(root: Path, cfg: dict, source: str) -> str:
@@ -121,13 +125,13 @@ def _resume_block(root: Path, cfg: dict, source: str) -> str:
             lines.append(f"Task in progress: {saved['current_task']}")
         for d in (saved.get("decisions") or [])[-3:]:
             lines.append(f"- decision: {d}")
-    plan = _plan_info(out / "plans")
+    plan = hu.active_plan(out / "plans")
     if plan:
-        lines.append(f"Newest plan: {rel}/plans/{plan['name']} (status {plan['status']})")
+        lines.append(f"Active plan: {rel}/plans/{plan['name']} (status {plan['status'] or 'unknown'})")
         if plan["task"]:
             lines.append(f"Next unchecked item: {plan['task']}")
     else:
-        lines.append(f"No plan under {rel}/plans/.")
+        lines.append(f"No active plan under {rel}/plans/.")
     logs_dir = out / "session_logs"
     logs = hu.newest(list(logs_dir.glob("*.md"))) if logs_dir.is_dir() else []
     lines.append(f"Newest session log: {rel}/session_logs/{logs[0].name}" if logs else "No session log yet.")
@@ -171,14 +175,20 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
     head = rules + "\n\n## ploma project\n" + ploma_config.summary(cfg)
     if subagent:
         return head
-    status = _status_block(root, cfg)
-    resume = _resume_block(root, cfg, source) if source in ("compact", "resume") else ""
+    try:
+        status = _status_block(root, cfg)
+    except Exception as exc:  # noqa: BLE001 - the rules and project block must survive
+        status = f"## ploma status\nstatus unavailable: {exc}"
+    try:
+        resume = _resume_block(root, cfg, source) if source in ("compact", "resume") else ""
+    except Exception as exc:  # noqa: BLE001
+        resume = f"## Resuming\nresume information unavailable: {exc}"
     return _fit(head, status, resume)
 
 
 @hu.fail_open
 def main(stdin: TextIO | str | None = None, plugin_root: Path | None = None,
-         argv: list[str] | None = None) -> int:
+         argv: list[str] | None = None, root: Path | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     data = hu.read_input(stdin)
     subagent = "--subagent" in argv
@@ -186,7 +196,7 @@ def main(stdin: TextIO | str | None = None, plugin_root: Path | None = None,
     if not isinstance(event, str) or not event:
         event = "SubagentStart" if subagent else "SessionStart"
     source = data.get("source") if isinstance(data.get("source"), str) else "startup"
-    text = build_context(hu.project_dir(data), subagent=subagent, source=source,
+    text = build_context(Path(root) if root else hu.project_dir(data), subagent=subagent, source=source,
                          plugin_root=Path(plugin_root) if plugin_root else hu.plugin_root())
     if text:
         hu.emit({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
@@ -194,4 +204,4 @@ def main(stdin: TextIO | str | None = None, plugin_root: Path | None = None,
 
 
 if __name__ == "__main__":
-    sys.exit(main(_RAW))
+    sys.exit(main(_RAW, root=Path(_ROOT)))

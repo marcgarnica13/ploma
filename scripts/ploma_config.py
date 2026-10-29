@@ -243,38 +243,59 @@ def _list(values: Any, limit: int = 4) -> str:
     return shown + (f" (+{len(values) - limit} more)" if len(values) > limit else "")
 
 
+def _present(value: Any) -> bool:
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def _clauses(*pairs: tuple[str, Any]) -> list[str]:
+    """Format (template, value) pairs, dropping any whose value is None or empty."""
+    return [tpl.format(_short(v)) for tpl, v in pairs if _present(v)]
+
+
 def summary(cfg: dict) -> str:
-    """Compact text block for the SessionStart hook; always under 1,500 characters."""
+    """Compact text block for the SessionStart hook; always under 1,500 characters.
+
+    Any clause whose value is None or empty is omitted (never printed as "None")."""
     g = lambda key: _get(cfg, key)  # noqa: E731
     budget = g("venue.page_budget")
     budget_txt = "no page budget" if budget is None else \
         f"page budget {budget} ({'incl.' if g('venue.page_budget_includes_refs') else 'excl.'} references)"
     command = g("build.command")
-    lines = [
-        f"ploma project config (ploma.yaml, format {g('ploma')})",
-        f"- document: {g('document.type')}, main {_short(g('document.main'))}, root {_short(g('document.root'))}"
-        + (", anonymized" if g("document.anonymized") else ""),
-        f"- build: {g('build.engine')} + {g('build.bib_tool')}; "
-        + (f"command `{_short(command)}`" if command else "latexmk fallback")
-        + f" from {_short(g('build.cwd'))}; pdf {_short(g('build.pdf'))}",
-        f"- bibliography: {_list(g('build.bib_files'))}",
-        f"- venue: {g('venue.profile')}"
-        + (f" ({g('venue.doc_class')})" if g("venue.doc_class") else "")
-        + f", {budget_txt}, {g('venue.cite_style')} citations",
-        f"- reports: {_short(g('outputs.dir'))}/",
-    ]
+    fmt = g("ploma")
+    lines = ["ploma project config (ploma.yaml" + (f", format {fmt}" if _present(fmt) else "") + ")"]
+    doc = _clauses(("{}", g("document.type")), ("main {}", g("document.main")), ("root {}", g("document.root")))
+    lines.append("- document: " + (", ".join(doc) or "not set") + (", anonymized" if g("document.anonymized") else ""))
+    tools = " + ".join(_clauses(("{}", g("build.engine")), ("{}", g("build.bib_tool"))))
+    how = (f"command `{_short(command)}`" if _present(command) else "latexmk fallback") \
+        + "".join(" " + c for c in _clauses(("from {}", g("build.cwd"))))
+    build = [b for b in [tools, how] if b] + _clauses(("pdf {}", g("build.pdf")))
+    lines.append("- build: " + "; ".join(build))
+    lines.append(f"- bibliography: {_list(g('build.bib_files'))}")
+    venue = _clauses(("{}", g("venue.profile")))
+    if venue and _present(g("venue.doc_class")):
+        venue[0] += f" ({g('venue.doc_class')})"
+    venue += [budget_txt] + _clauses(("{} citations", g("venue.cite_style")))
+    lines.append("- venue: " + ", ".join(venue))
+    lines.extend(_clauses(("- reports: {}/", g("outputs.dir"))))
     if g("pipeline.enabled") is True:
-        lines.append(f"- pipeline: enabled, run from {_short(g('pipeline.run_from'))}: `{_short(g('pipeline.rerun'))}`;"
-                     f" outputs {_short(g('pipeline.outputs_dir'))}; figure provenance {g('pipeline.figure_provenance')}")
+        pipe = ["enabled"] + _clauses(("run from {}", g("pipeline.run_from")), ("rerun `{}`", g("pipeline.rerun")),
+                                      ("outputs {}", g("pipeline.outputs_dir")),
+                                      ("figure provenance {}", g("pipeline.figure_provenance")))
+        lines.append("- pipeline: " + "; ".join(pipe))
     else:
         lines.append("- pipeline: disabled")
     phrases = g("style.forbid_phrases")
-    lines.append(f"- style: {g('style.sentences')} sentences; em-dash "
-                 + ("forbidden" if g("style.forbid_em_dash") else "allowed")
-                 + f"; figures {g('style.figures')}"
-                 + (f"; {len(phrases)} extra forbidden phrases" if isinstance(phrases, list) and phrases else ""))
-    lines.append(f"- limits: review rounds {g('limits.review_rounds')}, CoVe regenerations "
-                 f"{g('limits.cove_regenerations')}, DOI lookups per run {g('limits.doi_lookups_per_run')}")
+    style = _clauses(("{} sentences", g("style.sentences")))
+    style.append("em-dash " + ("forbidden" if g("style.forbid_em_dash") else "allowed"))
+    style += _clauses(("figures {}", g("style.figures")))
+    if isinstance(phrases, list) and phrases:
+        style.append(f"{len(phrases)} extra forbidden phrases")
+    lines.append("- style: " + "; ".join(style))
+    limits = _clauses(("review rounds {}", g("limits.review_rounds")),
+                      ("CoVe regenerations {}", g("limits.cove_regenerations")),
+                      ("DOI lookups per run {}", g("limits.doi_lookups_per_run")))
+    if limits:
+        lines.append("- limits: " + ", ".join(limits))
     text = "\n".join(lines)
     return text if len(text) < 1500 else text[:1496] + "..."
 

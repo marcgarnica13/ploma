@@ -252,3 +252,19 @@ def test_manuscript_sha_skips_gitignored_non_ascii(sample_paper, cfg):
     assert gate.manuscript_sha(sample_paper, cfg) == before
     (sample_paper / "sections" / "trackedé.tex").write_text("counted", encoding="utf-8")
     assert gate.manuscript_sha(sample_paper, cfg) != before
+
+
+def test_manuscript_sha_prunes_tool_dirs(sample_paper, cfg):
+    """R68: .venv, hidden dirs, node_modules, venv, __pycache__, build, dist are not hashed."""
+    before = gate.manuscript_sha(sample_paper, cfg)
+    for d in (".venv/lib/site", ".cache", "node_modules/pkg", "venv", "__pycache__", "build", "dist"):
+        (sample_paper / d).mkdir(parents=True, exist_ok=True)
+        (sample_paper / d / "x.tex").write_text("\\section{noise}")
+        (sample_paper / d / "x.bib").write_text("@misc{k,}")
+    assert gate.manuscript_sha(sample_paper, cfg) == before
+    (sample_paper / "sections" / "new.tex").write_text("x")
+    assert gate.manuscript_sha(sample_paper, cfg) != before
+
+
+def test_git_timeout_is_five_seconds():
+    assert gate.GIT_TIMEOUT == 5

@@ -30,6 +30,8 @@ MAX_CONSECUTIVE_OVERRIDES = 3
 STATUSES = ("PASS", "WARN", "FAIL")
 SOURCE_SUFFIXES = (".tex", ".bib")
 SUGGESTION_SUFFIX = "_suggestion.tex"
+GIT_TIMEOUT = 5  # seconds per git call; gate.check runs inside the 10 s SessionStart hook
+PRUNED_DIRS = frozenset({"node_modules", ".venv", "venv", "__pycache__", "build", "dist"})
 
 
 def path(root: Path, cfg: dict) -> Path:
@@ -46,12 +48,12 @@ def _git_ignored(base: Path, rels: list[str]) -> set[str]:
         return set()
     try:
         probe = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=str(base),
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, timeout=GIT_TIMEOUT)
         if probe.returncode != 0 or probe.stdout.strip() != "true":
             return set()
         payload = b"".join(os.fsencode(r) + b"\0" for r in rels)
         res = subprocess.run(["git", "check-ignore", "-z", "--stdin"], cwd=str(base), input=payload,
-                             capture_output=True, timeout=30)
+                             capture_output=True, timeout=GIT_TIMEOUT)
     except (OSError, subprocess.SubprocessError):
         return set()
     if res.returncode not in (0, 1):
@@ -61,7 +63,8 @@ def _git_ignored(base: Path, rels: list[str]) -> set[str]:
 
 def manuscript_sha(root: Path, cfg: dict) -> str:
     """sha256 over sorted relative paths and contents of .tex/.bib under document.root,
-    excluding *_suggestion.tex and gitignored files."""
+    excluding *_suggestion.tex and gitignored files. Hidden directories (.git, .venv, ...) and
+    node_modules, venv, __pycache__, build, dist are not walked."""
     base_s = ploma_config.resolve(cfg, Path(root))["_paths"]["root"]
     digest = hashlib.sha256()
     if not base_s or not Path(base_s).is_dir():
@@ -69,7 +72,7 @@ def manuscript_sha(root: Path, cfg: dict) -> str:
     base = Path(base_s)
     rels: list[str] = []
     for dirpath, dirnames, filenames in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d != ".git"]
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in PRUNED_DIRS]
         for name in filenames:
             if name.endswith(SOURCE_SUFFIXES) and not name.endswith(SUGGESTION_SUFFIX):
                 rels.append((Path(dirpath) / name).relative_to(base).as_posix())

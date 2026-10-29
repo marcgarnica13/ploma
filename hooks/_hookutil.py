@@ -9,6 +9,7 @@ import functools
 import io
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -30,13 +31,27 @@ def read_input(stdin: TextIO | str | None = None) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _find_project_dir(data: object) -> str:
+    """CLAUDE_PROJECT_DIR, else stdin cwd, else os.getcwd(); then walk up at most 4 parent levels
+    (stopping at a directory holding .git) to the first directory with ploma.yaml. os.path only."""
+    cwd = data.get("cwd") if isinstance(data, dict) else None
+    start = os.environ.get("CLAUDE_PROJECT_DIR") or (cwd if isinstance(cwd, str) and cwd else "") or os.getcwd()
+    d = os.path.abspath(start)
+    for _ in range(5):
+        if os.path.isfile(os.path.join(d, "ploma.yaml")):
+            return d
+        if os.path.exists(os.path.join(d, ".git")):
+            break
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return start
+
+
 def project_dir(data: dict) -> Path:
-    """Project dir: stdin `cwd`, else CLAUDE_PROJECT_DIR, else the process cwd."""
-    cwd = data.get("cwd")
-    if isinstance(cwd, str) and cwd:
-        return Path(cwd)
-    env = os.environ.get("CLAUDE_PROJECT_DIR")
-    return Path(env) if env else Path(os.getcwd())
+    """Project dir per _find_project_dir (the same function every hook runs before its imports)."""
+    return Path(_find_project_dir(data))
 
 
 def plugin_root() -> Path:
@@ -93,6 +108,19 @@ def save_json(path: Path, data: dict) -> None:
         pass
 
 
+def session_scoped(cache: dict, data: dict, default: dict | None = None) -> dict:
+    """Reset per-session hook state when stdin carries a session_id different from the stored one.
+
+    Without a session_id in stdin the cache is kept as is (pre-session-id behaviour)."""
+    sid = data.get("session_id")
+    if not isinstance(sid, str) or not sid:
+        return cache
+    if cache.get("session_id") != sid:
+        cache = dict(default or {})
+    cache["session_id"] = sid
+    return cache
+
+
 def newest(paths: list[Path]) -> list[Path]:
     """Sort by mtime, newest first, skipping files that vanish mid-sort."""
     stamped = []
@@ -102,6 +130,40 @@ def newest(paths: list[Path]) -> list[Path]:
         except OSError:
             continue
     return [p for _, p in sorted(stamped, key=lambda t: t[0], reverse=True)]
+
+
+STATUS_LINE_RE = re.compile(r"^\*\*Status:\*\*\s*([A-Za-z_]+)")
+
+
+def plan_status(text: str) -> str | None:
+    """Upper-cased word after the first line starting with **Status:**, or None. No substring search."""
+    for line in text.splitlines():
+        m = STATUS_LINE_RE.match(line.strip())
+        if m:
+            return m.group(1).upper()
+        if line.strip().startswith("**Status:**"):
+            return None
+    return None
+
+
+def active_plan(plans_dir: Path, window: int = 3) -> dict | None:
+    """Among the `window` newest plans, the first whose status line is not COMPLETED.
+
+    Returns {path, name, status (DRAFT, APPROVED, other word or None), task (first "- [ ]" item)}."""
+    if not Path(plans_dir).is_dir():
+        return None
+    for plan in newest(list(Path(plans_dir).glob("*.md")))[:window]:
+        try:
+            text = plan.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        status = plan_status(text)
+        if status == "COMPLETED":
+            continue
+        task = next((ln.split("- [ ]", 1)[1].strip() for ln in text.splitlines()
+                     if ln.lstrip().startswith("- [ ]")), None)
+        return {"path": plan, "name": plan.name, "status": status, "task": task}
+    return None
 
 
 def emit(obj: dict, out: TextIO | None = None) -> None:

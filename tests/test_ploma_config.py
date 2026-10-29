@@ -189,3 +189,16 @@ def test_cli_json_dump_is_resolved(tmp_path, capsys):
     assert ploma_config.main(["--root", str(root), "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["_paths"]["main"].endswith("main.tex")
+
+
+def test_summary_never_prints_none(sample_paper):
+    """R65: clauses whose value is None or empty are omitted."""
+    cfg = ploma_config.load(sample_paper)
+    assert cfg["pipeline"]["rerun"] is None
+    s = ploma_config.summary(cfg)
+    assert "None" not in s and "pipeline: enabled; run from .; outputs results" in s
+    cfg["venue"]["profile"] = None
+    cfg["build"]["cwd"] = None
+    cfg["limits"]["review_rounds"] = None
+    s = ploma_config.summary(cfg)
+    assert "None" not in s and "venue: page budget 8" in s

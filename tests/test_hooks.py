@@ -10,6 +10,7 @@ import time
 
 import pytest
 
+import _hookutil as hu
 import context_monitor
 import log_reminder
 import pre_compact
@@ -65,7 +66,8 @@ def test_all_hooks_exit_zero_on_garbage_stdin(sample_paper, capsys, monkeypatch)
     for main in MAINS:
         kwargs = {"argv": []} if main is session_context.main else {}
         assert main(io.StringIO("not json"), **kwargs) == 0
-    capsys.readouterr()
+        out = capsys.readouterr().out
+        assert out == "" or (out.count("\n") == 1 and isinstance(json.loads(out), dict)), (main.__module__, out)
 
 
 @pytest.mark.parametrize("name", HOOK_FILES)
@@ -353,3 +355,111 @@ def test_log_reminder_respects_stop_hook_active(sample_paper, cfg, capsys):
     log_reminder.main(_payload(sample_paper, stop_hook_active=True), sample_paper, cfg)
     assert capsys.readouterr().err == ""
     assert not (sample_paper / ".ploma").exists()
+
+
+# ---------- fix round 1 ----------
+
+def test_project_dir_found_from_subdirectory(onboarded_sample, repo_root, tmp_path, capsys):
+    """R67: cwd a subdirectory of the project, no CLAUDE_PROJECT_DIR: the hooks still find ploma.yaml."""
+    sub = onboarded_sample / "sections"
+    assert hu.project_dir({"cwd": str(sub)}) == onboarded_sample
+    verify_reminder.main(_payload(sub, tool_input={"file_path": str(sub / "intro.tex")}))
+    assert "/ploma:compile" in capsys.readouterr().out
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    r = subprocess.run([sys.executable, str(repo_root / "hooks/session_context.py")],
+                       input=json.dumps({"source": "startup", "cwd": str(sub)}), capture_output=True,
+                       text=True, cwd=str(tmp_path), env=env, timeout=30)
+    assert r.returncode == 0 and "## ploma status" in json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    r = subprocess.run([sys.executable, str(repo_root / "hooks/pre_compact.py")],
+                       input=json.dumps({"cwd": str(sub)}), capture_output=True, text=True,
+                       cwd=str(tmp_path), env=env, timeout=30)
+    assert r.returncode == 0 and (onboarded_sample / ".ploma" / "pre-compact-state.json").is_file()
+    assert not (sub / ".ploma").exists()
+
+
+def test_project_dir_env_first_and_walk_limits(sample_paper, tmp_path, monkeypatch):
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(sample_paper))
+    assert hu.project_dir({"cwd": str(other)}) == sample_paper
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR")
+    deep = sample_paper / "a" / "b" / "c" / "d"
+    deep.mkdir(parents=True)
+    assert hu.project_dir({"cwd": str(deep)}) == sample_paper           # 4 levels up
+    assert hu.project_dir({"cwd": str(deep / "e")}) == deep / "e"       # 5 levels: not found
+    (sample_paper / "a" / ".git").mkdir()
+    assert hu.project_dir({"cwd": str(deep)}) == deep                   # stops at the .git dir
+
+
+def test_find_project_dir_identical_in_every_hook(repo_root):
+    import ast
+    def src(path):
+        tree = ast.parse(path.read_text())
+        return next(ast.unparse(n) for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_find_project_dir")
+    ref = src(repo_root / "hooks/_hookutil.py")
+    for name in HOOK_FILES:
+        assert src(repo_root / "hooks" / f"{name}.py") == ref, name
+
+
+def test_context_monitor_resets_on_new_session(sample_paper, tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PLOMA_CONTEXT_WINDOW_TOKENS", "1000")
+    tr = _transcript(tmp_path, 4 * 420)
+    context_monitor.main(_payload(sample_paper, transcript_path=tr, session_id="s1"), sample_paper)
+    assert "/ploma:checkpoint" in capsys.readouterr().out
+    cache_path = sample_paper / ".ploma" / "context-monitor-cache.json"
+    cache = json.loads(cache_path.read_text())
+    cache["last_check_time"] = 0
+    cache_path.write_text(json.dumps(cache))
+    context_monitor.main(_payload(sample_paper, transcript_path=tr, session_id="s1"), sample_paper)
+    assert capsys.readouterr().out == ""                                # same session: already shown
+    context_monitor.main(_payload(sample_paper, transcript_path=tr, session_id="s2"), sample_paper)
+    assert "/ploma:checkpoint" in capsys.readouterr().out               # new session: shown again
+    assert json.loads(cache_path.read_text())["session_id"] == "s2"
+
+
+def test_context_monitor_without_session_id_keeps_cache(sample_paper, capsys, monkeypatch):
+    monkeypatch.setenv("PLOMA_CONTEXT_MAX_TOOL_CALLS", "100")
+    context_monitor.main(_payload(sample_paper, session_id="s1"), sample_paper)
+    context_monitor.main(_payload(sample_paper), sample_paper)
+    cache = json.loads((sample_paper / ".ploma" / "context-monitor-cache.json").read_text())
+    assert cache["tool_calls"] == 2 and cache["session_id"] == "s1"
+
+
+def test_log_reminder_resets_on_new_session(sample_paper, cfg, capsys):
+    log_reminder.main(_payload(sample_paper, session_id="s1"), sample_paper, cfg)
+    assert "No session log yet" in capsys.readouterr().err
+    log_reminder.main(_payload(sample_paper, session_id="s1"), sample_paper, cfg)
+    assert capsys.readouterr().err == ""
+    log_reminder.main(_payload(sample_paper, session_id="s2"), sample_paper, cfg)
+    assert "No session log yet" in capsys.readouterr().err
+    log = _logs(sample_paper) / "s.md"
+    log.write_text("x")
+    for _ in range(log_reminder.THRESHOLD + 1):
+        log_reminder.main(_payload(sample_paper, session_id="s2"), sample_paper, cfg)
+    assert "50 responses" in capsys.readouterr().err
+    st = json.loads((sample_paper / ".ploma" / "log-reminder-state.json").read_text())
+    assert st["session_id"] == "s2" and st["reminded"] is True
+    log_reminder.main(_payload(sample_paper, session_id="s3"), sample_paper, cfg)
+    st = json.loads((sample_paper / ".ploma" / "log-reminder-state.json").read_text())
+    assert st["session_id"] == "s3" and st["counter"] == 0 and st["reminded"] is False
+
+
+def test_plan_completed_in_body_but_approved_status(sample_paper, repo_root):
+    """R69: status comes from the first **Status:** line, not a substring search for COMPLETED."""
+    _plans(sample_paper,
+           ("old.md", "**Status:** APPROVED\n- [ ] older\n"),
+           ("new.md", "# Plan\n**Status:** APPROVED\nStep 1 COMPLETED yesterday.\n- [x] a\n- [ ] b\n"))
+    pre_compact.main(_payload(sample_paper), sample_paper)
+    st = json.loads((sample_paper / ".ploma" / "pre-compact-state.json").read_text())
+    assert st["plan_path"].endswith("new.md") and st["plan_status"] == "approved" and st["current_task"] == "b"
+    ctx = session_context.build_context(sample_paper, subagent=False, source="compact", plugin_root=repo_root)
+    assert "plans/new.md (status APPROVED)" in ctx and "Next unchecked item: b" in ctx
+
+
+def test_plan_with_completed_status_is_skipped_by_both(sample_paper, repo_root):
+    _plans(sample_paper, ("old.md", "**Status:** DRAFT\n"), ("new.md", "**Status:** COMPLETED\nall APPROVED\n"))
+    pre_compact.main(_payload(sample_paper), sample_paper)
+    assert json.loads((sample_paper / ".ploma" / "pre-compact-state.json").read_text())["plan_path"].endswith("old.md")
+    ctx = session_context.build_context(sample_paper, subagent=False, source="compact", plugin_root=repo_root)
+    assert "plans/old.md (status DRAFT)" in ctx

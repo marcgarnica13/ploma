@@ -7,7 +7,14 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 import session_context
+
+
+@pytest.fixture(autouse=True)
+def _no_project_env(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
 
 
 def _ctx(root, repo_root, **kw):
@@ -163,3 +170,21 @@ def test_script_end_to_end(onboarded_sample, repo_root, tmp_path):
     assert json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"].startswith("ploma is installed but")
     r = _run_script(repo_root, bare, {"cwd": str(bare)}, "--subagent")
     assert r.returncode == 0 and r.stdout == ""
+
+
+def test_gate_import_failure_keeps_rules(onboarded_sample, repo_root, monkeypatch):
+    """R68: a failing import of gate (or state) loses only status lines, never the rules or project block."""
+    monkeypatch.setitem(sys.modules, "gate", None)    # makes `import gate` raise ImportError
+    monkeypatch.setitem(sys.modules, "state", None)
+    out = _ctx(onboarded_sample, repo_root, source="compact")
+    assert out.startswith("# ploma core rules") and "## ploma project" in out
+    assert "commit gate unavailable" in out and "lifecycle state unavailable" in out
+    assert "## Resuming" in out
+
+
+def test_status_block_crash_keeps_rules(onboarded_sample, repo_root, monkeypatch):
+    def boom(root, cfg):
+        raise RuntimeError("kaput")
+    monkeypatch.setattr(session_context, "_status_block", boom)
+    out = _ctx(onboarded_sample, repo_root)
+    assert out.startswith("# ploma core rules") and "status unavailable: kaput" in out
