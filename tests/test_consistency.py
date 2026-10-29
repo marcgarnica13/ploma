@@ -77,10 +77,115 @@ def test_number_in_caption_counts():
 
 def test_rounding_and_tolerance(tmp_path):
     main = tmp_path / "m.tex"
-    main.write_text("\\begin{document}\n\\begin{abstract}A 0.82 score and 41.3\\% share.\\end{abstract}\n"
-                    "We got 0.8134 and 41.25\\%.\n\\end{document}\n")
+    main.write_text("\\begin{document}\n\\begin{abstract}A 0.81 score and 41.3\\% share.\\end{abstract}\n"
+                    "We got 0.8134 and 41.31\\%.\n\\end{document}\n")
     assert _run(main).verdict == "PASS"
-    assert "consistency.abstract_number_not_in_body.0.82" in _ids(_run(main, tolerances={**TOL, "metrics": 0.001}))
+
+
+def _doc(tmp_path, abstract, body, name="m.tex"):
+    main = tmp_path / name
+    main.write_text("\\begin{document}\n\\begin{abstract}" + abstract + "\\end{abstract}\n" + body
+                    + "\n\\end{document}\n")
+    return main
+
+
+@pytest.mark.parametrize("abstract,body,raw", [
+    ("We reach 0.85.", "We reach 0.84.", "0.85"),
+    ("A share of 45.2\\%.", "A share of 45.3\\%.", "45.2%"),
+])
+def test_manuscript_comparisons_use_display_rounding_only(tmp_path, abstract, body, raw):
+    rep = _run(_doc(tmp_path, abstract, body))
+    assert f"consistency.abstract_number_not_in_body.{raw}" in _ids(rep)
+
+
+def test_results_comparisons_use_tolerance(tmp_path):
+    main = _doc(tmp_path, "We reach 0.81.", "Body text.")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "m.json").write_text(json.dumps({"f": 0.8134, "g": 0.38}))
+    assert _ids(_run(main, results_dir=res)) == {"consistency.abstract_number_only_in_results.0.81"}
+
+
+def test_kinds_must_match_in_manuscript(tmp_path):
+    rep = _run(_doc(tmp_path, "We gain 12\\%.", "On 12 teams."))
+    assert "consistency.abstract_number_not_in_body.12%" in _ids(rep)
+
+
+def test_percent_matches_results_fraction(tmp_path):
+    main = _doc(tmp_path, "We keep 38\\%.", "Body text.")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "m.json").write_text(json.dumps({"share": 0.38}))
+    assert _ids(_run(main, results_dir=res)) == {"consistency.abstract_number_only_in_results.38%"}
+
+
+def test_en_dash_range_has_no_sign():
+    assert [(n["raw"], n["kind"]) for n in extract_numbers("between 10--20\\% and 3-4 runs, x -5")] == [
+        ("10", "count"), ("20%", "percent"), ("3", "count"), ("4", "count"), ("-5", "count")]
+
+
+def test_siunitx_numbers():
+    nums = extract_numbers("\\num{0.81} and \\num{1.2e3} and \\qty{38}{\\percent} and \\SI{4.5}{\\percent} "
+                           "and \\SI{12}{\\metre} and \\qty[mode=text]{0.5}{\\second}")
+    assert [(n["value"], n["kind"]) for n in nums] == [(0.81, "decimal"), (1200.0, "decimal"), (38, "percent"),
+                                                        (4.5, "percent"), (12, "count"), (0.5, "decimal")]
+
+
+def test_siunitx_and_pm_table_cells(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\nA & \\num{0.81} & 0.76 $\\pm$ 0.02 \\\\\n"
+                    "\\end{tabular}\n\\end{document}\n")
+    rep = _run(main)
+    assert [(c["raw"], c["value"]) for c in rep.table_cells] == [("0.81", 0.81), ("0.76", 0.76)]
+
+
+def test_first_column_integer_cells_skipped(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{rr}\n1 & 0.5 \\\\\n2 & 0.25 \\\\\n"
+                    "0.3 & 7 \\\\\n\\end{tabular}\n\\end{document}\n")
+    rep = _run(main)
+    assert sorted(c["raw"] for c in rep.table_cells) == ["0.25", "0.3", "0.5", "7"]
+
+
+def test_wrapped_table_is_kept(tmp_path):
+    main = _doc(tmp_path, "We reach 0.85.",
+                "\\resizebox{\\linewidth}{!}{\\begin{tabular}{lr}\nOurs & 0.85 \\\\\n\\end{tabular}}")
+    rep = _run(main)
+    assert rep.verdict == "PASS" and len(rep.table_cells) == 1
+
+
+def test_box_size_arguments_are_masked():
+    text = "\\scalebox{0.8}{a 5} \\raisebox{2ex}[1ex][1ex]{b 6} \\makebox[3cm][l]{c 7} \\parbox[t]{0.4\\linewidth}{d 8}"
+    assert [n["value"] for n in extract_numbers(text)] == [5, 6, 7, 8]
+
+
+def test_intro_number_not_in_body(tmp_path):
+    (tmp_path / "intro.tex").write_text("\\section{Introduction}\nWe study 550 matches and 0.81 fitness.\n")
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{abstract}Abstract.\\end{abstract}\n\\input{intro}\n"
+                    "\\section{Data}\nWe study 340 matches.\n\\begin{table}\\caption{Fitness 0.81.}\\end{table}\n"
+                    "\\end{document}\n")
+    rep = _run(main)
+    assert _ids(rep) == {"consistency.intro_number_not_in_body.550"}
+    f = rep.findings[0]
+    assert f.status == "FAIL" and "intro.tex:2" in f.observed
+
+
+def test_intro_number_only_in_results(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\section{Introduction}\nWe study 99 items.\n\\section{Data}\nNone.\n"
+                    "\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "m.json").write_text(json.dumps({"n": 99}))
+    rep = _run(main, results_dir=res)
+    assert _ids(rep) == {"consistency.intro_number_only_in_results.99"}
+    assert rep.verdict == "WARN"
+
+
+def test_numbers_defined_by_newcommand_are_masked():
+    text = "\\newcommand\\nteams{88} and \\renewcommand{\\x}[1]{77} ok 5"
+    assert [n["value"] for n in extract_numbers(text)] == [5]
 
 
 def test_counts_are_exact(tmp_path):

@@ -80,3 +80,18 @@ def test_cli_usage(tmp_path, monkeypatch):
     assert placeholders.main([str(tmp_path / "missing.tex")]) == 2
     monkeypatch.chdir(tmp_path)
     assert placeholders.main([]) == 2
+
+
+def test_macro_definitions_and_preamble_skipped(tmp_path):
+    p = _write(tmp_path, "\\documentclass{article}\n\\newcommand{\\TODO}[1]{\\textbf{TODO: #1}}\n"
+                         "\\newcommand\\todo[1]{\\marginpar{FIXME #1}}\n\\begin{document}\n"
+                         "\\renewcommand{\\x}{XXX}\nBody \\todo{fix} here.\n\\end{document}\n")
+    f = run([p])
+    assert [x.id.split(".")[1] for x in f] == ["todo_macro"]
+    assert f[0].id.endswith(":6") and f[0].status == "FAIL"
+
+
+def test_preamble_today_still_warns(tmp_path):
+    # \\date{\\today} in the preamble reaches the PDF through \\maketitle, so the preamble is scanned for it.
+    p = _write(tmp_path, "\\date{\\today}\n\\begin{document}\nText.\n\\end{document}\n")
+    assert [(x.id.split(".")[1], x.status) for x in run([p])] == [("today", "WARN")]

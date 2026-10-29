@@ -23,7 +23,7 @@ def test_seed_phrases_present():
 def test_em_dash_in_prose_is_flagged():
     text = f"First line.\nThe method works{EM}mostly.\nIt also works --- sometimes.\nA pause {EN} here."
     f = run(text, forbid_em_dash=True, extra_phrases=[])
-    assert _ids(f) == ["style.em_dash.2", "style.em_dash.3", "style.em_dash.4"]
+    assert _ids(f) == ["style.em_dash.stdin:2:17", "style.em_dash.stdin:3:15", "style.em_dash.stdin:4:9"]
     assert all(x.status == "WARN" for x in f)
 
 
@@ -46,13 +46,13 @@ def test_em_dash_allowed_when_not_forbidden():
 def test_slop_phrases_case_insensitive_with_line():
     text = "Intro.\nIn this paper we Delve into the topic.\nWe leverage data.\n"
     ids = _ids(run(text, forbid_em_dash=True, extra_phrases=[]))
-    assert ids == ["style.slop.in-this-paper-we.2", "style.slop.delve.2", "style.slop.leverage.3"]
+    assert ids == ["style.slop.stdin:2:1", "style.slop.stdin:2:18", "style.slop.stdin:3:4"]
 
 
 def test_slop_phrase_across_line_break_and_inflection():
     text = "It is worth\nnoting that we leveraged it."
     ids = _ids(run(text, forbid_em_dash=True, extra_phrases=[]))
-    assert ids == ["style.slop.it-is-worth-noting.1", "style.slop.leverage.2"]
+    assert ids == ["style.slop.stdin:1:1", "style.slop.stdin:2:16"]
 
 
 def test_slop_not_matched_inside_words_or_macro_args():
@@ -62,14 +62,14 @@ def test_slop_not_matched_inside_words_or_macro_args():
 
 def test_extra_phrases():
     f = run("This is a game changer.", forbid_em_dash=True, extra_phrases=["game changer"])
-    assert _ids(f) == ["style.slop.game-changer.1"] and f[0].status == "WARN"
+    assert _ids(f) == ["style.slop.stdin:1:11"] and f[0].status == "WARN"
 
 
 def test_long_sentence_is_info():
     words = " ".join(["word"] * 31)
     text = f"Short one.\n{words}.\nAnother short one."
     f = run(text, forbid_em_dash=True, extra_phrases=[])
-    assert _ids(f) == ["style.long_sentence.2"] and f[0].status == "INFO"
+    assert _ids(f) == ["style.long_sentence.stdin:2:1"] and f[0].status == "INFO"
     assert run(text, forbid_em_dash=True, extra_phrases=[], max_sentence_words=40) == []
 
 
@@ -100,14 +100,14 @@ def test_cli_file_and_json(tmp_path, capsys):
     p.write_text(f"It works{EM}mostly. We delve.\n")
     assert style_check.main([str(p), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert [f["id"] for f in data["findings"]] == ["style.em_dash.1", "style.slop.delve.1"]
+    assert [f["id"] for f in data["findings"]] == [f"style.em_dash.{p}:1:9", f"style.slop.{p}:1:21"]
 
 
 def test_cli_stdin(monkeypatch, capsys):
     import io
     monkeypatch.setattr("sys.stdin", io.StringIO("We leverage it.\n"))
     assert style_check.main([]) == 0
-    assert "style.slop.leverage.1" in capsys.readouterr().out
+    assert "style.slop.stdin:1:4" in capsys.readouterr().out
 
 
 def test_cli_root_uses_config(sample_paper, capsys):
@@ -120,10 +120,16 @@ def test_cli_root_uses_config(sample_paper, capsys):
     assert style_check.main(["--root", str(sample_paper), "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
     ids = [f["id"] for f in data["findings"]]
-    assert ids == [f"style.slop.game-changer.{line}"]
+    assert ids == [f"style.slop.sections/intro.tex:{line}:11"]
     assert data["findings"][0]["observed"].startswith(f"sections/intro.tex:{line}")
 
 
 def test_cli_usage(tmp_path):
     assert style_check.main([str(tmp_path / "missing.tex")]) == 2
     assert style_check.main(["--root", str(tmp_path)]) == 2
+
+
+def test_two_hits_on_one_line_have_distinct_ids():
+    f = run(f"A{EM}b and c{EM}d.", forbid_em_dash=True, extra_phrases=[], file="sec/a.tex")
+    assert _ids(f) == ["style.em_dash.sec/a.tex:1:2", "style.em_dash.sec/a.tex:1:10"]
+    assert "delve" in run("We delve.", forbid_em_dash=True, extra_phrases=[])[0].summary

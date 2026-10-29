@@ -10,9 +10,16 @@ pipeline.enabled), pipeline.metric_keys, pipeline.tolerances and the passport at
 <outputs.dir>/passports/<document.slug>.yaml when it exists. --record writes the report
 <outputs.dir>/consistency_<slug>.md and the "consistency" gate entry (a recommended check in v0.1).
 
+Manuscript numbers are compared with each other by kind (percent, count, decimal) and display
+rounding only; tolerances apply to comparisons with results files, where a percent may also match a
+fraction times 100. siunitx \\num, \\qty and \\SI are read as numbers.
+
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
   consistency.abstract_number_only_in_results.<raw> WARN  absent from the body, present in results
+  consistency.intro_number_not_in_body.<raw>       FAIL  introduction number (first \\section to the
+                                                         next) absent from the rest of the body
+  consistency.intro_number_only_in_results.<raw>   WARN  absent from the rest of the body, in results
   consistency.table_cell_not_in_results.<raw>      WARN  table cell matches no results value
   consistency.metric_key_missing.<key>             WARN  a metric key appears in no results file
   consistency.results_unreadable.<file>            WARN  a results file could not be parsed
@@ -52,11 +59,13 @@ MASKED_COMMANDS: dict[str, int | None] = {
         "label", "ref", "eqref", "autoref", "cref", "Cref", "pageref", "nameref", "vref", "url",
         "includegraphics", "input", "include", "bibliography", "bibliographystyle", "addbibresource",
         "usepackage", "documentclass", "vspace", "hspace", "setlength", "addtolength", "setcounter",
-        "addtocounter", "begin", "end", "resizebox", "scalebox", "rule", "cmidrule", "cline", "fontsize",
+        "addtocounter", "begin", "end", "rule", "cmidrule", "cline", "fontsize",
         "linespread", "renewcommand", "newcommand", "providecommand", "definecolor", "rowcolor", "cellcolor",
         "hypersetup", "geometry", "graphicspath", "newcolumntype", "captionsetup", "setcitestyle",
-        "addlinespace", "raisebox", "makebox", "parbox")},
+        "addlinespace")},
     "href": 1, "textcolor": 1, "color": 1, "multicolumn": 2, "multirow": 2,
+    # Boxes: blank the size and option groups, keep the content group.
+    "resizebox": 2, "scalebox": 1, "raisebox": 1, "makebox": 0, "framebox": 0, "parbox": 1,
 }
 SECTION_COMMANDS = ("part", "chapter", "section", "subsection", "subsubsection", "paragraph", "subparagraph")
 TABULAR_ENVS = ("tabular", "tabular*", "tabularx", "tabulary", "longtable", "longtable*")
@@ -67,8 +76,13 @@ _DIM_RE = re.compile(r"(?<![\w.])-?\d*\.?\d+\s*\\(?:linewidth|textwidth|columnwi
                      r"baselineskip|paperwidth|paperheight)\b")
 _INDEX_RE = re.compile(r"(?<!\\)[_^]\s*(?:\{[^{}]*\}|\d+)")
 _NUM = r"(?:\d{1,3}(?:(?:,|\\,)\d{3})+(?!\d)|\d+(?:\.\d+)?|\.\d+)"
-NUM_RE = re.compile(r"(?<![\w.\\])(?<![A-Za-z]-)(?P<sign>-)?(?P<num>" + _NUM + r")(?P<pct>\s*\\?%)?(?!\w)")
+NUM_RE = re.compile(r"(?<![\w.\\])(?<![A-Za-z]-)(?P<sign>(?<![-\d])-)?(?P<num>" + _NUM + r")(?P<pct>\s*\\?%)?(?!\w)")
 CELL_RE = re.compile(r"(?P<sign>-)?(?P<num>" + _NUM + r")(?P<pct>\\?%)?")
+# siunitx: \num[opts]{x}, \qty[opts]{x}{unit}, \SI[opts]{x}{unit}
+SIUNITX_RE = re.compile(r"\\(?P<cmd>num|qty|SI)\s*(?:\[[^\]]*\])?\s*\{(?P<x>[^{}]*)\}"
+                        r"(?:\s*\{(?P<unit>(?:[^{}]|\{[^{}]*\})*)\})?")
+_SI_NUM_RE = re.compile(r"\s*(?P<sign>[-+])?\s*(?P<num>\d+(?:\.\d+)?|\.\d+)\s*(?:[eE](?P<exp>[-+]?\d+))?\s*")
+_PM_RE = re.compile(r"\$?\s*(?:\\pm|\u00b1).*$", re.S)
 _CELL_NOISE_RE = re.compile(
     r"\\(?:toprule|midrule|bottomrule|hline|cmidrule|cline|addlinespace|textbf|textit|textrm|textsf|texttt|"
     r"emph|underline|mathbf|mathrm|boldmath|bfseries|itshape|bf|it|centering|raggedleft|raggedright|"
@@ -79,7 +93,8 @@ _CELL_NOISE_RE = re.compile(
 
 def mask_numbers(text: str) -> str:
     """Blank everything in text whose digits are not manuscript numbers (same length as text)."""
-    out = _texmask.mask_command_args(text, MASKED_COMMANDS)
+    out = _texmask.mask_definitions(text)
+    out = _texmask.mask_command_args(out, MASKED_COMMANDS)
     for m in _SECTION_RE.finditer(text):
         end = _texmask.group_end(text, m.end() - 1)
         if end < 0:
@@ -110,13 +125,41 @@ def _number(m: re.Match) -> dict | None:
     return {"value": value, "raw": raw, "kind": kind}
 
 
+def _siunitx(m: re.Match) -> dict | None:
+    """The number of a \\num, \\qty or \\SI match: percent when the unit is \\percent, decimal when written
+    with a decimal point or an exponent, else count."""
+    x = _SI_NUM_RE.fullmatch(m.group("x"))
+    if not x:
+        return None
+    sign = "-" if x.group("sign") == "-" else ""
+    value = float(sign + x.group("num") + (f"e{x.group('exp')}" if x.group("exp") else ""))
+    unit = m.group("unit") or ""
+    if "\\percent" in unit or unit.strip() == "\\%":
+        kind = "percent"
+    elif "." in x.group("num") or x.group("exp"):
+        kind = "decimal"
+    else:
+        kind = "count"
+        if not sign and 1900 <= value <= 2099:
+            return None
+    raw = sign + x.group("num") + (f"e{x.group('exp')}" if x.group("exp") else "") + ("%" if kind == "percent" else "")
+    return {"value": value, "raw": raw, "kind": kind}
+
+
 def _numbers(masked: str, lines: _texmask.LineIndex, file: str | None) -> list[dict]:
     out = []
+    for m in SIUNITX_RE.finditer(masked):
+        n = _siunitx(m)
+        if n is not None:
+            n.update(line=lines.line(m.start()), file=file, pos=m.start())
+            out.append(n)
+    masked = SIUNITX_RE.sub(lambda m: _texmask.blank(m.group()), masked)
     for m in NUM_RE.finditer(masked):
         n = _number(m)
         if n is not None:
             n.update(line=lines.line(m.start()), file=file, pos=m.start())
             out.append(n)
+    out.sort(key=lambda n: n["pos"])
     return out
 
 
@@ -148,6 +191,15 @@ def _tol(tolerances: dict, key: str) -> float:
         return float(value)
     except (TypeError, ValueError):
         return float(DEFAULT_TOLERANCES[key]) if key != "counts" else 0.0
+
+
+def same_number(a: dict, b: dict) -> bool:
+    """Manuscript against manuscript: same kind, and equal once the more precise value is rounded to the
+    decimals the other one shows (display rounding only; no tolerance, so 0.85 and 0.84 differ)."""
+    if a["kind"] != b["kind"]:
+        return False
+    places = min(_decimals(a["raw"]), _decimals(b["raw"]))
+    return abs(round(a["value"], places) - round(b["value"], places)) <= _EPS
 
 
 def matches(num: dict, value: float, tolerances: dict) -> bool:
@@ -238,9 +290,16 @@ def _abstract_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def _clean_cell(cell: str) -> str:
+def _cell_number(cell: str) -> dict | None:
+    """The number a table cell holds: a plain number, a siunitx \\num/\\qty/\\SI, or the first number of
+    ``x $\\pm$ y``; None for anything else."""
+    cell = _PM_RE.sub("", cell)
     cell = _CELL_NOISE_RE.sub("", cell)
-    return re.sub(r"[\s${}~]", "", cell)
+    si = SIUNITX_RE.search(cell)
+    if si and not re.sub(r"[\s${}~]", "", cell[:si.start()] + cell[si.end():]):
+        return _siunitx(si)
+    m = CELL_RE.fullmatch(re.sub(r"[\s${}~]", "", cell))
+    return _number(m) if m else None
 
 
 def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str) -> list[dict]:
@@ -253,11 +312,13 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
         for row in re.split(r"(\\\\)", body):
             if row != "\\\\":
                 pos = offset
+                column = 0
                 for cell in re.split(r"(?<!\\)(&)", row):
-                    if cell != "&":
-                        m = CELL_RE.fullmatch(_clean_cell(cell))
-                        n = _number(m) if m else None
-                        if n is not None:
+                    if cell == "&":
+                        column += 1
+                    else:
+                        n = _cell_number(cell)
+                        if n is not None and not (column == 0 and n["kind"] == "count"):
                             n.update(line=lines.line(pos + len(cell) - len(cell.lstrip())), file=file)
                             cells.append(n)
                     pos += len(cell)
@@ -272,6 +333,7 @@ class ConsistencyReport:
     verdict: str
     abstract_numbers: list[dict] = field(default_factory=list)
     body_numbers: int = 0
+    intro_numbers: list[dict] = field(default_factory=list)
     table_cells: list[dict] = field(default_factory=list)
     results_dir: str | None = None
     results_files: list[str] = field(default_factory=list)
@@ -282,6 +344,7 @@ class ConsistencyReport:
     def to_dict(self) -> dict:
         return {"main": self.main, "verdict": self.verdict, "findings": [f.to_dict() for f in self.findings],
                 "abstract_numbers": self.abstract_numbers, "body_numbers": self.body_numbers,
+                "intro_numbers": self.intro_numbers,
                 "table_cells": self.table_cells, "results_dir": self.results_dir,
                 "results_files": self.results_files, "tables_checked": self.tables_checked,
                 "passport": self.passport, "sources": self.sources}
@@ -298,14 +361,46 @@ def _where(n: dict) -> str:
     return f"{n['file']}:{n['line']}"
 
 
-def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[str]]:
-    """(abstract numbers, body numbers, table cells, source names) across main and its inputs."""
+_SECTION_START_RE = re.compile(r"\\section\*?\s*(?:\[[^\]]*\])?\s*\{")
+
+
+def _segments(main: Path, texts: dict[Path, str]) -> list[tuple[Path, int, int]]:
+    """Document order: (file, start, end) runs of text, with each \\input or \\include expanded in place."""
+    base = main.parent
+    out: list[tuple[Path, int, int]] = []
+    seen: set[Path] = set()
+
+    def visit(path: Path) -> None:
+        seen.add(path)
+        text = texts[path]
+        prev = 0
+        for m in bib_check._INCLUDE_RE.finditer(text):
+            out.append((path, prev, m.start()))
+            name = m.group(1).strip()
+            child = (base / (name if name.endswith(".tex") else name + ".tex")).resolve()
+            if child in texts and child not in seen:
+                visit(child)
+            prev = m.end()
+        out.append((path, prev, len(text)))
+
+    visit(main)
+    return out
+
+
+def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], list[str]]:
+    """(abstract, introduction, rest of body, table cells, source names) across main and its inputs.
+
+    The introduction runs from the first \\section to the next one, in document order (inputs expanded);
+    a document with fewer than two \\section commands has no introduction to check.
+    """
     main = Path(main).resolve()
     base = main.parent
+    texts: dict[Path, str] = {}
     abstract: list[dict] = []
     body: list[dict] = []
     cells: list[dict] = []
     names: list[str] = []
+    sections: list[tuple[Path, int]] = []
     for src in bib_check.tex_sources(main):
         name = _rel(src, base)
         names.append(name)
@@ -313,15 +408,34 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[str]]:
         stripped = _texmask.strip_comments(raw)
         if src == main:
             stripped = _texmask.mask_before_document(stripped)
+        texts[src] = stripped
         masked = mask_numbers(stripped)
         lines = _texmask.LineIndex(stripped)
         spans = _abstract_spans(stripped)
         for n in _numbers(masked, lines, name):
+            n["_src"] = src
             inside = any(s <= n["pos"] < e for s, e in spans)
-            del n["pos"]
             (abstract if inside else body).append(n)
         cells.extend(_table_cells(stripped, masked, lines, name))
-    return abstract, body, cells, names
+        sections += [(src, m.start()) for m in _SECTION_START_RE.finditer(stripped)]
+
+    segments = _segments(main, texts)
+
+    def order(path: Path, pos: int) -> tuple[int, int]:
+        for i, (p, start, end) in enumerate(segments):
+            if p == path and start <= pos < end:
+                return (i, pos)
+        return (len(segments), pos)
+
+    marks = sorted(order(p, pos) for p, pos in sections)
+    intro: list[dict] = []
+    rest: list[dict] = []
+    for n in body:
+        key = order(n["_src"], n["pos"])
+        (intro if len(marks) >= 2 and marks[0] <= key < marks[1] else rest).append(n)
+    for n in abstract + body:
+        del n["_src"], n["pos"]
+    return abstract, intro, rest, cells, names
 
 
 # ---------------------------------------------------------------- passport
@@ -378,6 +492,33 @@ def _verdict(findings: list[Finding]) -> str:
     return PASS
 
 
+def _check_numbers(part: str, numbers: list[dict], against: list[dict], where_text: str, results: Results,
+                   tolerances: dict) -> list[Finding]:
+    """FAIL for each number absent from against (same kind, display rounding); WARN instead when a
+    results value matches it within tolerance."""
+    label = {"abstract": "abstract", "intro": "introduction"}[part]
+    group = "abstract" if part == "abstract" else "intro"
+    out: list[Finding] = []
+    seen: set[str] = set()
+    for a in numbers:
+        if a["raw"] in seen or any(same_number(a, b) for b in against):
+            continue
+        seen.add(a["raw"])
+        if any(matches(a, v, tolerances) for v in results.values):
+            out.append(Finding(f"consistency.{part}_number_only_in_results.{a['raw']}", WARN,
+                               f"{label} number {a['raw']} appears in a results file but not in {where_text}",
+                               observed=f"{_where(a)}; looked in {where_text} ({len(against)} numbers) and results",
+                               remediation="State the number in the body where the result is reported.",
+                               group=group))
+        else:
+            out.append(Finding(f"consistency.{part}_number_not_in_body.{a['raw']}", FAIL,
+                               f"{label} number {a['raw']} does not appear in {where_text}",
+                               observed=f"{_where(a)}; looked in {where_text} ({len(against)} numbers, tables and "
+                                        f"captions included)" + (" and results" if results.files else ""),
+                               remediation=f"Correct the {label}, or report the number in the body.", group=group))
+    return out
+
+
 def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] | None = None,
         tolerances: dict | None = None, passport: Path | None = None) -> ConsistencyReport:
     main = Path(main).resolve()
@@ -385,30 +526,14 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
         raise FileNotFoundError(f"cannot read main file {main}")
     tolerances = {**DEFAULT_TOLERANCES, **(tolerances or {})}
     metric_keys = list(metric_keys or [])
-    abstract, body, cells, names = _scan(main)
+    abstract, intro, rest, cells, names = _scan(main)
+    body = intro + rest
     results = load_results(results_dir, metric_keys) if results_dir else Results()
     findings: list[Finding] = []
-
-    seen: set[str] = set()
-    for a in abstract:
-        if a["raw"] in seen:
-            continue
-        if any(matches(a, b["value"], tolerances) for b in body):
-            continue
-        seen.add(a["raw"])
-        if any(matches(a, v, tolerances) for v in results.values):
-            findings.append(Finding(f"consistency.abstract_number_only_in_results.{a['raw']}", WARN,
-                                    f"abstract number {a['raw']} appears in a results file but not in the body",
-                                    observed=f"{_where(a)}; looked in the body ({len(body)} numbers) and results",
-                                    remediation="State the number in the body where the result is reported.",
-                                    group="abstract"))
-        else:
-            findings.append(Finding(f"consistency.abstract_number_not_in_body.{a['raw']}", FAIL,
-                                    f"abstract number {a['raw']} does not appear in the body",
-                                    observed=f"{_where(a)}; looked in the body ({len(body)} numbers, tables and "
-                                             f"captions included)" + (" and results" if results.files else ""),
-                                    remediation="Correct the abstract, or report the number in the body.",
-                                    group="abstract"))
+    for part, numbers, against, where_text in (
+            ("abstract", abstract, body, "the body"),
+            ("intro", intro, rest, "the rest of the body")):
+        findings += _check_numbers(part, numbers, against, where_text, results, tolerances)
 
     tables_checked = bool(results.files) and bool(results.values)
     if tables_checked:
@@ -443,7 +568,7 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
         findings.extend(pf)
 
     return ConsistencyReport(
-        main=str(main), findings=findings, verdict=_verdict(findings), abstract_numbers=abstract,
+        main=str(main), findings=findings, verdict=_verdict(findings), abstract_numbers=abstract, intro_numbers=intro,
         body_numbers=len(body), table_cells=cells, results_dir=str(results_dir) if results_dir else None,
         results_files=[_rel(p, main.parent) for p in results.files], tables_checked=tables_checked,
         passport=passport_info, sources=names)
@@ -464,12 +589,13 @@ def _bullets(findings: list[Finding], empty: str) -> list[str]:
 
 
 def render_report(rep: ConsistencyReport, main_rel: str, root: Path | None = None) -> str:
-    groups = {g: [f for f in rep.findings if f.group == g] for g in ("abstract", "tables", "passport")}
+    groups = {g: [f for f in rep.findings if f.group == g] for g in ("abstract", "intro", "tables", "passport")}
     n_fail = sum(f.status == FAIL for f in rep.findings)
     n_warn = sum(f.status == WARN for f in rep.findings)
     out = [f"# Consistency report: {main_rel}", "", "## Summary", "",
            f"- Sources: {len(rep.sources)} file(s) from {main_rel}.",
-           f"- Abstract numbers: {len(rep.abstract_numbers)}; body numbers: {rep.body_numbers}; "
+           f"- Abstract numbers: {len(rep.abstract_numbers)}; introduction numbers: {len(rep.intro_numbers)}; "
+           f"body numbers: {rep.body_numbers}; "
            f"table cells: {len(rep.table_cells)}.",
            f"- Results files: {len(rep.results_files)}" + (f" under {_rel(Path(rep.results_dir), root) if root else rep.results_dir}."
                                                    if rep.results_dir else "."),
@@ -478,6 +604,9 @@ def render_report(rep: ConsistencyReport, main_rel: str, root: Path | None = Non
            f"never blocks a commit.", "", "## Abstract vs body", ""]
     out += _bullets(groups["abstract"], "Every abstract number appears in the body."
                     if rep.abstract_numbers else "No numbers in the abstract.")
+    out += ["", "## Introduction vs body", ""]
+    out += _bullets(groups["intro"], "Every introduction number appears in the rest of the body."
+                    if rep.intro_numbers else "No introduction numbers checked (none, or fewer than two sections).")
     out += ["", "## Tables vs results", ""]
     if not rep.tables_checked:
         out.append("- Not checked: no results files (pipeline disabled, or pipeline.outputs_dir is empty).")

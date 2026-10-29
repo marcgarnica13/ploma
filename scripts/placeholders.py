@@ -5,8 +5,9 @@ Usage:
   python3 scripts/placeholders.py [file ...] [--root R] [--json]
 
 With --root and no files, scans document.main, every file it reaches through \\input or \\include,
-and the bib files from ploma.yaml. LaTeX comments are skipped in .tex files (they never reach the
-PDF); ``??`` counts only outside math.
+and the bib files from ploma.yaml. LaTeX comments, macro definitions (\\newcommand and
+friends) and the preamble are skipped in .tex files (they never reach the PDF as text), except that
+\\today is also found in the preamble; ``??`` counts only outside math.
 
 Rules (id placeholder.<kind>.<file>:<line>):
   todo, xxx, fixme      FAIL  the marker words TODO, XXX, FIXME
@@ -53,13 +54,18 @@ REMEDIATION = {
 
 
 def scan(text: str, label: str, *, is_tex: bool = True) -> list[Finding]:
-    plain = _texmask.strip_comments(text) if is_tex else text
+    full = _texmask.strip_comments(text) if is_tex else text
+    # Macro definitions (\\newcommand{\\TODO}...) and the preamble are not manuscript text. \\today is the
+    # exception: \\date{\\today} in the preamble reaches the PDF through \\maketitle.
+    plain = _texmask.mask_definitions(_texmask.mask_before_document(full)) if is_tex else full
     no_math = _texmask.mask_math(plain)
     lines = _texmask.LineIndex(text)
     src_lines = text.split("\n")
     hits: list[tuple[int, Finding]] = []
     for kind, status, regex, outside_math in PATTERNS:
-        for m in regex.finditer(no_math if outside_math else plain):
+        target = no_math if outside_math else (_texmask.mask_definitions(full) if kind == "today" and is_tex
+                                               else plain)
+        for m in regex.finditer(target):
             line = lines.line(m.start())
             hits.append((m.start(), Finding(f"placeholder.{kind}.{label}:{line}", status,
                                             f"placeholder {m.group().strip()!r} at {label}:{line}",

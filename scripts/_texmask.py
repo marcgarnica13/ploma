@@ -80,8 +80,9 @@ def arg_spans(text: str, i: int, *, parens: bool = False) -> list[tuple[str, int
 def mask_command_args(text: str, rules: dict[str, int | None], *, cite_like: bool = True) -> str:
     """Blank the arguments of commands named in rules.
 
-    rules maps a command name to None (blank every following group) or n (blank the groups up to and
-    including the n-th brace group). With cite_like, every command whose name contains ``cite`` is
+    rules maps a command name to None (blank every following group) or n (blank the first n brace
+    groups and every optional group before the next brace group; later brace groups, such as the
+    content of \\resizebox, are kept). With cite_like, every command whose name contains ``cite`` is
     blanked as None.
     """
     out = text
@@ -96,11 +97,27 @@ def mask_command_args(text: str, rules: dict[str, int | None], *, cite_like: boo
         spans = arg_spans(text, m.end(), parens=name in ("cmidrule",))
         braces = 0
         for opener, start, end in spans:
-            if limit is not None and braces >= limit:
+            if opener == "{" and limit is not None and braces >= limit:
                 break
             out = blank_span(out, start, end)
             if opener == "{":
                 braces += 1
+    return out
+
+
+DEFINITION_COMMANDS = ("newcommand", "renewcommand", "providecommand", "DeclareRobustCommand", "def")
+_DEF_RE = re.compile(r"\\(?:" + "|".join(DEFINITION_COMMANDS) + r")(?![A-Za-z])\*?\s*(?:\{\s*\\[A-Za-z@]+\s*\}|\\[A-Za-z@]+)"
+                     r"(?:#\d)*")
+
+
+def mask_definitions(text: str) -> str:
+    """Blank macro definitions (\\newcommand, \\renewcommand, \\providecommand, \\DeclareRobustCommand,
+    \\def), with the defined name braced or not, and all their argument groups."""
+    out = text
+    for m in _DEF_RE.finditer(text):
+        spans = arg_spans(text, m.end())
+        end = spans[-1][2] if spans else m.end()
+        out = blank_span(out, m.start(), end)
     return out
 
 

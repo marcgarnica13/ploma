@@ -12,9 +12,11 @@ ploma.yaml; with neither, reads stdin. LaTeX comments, the arguments of \\cite, 
 display math environments are blanked before matching, and so are tables and the preamble.
 
 Rules:
-  style.em_dash.<line>          WARN  U+2014, or the LaTeX --- ligature, or a spaced U+2013, in prose
-  style.slop.<phrase>.<line>    WARN  a phrase from SLOP_PHRASES or style.forbid_phrases
-  style.long_sentence.<line>    INFO  a sentence longer than --max-words words (default 30)
+  style.em_dash.<file>:<line>:<col>        WARN  U+2014, the LaTeX --- ligature, or a spaced U+2013, in prose
+  style.slop.<file>:<line>:<col>           WARN  a phrase from SLOP_PHRASES or style.forbid_phrases (named
+                                                 in the summary)
+  style.long_sentence.<file>:<line>:<col>  INFO  a sentence longer than --max-words words (default 30)
+<file> is the path relative to --root, the path as given, or "stdin"; <col> is 1-based.
 
 Exit codes: 0 no FAIL (style findings are WARN or INFO), 2 usage error or unreadable input.
 """
@@ -50,10 +52,6 @@ _WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9'\u2019-]*")
 _CMD_NAME_RE = re.compile(r"\\[A-Za-z]+\*?")
 
 
-def _slug(phrase: str) -> str:
-    return re.sub(r"[^a-z0-9']+", "-", phrase.lower()).strip("-")
-
-
 def _phrase_re(phrase: str) -> re.Pattern:
     words = [re.escape(w) for w in phrase.split()]
     # A one-word phrase also catches inflections such as "leveraged"; longer phrases match whole words.
@@ -79,22 +77,25 @@ def run(text: str, *, forbid_em_dash: bool, extra_phrases: list[str], max_senten
     src_lines = text.split("\n")
     hits: list[tuple[int, Finding]] = []
 
-    def where(offset: int) -> tuple[int, str]:
+    label = file or "stdin"
+
+    def where(offset: int) -> tuple[str, str]:
         line = lines.line(offset)
-        loc = f"{file}:{line}" if file else f"line {line}"
-        return line, f"{loc}: {src_lines[line - 1].strip()[:120]}"
+        col = offset - (masked.rfind("\n", 0, offset) + 1) + 1
+        loc = f"{label}:{line}:{col}"
+        return loc, f"{loc}: {src_lines[line - 1].strip()[:120]}"
 
     if forbid_em_dash:
         for m in _EM_RE.finditer(masked):
-            line, obs = where(m.start())
-            hits.append((m.start(), Finding(f"style.em_dash.{line}", WARN, "em-dash used as sentence punctuation",
+            loc, obs = where(m.start())
+            hits.append((m.start(), Finding(f"style.em_dash.{loc}", WARN, "em-dash used as sentence punctuation",
                                             observed=obs, remediation="Split the sentence or use a comma, colon "
                                             "or parentheses.", group="style")))
     phrases = list(dict.fromkeys([p.lower() for p in SLOP_PHRASES] + [p.lower() for p in extra_phrases if p.strip()]))
     for phrase in phrases:
         for m in _phrase_re(phrase).finditer(masked):
-            line, obs = where(m.start())
-            hits.append((m.start(), Finding(f"style.slop.{_slug(phrase)}.{line}", WARN,
+            loc, obs = where(m.start())
+            hits.append((m.start(), Finding(f"style.slop.{loc}", WARN,
                                             f"slop phrase \"{phrase}\"", observed=obs,
                                             remediation="Say it plainly, or cut it.", group="style")))
     words_only = _CMD_NAME_RE.sub(lambda m: " " * len(m.group()), masked)
@@ -103,8 +104,8 @@ def run(text: str, *, forbid_em_dash: bool, extra_phrases: list[str], max_senten
         end = b.start() if b else len(masked)
         words = list(_WORD_RE.finditer(words_only, start, end))
         if len(words) > max_sentence_words:
-            line, obs = where(words[0].start())
-            hits.append((words[0].start(), Finding(f"style.long_sentence.{line}", INFO,
+            loc, obs = where(words[0].start())
+            hits.append((words[0].start(), Finding(f"style.long_sentence.{loc}", INFO,
                                                    f"sentence of {len(words)} words (over {max_sentence_words})",
                                                    observed=obs, remediation="Split it into shorter sentences.",
                                                    group="style")))
