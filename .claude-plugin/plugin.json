@@ -1,0 +1,34 @@
+{
+  "name": "ploma",
+  "version": "0.1.0",
+  "description": "A Claude Code harness for writing, validating, reviewing and formatting LaTeX academic papers.",
+  "author": {
+    "name": "Marc Garnica Caparrós",
+    "url": "https://github.com/marcgarnica13"
+  },
+  "homepage": "https://github.com/marcgarnica13/ploma",
+  "repository": "https://github.com/marcgarnica13/ploma",
+  "license": "Apache-2.0",
+  "keywords": ["latex", "academic", "paper", "research", "writing", "review", "bibtex"],
+  "hooks": "./hooks/hooks.json",
+  "userConfig": {
+    "crossref_mailto": {
+      "type": "string",
+      "title": "Crossref mailto",
+      "description": "email for the Crossref polite pool",
+      "sensitive": false
+    },
+    "openalex_api_key": {
+      "type": "string",
+      "title": "OpenAlex API key",
+      "description": "API key for OpenAlex lookups",
+      "sensitive": true
+    },
+    "semantic_scholar_api_key": {
+      "type": "string",
+      "title": "Semantic Scholar API key",
+      "description": "API key for Semantic Scholar lookups",
+      "sensitive": true
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "ploma",
+  "owner": {
+    "name": "Marc Garnica Caparrós",
+    "url": "https://github.com/marcgarnica13"
+  },
+  "metadata": {
+    "description": "ploma: a Claude Code harness for LaTeX academic papers."
+  },
+  "plugins": [
+    {
+      "name": "ploma",
+      "source": "./",
+      "description": "A Claude Code harness for writing, validating, reviewing and formatting LaTeX academic papers.",
+      "category": "productivity"
+    }
+  ]
+}
