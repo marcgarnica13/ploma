@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: commit-gate-halts
+description: "/ploma:commit on an onboarded git copy of the sample paper whose intro cites a key missing from the bibliography. Run with --scaffold and --allow-tools 'Bash(python3 *),Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git rev-parse *)'. Expected: commit_gate.py prepare refreshes compile, bib and consistency, the structural bib check FAILs (required), the skill prints the failing check and its next step and stops; no git add, git commit or push runs."
+tags: [milestone-2, gate, ship]
+context:
+  scaffold_script: scaffold.sh

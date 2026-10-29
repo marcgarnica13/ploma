@@ -1,6 +1,6 @@
 # ploma
 
-**Status: milestone 1 (0.1.0-m1, unreleased).** Install, health, compile, bibliography, validation, writing, format and review skills work; commit and the remaining skills arrive in milestone 2. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+**Status: milestone 1 (0.1.0-m1, unreleased).** Install, health, compile, bibliography, validation, writing, format, review and commit skills work. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
 ## What ploma is
 
@@ -33,21 +33,21 @@ Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
 - Venue profiles (`venues/`) and discipline profiles (`disciplines/`), overridable per project in `ploma.d/`.
 - Scripts behind the skills (`scripts/`), each with `--json` output, and eval cases for every installed skill (`evals/`).
 
-Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, respond, checkpoint, compress-session, learn, deep-audit.
+Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, respond, checkpoint, compress-session, learn, deep-audit, commit.
 
 ## Commit gate
 
-`/ploma:commit` (milestone 2) refuses to commit until the required checks have passed on the current files.
+`/ploma:commit` refuses to commit until the required checks have passed on the current files. It refreshes missing or stale `compile`, `bib` (structural) and `consistency` entries itself before it decides.
 
 - Required: `compile` and `bib` (written by `/ploma:compile` and `/ploma:validate-bib`).
 - Recommended: `consistency`, `claims`, `proofread`. `consistency` is recommended in 0.1.x and becomes required from 0.1.1.
 - Override: reply `commit anyway: <reason>`. The reason is logged. After three consecutive overrides the gate stops accepting them until the required checks pass.
 
-Until then, `python3 scripts/gate.py check` shows the gate state.
+`python3 scripts/gate.py check` shows the gate state without committing.
 
 ## Lifecycle
 
-Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, respond, checkpoint, compress-session, learn and deep-audit so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
+Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, respond, checkpoint, compress-session, learn, deep-audit and commit so far.
 
 | # | Stage | Skill |
 |---|---|---|
@@ -63,7 +63,7 @@ Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; mi
 | 6 | Validate | `/ploma:validate-bib`, `/ploma:verify-claims`, `/ploma:audit-reproducibility`, `/ploma:proofread` |
 | 7 | Review | `/ploma:review`, `/ploma:devils-advocate` |
 | 8 | Respond | `/ploma:respond <report>` |
-| 9 | Ship | `/ploma:commit` (planned) |
+| 9 | Ship | `/ploma:commit` |
 | any | Session | `/ploma:status`, `/ploma:checkpoint`, `/ploma:compress-session`, `/ploma:learn`, `/ploma:deep-audit`, `/ploma:help` |
 
 ## Running the tests

@@ -13,6 +13,8 @@ Defaults below. Values under `limits:` and `pipeline.tolerances` in `ploma.yaml`
 | Revise-and-resubmit rounds | capped at r3 |
 | Compile rebuilds to fix the first error | 2 |
 | Deep audit loops | 5 |
+| Commit fix-and-recheck rounds | 2 |
+| Consecutive commit overrides | 3 |
 
 Numeric tolerances when matching manuscript numbers to results:
 

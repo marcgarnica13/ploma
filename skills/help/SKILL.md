@@ -61,13 +61,14 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:compress-session [slug]`: distil the session into a note under `<outputs.dir>/session_logs/` before auto-compaction, with what was discarded as noise.
 - `/ploma:learn [note | --promote [entry] | --skill <name>]`: append a learning to the ledger; `--promote` writes approved entries to `.claude/rules/ploma-learnings.md`; `--skill` drafts a project skill after approval.
 - `/ploma:deep-audit [--report-only]`: audit the ploma installation (config drift, rule and CLAUDE.md paths, restated config facts, dangling report references, manuscript consistency) with four parallel agents; fixes only after approval, never the manuscript.
+- `/ploma:commit [message] [--branch <name>] [--no-pr]`: commit behind the gate; refreshes compile, the structural bibliography check and consistency when stale, stops on a required FAIL unless you write `commit anyway: <reason>`, stages paths explicitly, asks before any push or pull request.
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)
 
-commit.
+None. Every lifecycle skill is installed.
 
-If the user asks for one of these, say it is not installed yet and name the nearest installed skill, if any (`/ploma:doctor` or `/ploma:status` for state, `/ploma:review` for feedback on the paper). Until `/ploma:commit` arrives, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed.
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed without committing.
 
 ## Install and update
 

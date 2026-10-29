@@ -648,6 +648,47 @@ def render_report(rep: ConsistencyReport, main_rel: str, root: Path | None = Non
     return "\n".join(out) + "\n"
 
 
+# ---------------------------------------------------------------- configured run
+
+def configured_inputs(root: Path, cfg: dict) -> dict:
+    """run() inputs from ploma.yaml: main file, results dir (pipeline enabled), metric keys, tolerances,
+    the passport when it exists, and the slug."""
+    root = Path(root).resolve()
+    paths = ploma_config.resolve(cfg, root)["_paths"]
+    pipe = cfg.get("pipeline") or {}
+    main_path = Path(paths["main"]) if paths.get("main") else None
+    results_dir = root / pipe["outputs_dir"] if pipe.get("enabled") and pipe.get("outputs_dir") else None
+    slug = (cfg.get("document") or {}).get("slug") or (main_path.stem if main_path else "document")
+    default = Path(paths["outputs_dir"]) / "passports" / f"{slug}.yaml"
+    return {"main": main_path, "results_dir": results_dir, "metric_keys": list(pipe.get("metric_keys") or []),
+            "tolerances": pipe.get("tolerances") or {}, "passport": default if default.is_file() else None,
+            "slug": slug}
+
+
+def record_report(root: Path, cfg: dict, rep: ConsistencyReport, main_path: Path, slug: str) -> Path:
+    """Write <outputs.dir>/consistency_<slug>.md and the consistency gate entry; return the report path."""
+    import gate  # deferred: only recording touches the gate
+    root = Path(root).resolve()
+    out_dir = Path(ploma_config.resolve(cfg, root)["_paths"]["outputs_dir"])
+    report_path = out_dir / f"consistency_{slug}.md"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(render_report(rep, _rel(Path(main_path), root), root), encoding="utf-8")
+    gate.record(root, cfg, "consistency", rep.verdict, _rel(report_path, root),
+                fail=sum(f.status == FAIL for f in rep.findings),
+                warn=sum(f.status == WARN for f in rep.findings))
+    return report_path
+
+
+def run_recorded(root: Path, cfg: dict) -> tuple[ConsistencyReport, Path]:
+    """run() with the configured inputs, then record_report(); what `--root R --record` does."""
+    inp = configured_inputs(root, cfg)
+    if inp["main"] is None or not inp["main"].is_file():
+        raise FileNotFoundError(f"cannot read main file {inp['main'] or '(document.main not set)'}")
+    rep = run(inp["main"], results_dir=inp["results_dir"], metric_keys=inp["metric_keys"],
+              tolerances=inp["tolerances"], passport=inp["passport"])
+    return rep, record_report(root, cfg, rep, inp["main"], inp["slug"])
+
+
 # ---------------------------------------------------------------- CLI
 
 def main(argv: list[str] | None = None) -> int:
@@ -677,28 +718,23 @@ def main(argv: list[str] | None = None) -> int:
             cfg = ploma_config.load(root)
         except ploma_config.ConfigError as exc:
             return fail(exc.message)
-    paths = ploma_config.resolve(cfg, root)["_paths"] if cfg else {}
-    pipe = (cfg or {}).get("pipeline") or {}
-
-    main_path = Path(args.main) if args.main else (Path(paths["main"]) if paths.get("main") else None)
+    conf = configured_inputs(root, cfg) if cfg else {}
+    main_path = Path(args.main) if args.main else conf.get("main")
     if main_path is None or not main_path.is_file():
         return fail(f"cannot read main file {main_path or '(document.main not set)'}")
-    if args.results:
-        results_dir: Path | None = Path(args.results)
-    elif cfg and pipe.get("enabled") and pipe.get("outputs_dir"):
-        results_dir = root / pipe["outputs_dir"]
-    else:
-        results_dir = None
+    results_dir = Path(args.results) if args.results else conf.get("results_dir")
     if args.metric_keys is not None:
         keys = [k.strip() for k in args.metric_keys.split(",") if k.strip()]
     else:
-        keys = list(pipe.get("metric_keys") or []) if cfg else []
-    tolerances = pipe.get("tolerances") or {} if cfg else {}
+        keys = conf.get("metric_keys", [])
+    tolerances = conf.get("tolerances", {})
     slug = ((cfg or {}).get("document") or {}).get("slug") or main_path.stem
     if args.passport:
         passport: Path | None = Path(args.passport)
+    elif cfg and conf["slug"] == slug:
+        passport = conf["passport"]
     elif cfg:
-        default = Path(paths["outputs_dir"]) / "passports" / f"{slug}.yaml"
+        default = Path(ploma_config.resolve(cfg, root)["_paths"]["outputs_dir"]) / "passports" / f"{slug}.yaml"
         passport = default if default.is_file() else None
     else:
         passport = None
@@ -710,15 +746,8 @@ def main(argv: list[str] | None = None) -> int:
 
     report_path = None
     if args.record:
-        import gate  # deferred: only --record touches the gate
-        out_dir = Path(paths["outputs_dir"])
-        report_path = out_dir / f"consistency_{slug}.md"
         try:
-            out_dir.mkdir(parents=True, exist_ok=True)
-            report_path.write_text(render_report(rep, _rel(main_path, root), root), encoding="utf-8")
-            gate.record(root, cfg, "consistency", rep.verdict, _rel(report_path, root),
-                        fail=sum(f.status == FAIL for f in rep.findings),
-                        warn=sum(f.status == WARN for f in rep.findings))
+            report_path = record_report(root, cfg, rep, main_path, slug)
         except (OSError, ValueError) as exc:
             return fail(f"cannot record the consistency result: {exc}")
 

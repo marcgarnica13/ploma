@@ -177,7 +177,7 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
              "audit-reproducibility", "proofread", "verify-claims", "write", "format", "review", "devils-advocate",
              "brainstorm", "lit-review", "grill", "spec", "respond",
-             "checkpoint", "compress-session", "learn", "deep-audit"}
+             "checkpoint", "compress-session", "learn", "deep-audit", "commit"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -206,9 +206,9 @@ def test_uninstalled_skills_are_marked_planned():
 
 
 def test_planned_check_catches_a_bare_planned_command():
-    assert _planned_mention_problems("Run /ploma:commit next.", "x")
-    assert not _planned_mention_problems("/ploma:commit (planned, milestone 2) gives the map.", "x")
-    assert not _planned_mention_problems("trim manually; /ploma:commit arrives in milestone 2", "x")
+    assert _planned_mention_problems("Run /ploma:ship next.", "x")
+    assert not _planned_mention_problems("/ploma:ship (planned, milestone 2) gives the map.", "x")
+    assert not _planned_mention_problems("trim manually; /ploma:ship arrives in milestone 2", "x")
     assert not _planned_mention_problems("Run /ploma:compile next.", "x")
 
 
