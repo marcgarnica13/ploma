@@ -1,5 +1,7 @@
 # ploma Lifecycle Implementation Plan (milestone 2)
 
+> `extraction/` was removed from the tree after the milestone-2 field test (R105). Paths under `extraction/` below refer to the `seed` tag: `git show seed:extraction/<path>`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Port the remaining seventeen skills and the eight agents of the traces harness into ploma, paper-agnostic and config-driven, add the three remaining deterministic scripts (consistency, style check, placeholders), wire the commit gate, ship one eval per skill, and delete `extraction/` once everything is ported.

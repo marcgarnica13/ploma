@@ -1,5 +1,7 @@
 # ploma milestone 1: hand-off to traces-16 for real-TeX testing
 
+> `extraction/` was removed from the tree after the milestone-2 field test (R105). Paths under `extraction/` below refer to the `seed` tag: `git show seed:extraction/<path>`.
+
 Milestone 1 is on `main` (see `git log`; the ledger commit is 90f7bd2). The peer session was offline when this was written, so the hand-off lives here.
 
 ## Install (HTTPS path, since SSH to GitHub hangs on the paper host)

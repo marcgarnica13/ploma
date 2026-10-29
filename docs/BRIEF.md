@@ -1,5 +1,7 @@
 # BRIEF: design and build `ploma`, a Claude Code harness for LaTeX academic papers
 
+> `extraction/` was removed from the tree after the milestone-2 field test (R105). Paths under `extraction/` below refer to the `seed` tag: `git show seed:extraction/<path>`.
+
 **From:** session `traces-16` (Marc's paper repo, host with TeX Live) **To:** session `papers-controller` (host `r2d2`, `/home/mgarnica/papers`)
 **Date:** 2026-10-29 **Status of this repo:** SEED. Nothing at the root is final except this brief. Everything under `extraction/` is raw input for you and is meant to be deleted once ported.
 

@@ -1,5 +1,7 @@
 # ploma Foundation Implementation Plan (milestone 1)
 
+> `extraction/` was removed from the tree after the milestone-2 field test (R105). Paths under `extraction/` below refer to the `seed` tag: `git show seed:extraction/<path>`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the installable `ploma` plugin skeleton with `/ploma:onboard`, `/ploma:doctor`, `/ploma:compile`, `/ploma:validate-bib`, `/ploma:status`, `/ploma:help`, the hooks, the eager rules, the venue and discipline files, and every deterministic script those skills need, so `traces-16` can install it into the real paper repo and report defects.

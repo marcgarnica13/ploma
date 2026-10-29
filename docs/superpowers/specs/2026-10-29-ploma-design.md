@@ -1,5 +1,7 @@
 # ploma v0.1 design
 
+> `extraction/` was removed from the tree after the milestone-2 field test (R105). Paths under `extraction/` below refer to the `seed` tag: `git show seed:extraction/<path>`.
+
 **Date:** 2026-10-29
 **Status:** APPROVED by Marc on the design forks (2026-10-29); reviewed by a builder check
 **Scope:** Claude Code plugin `ploma`, a harness for LaTeX academic papers. Installed with `/plugin marketplace add marcgarnica13/ploma` and `/plugin install ploma@ploma`.

@@ -1,9 +1,0 @@
-% Suggested replacement for the paragraph in manuscript/teamtraces_merge_suggestion.tex
-% that currently says events are assigned to one of |Z|=24 zones.
-
-To compare spatial behavior across data providers and tactical questions, every event is mapped to a standardized $105\times68$ pitch and assigned to a field partition $Z=\{z_1,\dots,z_K\}$ through a function $\zeta_Z$. The number of zones $K$ and their geometry are analytical choices rather than fixed properties of the method. A partition may be a regular grid, coach-defined channels and zones, or a data-driven partition such as hierarchical spatial splits or trace clusters \cite{Clijmans2022,McCarthy2023}. The \emph{activity} of an event is the pair $\alpha(e)=(a(e),\zeta_Z(e))$, so each process step represents an action type performed in the selected spatial unit. Spatial aggregation is needed because raw event coordinates can be noisy and can make similar possessions appear different. In this study, we instantiate $Z$ as a simple 24-zone grid because it is transparent, computationally simple, and sufficient to illustrate how process discovery captures larger-scale similarities in field use, as shown in Fig.~\ref{fig:purpose_traces_example}.
-
-% Optional shorter sentence to add in the Experiments/Data section if you prefer
-% to keep the method section fully generic:
-%
-% In the experiments, the generic field partition $Z$ is instantiated as a 24-zone grid on the standardized $105\times68$ pitch.
