@@ -76,3 +76,34 @@ def test_run_survives_non_utf8_output(tmp_path, monkeypatch):
     monkeypatch.setenv("LC_ALL", "C.UTF-8")
     out = pdf_pages._run([sys.executable, str(stub)])
     assert out.startswith("Page caf") and "�" in out
+
+
+def _two_column_page(rows: dict[int, tuple[str, str]], n: int = 40) -> str:
+    """A pdftotext -layout page of n lines; rows maps a 1-based line to (left text, right text)."""
+    out = []
+    for i in range(1, n + 1):
+        left, right = rows.get(i, ("Body text of the left column here.", "Body text of the right column."))
+        out.append(f"{left:<48}{right}".rstrip())
+    return "\n".join(out)
+
+
+def test_right_column_heading_above_the_previous_hit_is_found():
+    page1 = _two_column_page({3: ("1 Introduction", "Body text of the right column.")})
+    page2 = _two_column_page({1: ("Body text of the left column here.", "4 Results"),
+                              22: ("3 Method", "Body text of the right column.")})
+    hits = pdf_pages.heading_positions([page1, page2], [["1 Introduction"], ["3 Method"], ["4 Results"]])
+    assert [(h["page"], h["line"]) for h in hits] == [(1, 3), (2, 22), (2, 1)]
+    assert hits[2]["column"] > hits[1]["column"]
+
+
+def test_left_column_heading_above_the_previous_hit_is_not_taken():
+    """Lines above the previous hit count only right of its column: a one-column page never goes back."""
+    page = "\n".join(["2 Background", "text", "3 Method", "text", "more text"])
+    hits = pdf_pages.heading_positions([page], [["3 Method"], ["2 Background"]])
+    assert hits[0]["line"] == 3 and hits[1] is None
+
+
+def test_both_columns_on_one_line_are_found_in_order():
+    page = _two_column_page({5: ("2 Related Work", "3 Method")})
+    hits = pdf_pages.heading_positions([page], [["2 Related Work"], ["3 Method"]])
+    assert [(h["line"], h["column"]) for h in hits] == [(5, 0), (5, 48)]

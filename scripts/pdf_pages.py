@@ -110,7 +110,12 @@ def _heading_re(needle: str) -> re.Pattern:
     words = needle.split()
     body = r"\s+".join(re.escape(w) for w in words)
     numbered = bool(words) and re.fullmatch(r"\d+(?:\.\d+)*\.?|[IVXLCDM]+\.?|[A-Z]\.?", words[0]) is not None
-    return re.compile(r"(?:^\s*|\s{2,})" + ("" if numbered else _HEAD_PREFIX) + "(?i:" + body + r")(?:\s*$|\s{2,}\S)")
+    return re.compile(r"(?:^\s*|\s{2,})" + ("" if numbered else _HEAD_PREFIX) + "(?i:" + body + r")(?=\s*$|\s{2,}\S)")
+
+
+def _columns(pattern: re.Pattern, line: str) -> list[int]:
+    """0-based columns where pattern matches a heading on this line (both columns of a -layout line)."""
+    return [m.start() + len(m.group()) - len(m.group().lstrip()) for m in pattern.finditer(line)]
 
 
 def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict | None]:
@@ -119,12 +124,16 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
 
     Each heading is a list of candidate needles tried in turn (for example "2 Method", then "Method").
     A line matches only where it holds the heading itself (see _heading_re), never a mention in prose.
-    A hit is {page, line, lines, position, needle}: 1-based page and line, the page's line count, and
-    position = page - 1 + (line - 1) / lines (fractional pages from the start of the PDF).
+    A hit is {page, line, column, lines, position, needle}: 1-based page and line, the 0-based column
+    of the heading text, the page's line count, and position = page - 1 + (line - 1) / lines
+    (fractional pages from the start of the PDF). "After the previous one" orders hits by (page, line,
+    column), except that on the previous hit's page the lines above it are searched too, right of its
+    column: in a two-column layout the right column's first heading can sit higher on the page than
+    the left column's last one.
     """
     split = [p.split("\n") for p in pages]
     out: list[dict | None] = []
-    cur_page, cur_line = 0, 0
+    cur_page, cur_line, cur_col = 0, -1, -1  # 0-based; -1: nothing found yet
     for candidates in headings:
         hit = None
         for needle in candidates:
@@ -132,11 +141,14 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
                 continue
             pattern = _heading_re(needle)
             for pi in range(cur_page, len(split)):
-                first = cur_line if pi == cur_page else 0
-                for li in range(first, len(split[pi])):
-                    if pattern.search(split[pi][li]):
+                for li, text in enumerate(split[pi]):
+                    # On the previous hit's page, its line and the lines above it count only right of its
+                    # column (a two-column page: a right-column heading printed higher up).
+                    min_col = cur_col if pi == cur_page and li <= cur_line else -1
+                    cols = [c for c in _columns(pattern, text) if c > min_col]
+                    if cols:
                         lines = max(1, len(split[pi]))
-                        hit = {"page": pi + 1, "line": li + 1, "lines": lines,
+                        hit = {"page": pi + 1, "line": li + 1, "column": cols[0], "lines": lines,
                                "position": round(pi + li / lines, 3), "needle": needle}
                         break
                 if hit:
@@ -145,7 +157,7 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
                 break
         out.append(hit)
         if hit:
-            cur_page, cur_line = hit["page"] - 1, hit["line"]
+            cur_page, cur_line, cur_col = hit["page"] - 1, hit["line"] - 1, hit["column"]
     return out
 
 
