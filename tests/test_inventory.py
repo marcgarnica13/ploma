@@ -460,12 +460,10 @@ def test_discipline_gap_generic_for_plain_article(sample_paper):
     assert inventory.propose_config(inv)["document"]["discipline"] == "generic"
 
 
-def test_discipline_gap_ml_for_ml_venue(tmp_path):
-    shutil.copy(FIX_TEX / "llncs_main.tex", tmp_path / "paper.tex")
-    inv = inventory.inventory(tmp_path)
-    g = _gaps(inv)["document.discipline"]
-    assert g["recommended"] == "ml" and g["options"][0] == "ml"
-    assert inventory.propose_config(inv)["document"]["discipline"] == "ml"
+def test_discipline_gap_ml_for_ml_venue():
+    inv = {"doc_class": "llncs", "code": None, "results_dir": None}
+    opts = inventory._discipline_options(inv, "springer-ml")
+    assert opts[0] == "ml" and "generic" in opts
 
 
 def test_discipline_ml_for_python_pipeline(tmp_path):
@@ -474,6 +472,34 @@ def test_discipline_ml_for_python_pipeline(tmp_path):
 
 
 def test_ml_venue_names():
-    assert inventory._ml_venue("springer-ml") and inventory._ml_venue("llncs-conference")
+    assert inventory._ml_venue("springer-ml") and not inventory._ml_venue("llncs-conference")
     assert inventory._ml_venue("neurips-2026") and inventory._ml_venue("ICLR") and inventory._ml_venue("deep-learning-ws")
+    for name in ("aaai-26", "ijcai", "kdd-2027"):
+        assert inventory._ml_venue(name), name
     assert not inventory._ml_venue("generic-journal") and not inventory._ml_venue(None)
+
+
+def test_metric_keys_skip_hyperparameters_counts_and_config_blocks(tmp_path):
+    """R127 fix round 1: counts and hyperparameters are not metrics; config-like parent dicts are not read."""
+    data = {"accuracy": 0.9, "f1": 0.8, "match_count": 64, "count": 3, "total": 10, "batch_size": 32, "lr": 0.01,
+            "epochs": 5, "idx": 2, "random_state": 0, "k": 5,
+            "config": {"lr": 0.001, "batch_size": 64, "epochs": 10, "dropout": 0.1},
+            "hparams": {"steps": 100, "patience": 3, "workers": 4, "auc": 0.7}}
+    g = _gaps(_pipeline_repo(tmp_path, {"m.json": data}))["pipeline.metric_keys"]
+    assert g["recommended"] == ["accuracy", "f1"]
+
+
+def test_config_like_tokens():
+    for key in ("match_count", "count", "total", "batch_size", "lr", "learning_rate", "epochs", "epoch", "idx",
+                "index", "random_state", "k", "steps", "iterations", "patience", "workers", "dropout"):
+        assert inventory._config_like(key), key
+    for key in ("accuracy", "avg_fitness", "generalization", "dependency"):
+        assert not inventory._config_like(key), key
+
+
+def test_plain_llncs_paper_without_code_gets_generic(tmp_path):
+    """R135: LNCS spans all of computer science; without a Python pipeline the discipline is generic."""
+    shutil.copy(FIX_TEX / "llncs_main.tex", tmp_path / "paper.tex")
+    inv = inventory.inventory(tmp_path)
+    assert _gaps(inv)["document.discipline"]["recommended"] == "generic"
+    assert inventory.propose_config(inv)["document"]["discipline"] == "generic"

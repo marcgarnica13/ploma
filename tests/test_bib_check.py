@@ -195,3 +195,18 @@ def test_doi_and_url_fields_are_unescaped():
     assert e.fields["url"] == "https://x.org/a_b?q=1&r=%20"
     assert e.fields["title"] == r"Keep \_ {Braces}"
     assert bib_check._norm_doi(r"https://doi.org/10.1/{X}\_y") == "10.1/x_y"
+
+
+def test_sici_doi_unchanged_by_unescape():
+    sici = "10.1002/(SICI)1097-4571(199806)49:8<693::AID-ASI4>3.0.CO;2-0"
+    assert bib_check.unescape_ref(sici) == sici
+    assert parse_bib("@article{S, doi = {" + sici + "}}")[0].fields["doi"] == sici
+
+
+def test_duplicate_doi_observed_shows_value_as_written():
+    text = (r"@inproceedings{A, doi = {10.1007/978-3-030-85469-0_16}}" "\n"
+            r"@inproceedings{B, doi = {https://doi.org/10.1007/978-3-030-85469-0\_16}}")
+    f = next(f for f in check_entries(parse_bib(text)) if f.id.startswith("bib.duplicate_doi."))
+    assert "10.1007/978-3-030-85469-0_16" in f.observed
+    assert f.observed.startswith("doi = 10.1007/978-3-030-85469-0_16; as written: ")
+    assert "https://doi.org/10.1007/978-3-030-85469-0\\_16 (B)" in f.observed

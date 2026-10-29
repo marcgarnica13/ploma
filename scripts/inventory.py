@@ -346,14 +346,22 @@ def _superpowers(root: Path, home: Path) -> dict:
     return {"enabled": False, "id": None}
 
 
-_CONFIG_TOKENS = {"id", "ids", "threshold", "seed", "season", "year", "version"}
+_CONFIG_TOKENS = {"id", "ids", "threshold", "seed", "season", "year", "version",
+                  "count", "total", "lr", "epochs", "epoch", "batch", "size", "dropout", "k", "idx", "index",
+                  "steps", "iterations", "patience", "workers"}
+_CONFIG_PHRASES = ("learning_rate", "random_state")
+# Nested blocks holding run settings, never metrics.
+_CONFIG_PARENTS = {"config", "configs", "params", "parameters", "hyperparameters", "hparams", "args", "settings",
+                   "options"}
 _COUNT_PREFIXES = {"n", "num"}
 
 
 def _config_like(key: str) -> bool:
     """Ids, thresholds, counts and run configuration rather than reported metrics (R127 D3)."""
     tokens = [t for t in re.split(r"[^a-z0-9]+", key.lower()) if t]
-    return not tokens or bool(_CONFIG_TOKENS & set(tokens)) or tokens[0] in _COUNT_PREFIXES
+    joined = "_".join(tokens)
+    return (not tokens or bool(_CONFIG_TOKENS & set(tokens)) or tokens[0] in _COUNT_PREFIXES
+            or any(p in joined for p in _CONFIG_PHRASES))
 
 
 def _numeric_keys(data: dict) -> set[str]:
@@ -364,8 +372,8 @@ def _plausible_metrics(data: dict) -> set[str]:
     """Numeric non-config keys at the top level and one level down; for a dict of dicts, the inner keys
     most children share."""
     keys = _numeric_keys(data)
-    for value in data.values():
-        if not isinstance(value, dict) or not value:
+    for parent, value in data.items():
+        if not isinstance(value, dict) or not value or str(parent).lower() in _CONFIG_PARENTS:
             continue
         children = [c for c in value.values() if isinstance(c, dict)]
         if len(children) * 2 > len(value):
@@ -514,8 +522,9 @@ def _venue_options(doc_class: str | None, root: Path | None = None) -> list[str]
     return list(dict.fromkeys(opts))
 
 
-_ML_VENUES = {"springer-ml", "llncs-conference"}
-_ML_WORDS = ("learning", "neurips", "icml", "iclr")
+# R135: LNCS spans all of computer science, so llncs-conference is not an ML venue.
+_ML_VENUES = {"springer-ml"}
+_ML_WORDS = ("learning", "neurips", "icml", "iclr", "aaai", "ijcai", "kdd")
 
 
 def _ml_venue(venue: str | None) -> bool:

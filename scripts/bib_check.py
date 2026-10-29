@@ -38,6 +38,7 @@ class Entry:
     key: str
     type: str
     fields: dict[str, str] = field(default_factory=dict)
+    raw: dict[str, str] = field(default_factory=dict)  # doi/url values as written, before unescape_ref
 
 
 # ---------------------------------------------------------------- bib parsing
@@ -96,16 +97,20 @@ def unescape_ref(value: str) -> str:
     return _ESCAPE_RE.sub(r"\1", value).replace("{", "").replace("}", "").strip()
 
 
-def _fields(chunks: list[str], macros: dict[str, str]) -> dict[str, str]:
+def _fields(chunks: list[str], macros: dict[str, str], raw: dict[str, str] | None = None) -> dict[str, str]:
     fields: dict[str, str] = {}
     for chunk in chunks:
         if "=" not in chunk:
             continue
-        name, raw = chunk.split("=", 1)
+        name, raw_text = chunk.split("=", 1)
         name = name.strip().lower()
         if name:
-            value = _value(raw, macros)
-            fields[name] = unescape_ref(value) if name in _REF_FIELDS else value
+            value = _value(raw_text, macros)
+            if name in _REF_FIELDS:
+                if raw is not None:
+                    raw[name] = value
+                value = unescape_ref(value)
+            fields[name] = value
     return fields
 
 
@@ -136,7 +141,8 @@ def parse_bib(text: str) -> list[Entry]:
         key = chunks[0].strip()
         if not key or "=" in key:
             continue
-        entries.append(Entry(key, etype, _fields(chunks[1:], macros)))
+        raw: dict[str, str] = {}
+        entries.append(Entry(key, etype, _fields(chunks[1:], macros, raw), raw))
     return entries
 
 
@@ -290,6 +296,16 @@ def _norm_title(title: str) -> str:
     return re.sub(r"[^0-9a-z]", "", title.lower())
 
 
+def _dup_observed(fld: str, a: Entry, e: Entry) -> str:
+    """The shared (normalised for a DOI) value, plus each copy as written in the .bib when that differs."""
+    shown = _norm_doi(e.fields[fld]) if fld == "doi" else e.fields[fld]
+    out = f"{fld} = {shown}"
+    written = [(x.key, x.raw.get(fld, x.fields[fld])) for x in (a, e)]
+    if any(w != shown for _k, w in written):
+        out += "; as written: " + ", ".join(f"{w} ({k})" for k, w in written)
+    return out
+
+
 def check_entries(entries: list[Entry]) -> list[Finding]:
     """Bib-only checks: duplicate keys, duplicate DOIs and duplicate normalised titles (later entry against the first)."""
     findings: list[Finding] = []
@@ -315,7 +331,7 @@ def check_entries(entries: list[Entry]) -> list[Finding]:
                 findings.append(Finding(
                     f"bib.duplicate_{kind}.{a.key}+{e.key}", WARN,
                     f"{a.key} and {e.key} share the same {kind}",
-                    observed=f"{fld} = {e.fields[fld]}",
+                    observed=_dup_observed(fld, a, e),
                     remediation=f"keep one entry and cite it everywhere; remove or merge {e.key}",
                     group="bib"))
             else:

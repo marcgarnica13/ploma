@@ -403,5 +403,5 @@ def test_legacy_harness_grouped_one_warn_per_kind(onboarded_sample, monkeypatch)
     skills = g["findings"][0]
     assert "2" in skills.summary and skills.observed.splitlines() == [".claude/skills/compile", ".claude/skills/doctor"]
     text = r.render()
-    assert "\n    .claude/rules/r01.md" in text or "\n  .claude/rules/r01.md" in text
+    assert "\n  Observed: .claude/rules/r00.md\n    .claude/rules/r01.md\n" in text
     assert sum(1 for line in text.splitlines() if line.startswith("- WARN legacy-harness.")) == 3
