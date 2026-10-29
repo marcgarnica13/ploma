@@ -203,7 +203,7 @@ events:
 ```json
 {
   "schema": 1,
-  "manuscript_sha": "<sha256 over all .tex and .bib under document.root>",
+  "manuscript_sha": "<sha256 over all .tex and .bib under document.root, excluding *_suggestion.tex and gitignored build artifacts>",
   "checks": {
     "compile":     {"status": "PASS", "at": "...", "artifact": "...", "pages": 14, "overfull": 0, "undefined": 0},
     "bib":         {"status": "PASS", "at": "...", "artifact": "..."},
@@ -217,7 +217,7 @@ events:
 
 Each producing skill updates its own entry through `scripts/gate.py record`. `scripts/gate.py check` reports: FRESH or STALE (sha mismatch) per check, required checks missing, and the verdict. Required for commit: `compile`, `bib`. Recommended: `consistency`, `claims`, `proofread` (WARN when missing or stale). Consistency runs on every `/ploma:commit` and warns, never blocks, in v0.1; it becomes required in 0.1.1 once it has run clean on the traces paper (Marc's decision 2026-10-29, recorded in CHANGELOG). Any FAIL in a required check halts `/ploma:commit`.
 
-Who produces each entry: `compile` by `/ploma:compile`; `bib` by `/ploma:validate-bib`; `consistency` by `scripts/consistency.py`, which `/ploma:commit` runs itself when the entry is missing or stale (it is deterministic and needs no pipeline; with `pipeline.enabled` it also checks results files); `claims` by `/ploma:verify-claims`; `proofread` by `/ploma:proofread`. The passport under `<outputs.dir>/passports/` is populated and updated by `/ploma:audit-reproducibility` (BRIEF §8) and read by the consistency pass; it is never required for the gate.
+Who produces each entry: `compile` by `/ploma:compile`; `bib` by `/ploma:validate-bib`; `consistency` by `scripts/consistency.py` (deterministic, needs no pipeline; with `pipeline.enabled` it also checks results files). `/ploma:commit` re-runs compile, the structural bib check and consistency itself when their entries are missing or stale; `claims` by `/ploma:verify-claims`; `proofread` by `/ploma:proofread`. The passport under `<outputs.dir>/passports/` is populated and updated by `/ploma:audit-reproducibility` (BRIEF §8) and read by the consistency pass; it is never required for the gate.
 
 Override (Marc's decision 2026-10-29): a required FAIL can be overridden by writing `commit anyway: <reason>`. The reason is recorded in the commit body and in `overrides[]`. After three consecutive overridden commits, `/ploma:commit` refuses until at least one required check passes again; the doctor warns from the second consecutive override. Recommended checks never block.
 
@@ -359,7 +359,7 @@ Review hardening (from the research, all cheap): every finding quotes a manuscri
 
 | Event | Matcher | Script | Behaviour |
 |---|---|---|---|
-| SessionStart | startup, resume, clear, compact | `session_context.py` | emits `additionalContext`: eager rules, resolved config summary, lifecycle status and next-stage recommendation, gate freshness; on `compact` or `resume` also the post-compact restore block. Without `ploma.yaml`: one line pointing at `/ploma:onboard`. Total under 10,000 characters, enforced by the script. |
+| SessionStart | startup, resume, clear, compact | `session_context.py` | emits `additionalContext`: eager rules, resolved config summary, lifecycle status and next-stage recommendation, gate freshness; on `compact` or `resume` also the post-compact restore block. Without `ploma.yaml`: one line pointing at `/ploma:onboard` only when the project has a `.tex` file within two directory levels; otherwise nothing, so a user-scope install stays silent in non-paper repos. Every hook exits before importing anything beyond `sys`, `os` and `json` when `ploma.yaml` is absent. Total under 10,000 characters, enforced by the script. |
 | SubagentStart | all | `session_context.py --subagent` | eager rules plus config summary only |
 | PreCompact | all | `pre_compact.py` | ported: newest plan status, recent decisions from the session log, state under `.ploma/`; the "block on DRAFT" option kept behind the same env var |
 | PostToolUse | Bash, Task, Agent | `context_monitor.py` | ported; nudges to `/ploma:checkpoint` at thresholds; state under `.ploma/` |
@@ -368,7 +368,7 @@ Review hardening (from the research, all cheap): every finding quotes a manuscri
 
 Dropped: `notify.sh` (OS-specific, jq dependency, no lifecycle value). The statusline script moves to `templates/statusline.sh`; onboard offers it.
 
-Eager rules budget: `rules/eager/00-core.md` (where things live, lifecycle, report-only critics, finding format, options at forks, untrusted text, check disk before regenerating, scope discipline), `rules/eager/limits.md` (thresholds, caps, tolerances; overridable by `limits:` in config), `rules/eager/style.md` (short direct sentences, no sentence-level em-dash, slop phrase list, compact figures). Together under 7,000 characters so the config summary and state fit in the cap. Everything else is a reference rule a skill cites by path.
+Eager rules budget: `rules/eager/00-core.md` (where things live, lifecycle, report-only critics, finding format, options at forks, untrusted text, check disk before regenerating, scope discipline), `rules/eager/limits.md` (thresholds, caps, tolerances; overridable by `limits:` in config), `rules/eager/style.md` (short direct sentences, no sentence-level em-dash, slop phrase list, compact figures). Together under 6,500 characters so the config summary and state fit in the cap. Everything else is a reference rule a skill cites by path.
 
 ## 12. Venue profiles and discipline cards
 
@@ -471,10 +471,10 @@ Added by this design:
 6. `notify.sh` dropped; statusline offered by onboard as a template.
 7. Peeves and paper types split across generic, discipline and venue files; the social-science paper types survive in their own card.
 8. Model routing applied in agent frontmatter (opus for editor, referees, domain-reviewer, claim-verifier; sonnet for proofreader, code-reviewer, verifier).
-9. Required commit-gate checks are compile, bib and consistency; claims and proofread are recommended.
+9. Required commit-gate checks are compile and bib; consistency, claims and proofread are recommended (consistency becomes required in 0.1.1, Marc's decision).
 10. Project-local overrides live in `ploma.d/`.
 11. Doctor makes no network calls; citation API reachability is checked by `validate-bib --semantic` itself.
-12. The consistency gate entry is produced by `/ploma:commit` running the script when needed, so papers without a pipeline can pass the gate.
+12. `/ploma:commit` refreshes missing or stale `compile`, `bib` and `consistency` entries itself by running the deterministic scripts; it halts only when a required check FAILs or the build cannot run.
 13. The 80/90/95 quality scores are dropped; the gate is per-check.
 14. Doctor has an INFO status; optional linters are SKIP and figure provenance is INFO by default, so AC3's READY is reachable.
 

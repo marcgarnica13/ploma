@@ -26,7 +26,7 @@ Everything in the milestone 1 plan, plus:
 1. A referee report pasted as one paragraph with no numbering: `/ploma:respond` must still produce R{n}.{m} concerns, one per distinct ask (Task 11 eval rubric and the `review/review1.md` fixture, which has numbered prompts but unnumbered bullets).
 2. A manuscript whose abstract states a number that appears only in a figure caption: `consistency.py` must count captions as body text and PASS (Task 3 test `test_number_in_caption_counts`).
 3. A `.tex` draft that contains an em-dash inside a `\cite` key or a URL: `style_check.py` must not flag it (Task 5 test `test_em_dash_inside_macro_argument_is_ignored`).
-4. `/ploma:commit` invoked when the verdict file exists but `manuscript_sha` is stale: it must re-run consistency itself, report the other checks as stale, and halt without committing (Task 13 test `test_stale_gate_halts_before_git`).
+4. `/ploma:commit` invoked when the verdict file exists but `manuscript_sha` is stale: it must re-run compile, bib and consistency itself and halt before git only if a required re-run FAILs (Task 13 tests `test_stale_compile_is_rerun`, `test_stale_gate_halts_before_git`).
 5. `/ploma:review --peer <unknown-venue>`: the skill must stop before spawning the editor and list the available venue keys (Task 9 eval rubric; `profiles.ProfileError` message).
 
 ---
@@ -212,10 +212,10 @@ Checkpoint: port; writes `<outputs.dir>/checkpoints/<date>_<slug>.md`; proposed 
 - Create: `scripts/commit_gate.py`, `skills/commit/SKILL.md`, `tests/test_commit_gate.py`, `evals/commit/`
 
 **Interfaces:**
-- `commit_gate.prepare(root, cfg, *, runner) -> GatePrep` dataclass: runs `gate.check`; when `consistency` is missing or stale, runs `consistency.run` and records it; returns `verdict`, `stale: list[str]`, `missing: list[str]`, `failing: list[str]`, `warnings`, `can_override`, `override_streak`, `next_commands: list[str]` (the skill commands that refresh each stale or missing required check), `to_dict()`. `commit_gate.parse_override(message: str) -> str | None` returns the reason when the user text matches `commit anyway: <reason>` (case-insensitive, reason non-empty). CLI: `python3 scripts/commit_gate.py [--root R] prepare [--json] | override --reason R`.
+- `commit_gate.prepare(root, cfg, *, runner) -> GatePrep` dataclass: runs `gate.check`; when `compile`, `bib` or `consistency` is missing or stale, re-runs `compile.run`, the structural part of `validate_bib.run` (`semantic=False`) and `consistency.run` and records them; halts only when a required check FAILs or the build cannot run; consistency FAIL is a warning in v0.1; returns `verdict`, `stale: list[str]`, `missing: list[str]`, `failing: list[str]`, `warnings`, `can_override`, `override_streak`, `next_commands: list[str]` (the skill commands that refresh each stale or missing recommended check: `/ploma:verify-claims`, `/ploma:proofread`), `to_dict()`. `commit_gate.parse_override(message: str) -> str | None` returns the reason when the user text matches `commit anyway: <reason>` (case-insensitive, reason non-empty). CLI: `python3 scripts/commit_gate.py [--root R] prepare [--json] | override --reason R`.
 - `skills/commit/SKILL.md` (`disable-model-invocation: true`, `argument-hint: "[message] [--branch <name>] [--no-pr]"`): Step 0 runs `commit_gate.py prepare`; on INCOMPLETE or FAIL it prints the failing and stale checks with `next_commands` and stops; up to two fix-and-recheck rounds when the user asks; override only on the exact `commit anyway: <reason>` phrase, refused when `can_override` is false, logged through `gate.override` and in the commit body as `ploma-override: <reason>`; Step 0b surface-sync replaced by "run `doctor.py` and stop on NOT_READY"; then the traces git steps with explicit `git add <paths>`, never `-A`; PR creation only with `gh` available and unless `--no-pr`; `state.record("commit", ...)`.
 
-- [ ] **Step 1: Write the failing tests** (`test_stale_gate_halts_before_git` asserts `prepare` returns INCOMPLETE with `compile` in `stale` after editing a `.tex`, and that `next_commands` names `/ploma:compile`; `test_consistency_is_run_by_prepare`; `test_parse_override`; `test_override_refused_after_three`)
+- [ ] **Step 1: Write the failing tests** (`test_stale_compile_is_rerun` asserts that after editing a `.tex` `prepare` calls the compile runner and records a fresh entry; `test_stale_gate_halts_before_git` asserts that when the re-run compile FAILs, `prepare` returns FAIL and the skill's git step is never reached; `test_consistency_fail_only_warns`; `test_consistency_is_run_by_prepare`; `test_parse_override`; `test_override_refused_after_three`)
 - [ ] **Step 2: Implement, run, write the skill and eval, commit** `git commit -m "feat: commit skill wired to the gate"`
 
 ---
@@ -235,7 +235,7 @@ The template is `data-analysis` with the six-stage soccer chain replaced by `{{ 
 ### Task 15: Help, README, status catch-up; evals for everything; extraction removal
 
 **Files:**
-- Modify: `skills/help/SKILL.md` (all 23 skills listed, no "not yet installed" rows), `README.md` (full lifecycle, every skill, the gate and override rules), `CHANGELOG.md` (`0.1.0`), `UPSTREAMS.md` (last-reviewed dates)
+- Modify: `skills/help/SKILL.md` (all 23 skills listed, no "not yet installed" rows), `README.md` (full lifecycle, every skill, the gate and override rules), `CHANGELOG.md` (`0.1.0`, with the note that consistency becomes a required gate check in 0.1.1), `UPSTREAMS.md` (last-reviewed dates)
 - Delete: `extraction/` (one commit, after the check below)
 
 - [ ] **Step 1: Verify nothing shipped references `extraction/`**
