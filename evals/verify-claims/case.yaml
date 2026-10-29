@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: verify-claims-sample-paper
+description: "/ploma:verify-claims on a copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *),Write,Agent,WebFetch'. Network optional: unreachable sources give MED or LOW tiers, never HIGH. Expected: a claims table, one claim-verifier call without the draft, a report and a claims gate entry."
+tags: [milestone-2, validate, cove]
+context:
+  scaffold_script: scaffold.sh

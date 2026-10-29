@@ -193,3 +193,14 @@ def test_verifier_uses_the_plugin_scripts():
 def test_lint_catches_a_bad_agent():
     assert BANNED_RE.search("a TAGS_FILE read") and EM_DASH_RE.search("x — y")
     assert not ("## Project context\n\nsomething else".startswith(PROJECT_CONTEXT))
+
+
+def test_claim_verifier_lookup_cap_and_status_mapping():
+    """Deferred milestone-2 minors carried into Task 8."""
+    text = (REPO / "agents" / "claim-verifier.md").read_text(encoding="utf-8")
+    assert "--max <limits.doi_lookups_per_run>" in text
+    for status, tier in (("missing", "HIGH"), ("mismatch", "HIGH"), ("unreachable", "MED"), ("not_indexed", "LOW")):
+        assert re.search(rf"`{status}`[^\n|]*\|[^\n]*{tier}", text), (status, tier)
+    for line in text.splitlines():
+        if "matches_claim" in line and "yes" in line and "cannot-verify" in line:
+            assert "not-verifiable-claim-type" in line, line

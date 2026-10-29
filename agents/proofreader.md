@@ -77,8 +77,8 @@ For each issue:
 - **Severity:** CRITICAL / MAJOR / MINOR
 ```
 
-Severity: CRITICAL changes meaning or breaks the build or a citation; MAJOR is a visible error a referee would flag; MINOR is polish.
+Severity: CRITICAL is a visible error in the printed paper (a misspelling, a grammar error, a wrong word or symbol, a broken citation or reference) or text whose meaning is wrong; MAJOR is awkward or inconsistent text a referee would flag (terminology or notation drift, a comma splice, informal phrasing, a leftover comment); MINOR is polish. The calling skill reports CRITICAL as HIGH, MAJOR as MEDIUM and MINOR as LOW.
 
 ## Report
 
-Return the report as your final message, opening with counts per category and severity. The calling skill writes it to `<outputs.dir>/<file stem>_proofread_report.md`.
+Return the report as your final message, opening with counts per category and severity. The calling skill writes it to `<outputs.dir>/<stem>_report.md`, where `<stem>` is the file name without `.tex`.

@@ -13,7 +13,7 @@ No `ploma.yaml` in the repo root: say "ploma is not set up here. Run /ploma:onbo
 
 Report-only: this skill never edits a `.bib` or `.tex` file. It names each fix; the user applies it.
 
-If the arguments contain `--cite-claim`: claim checks belong to `/ploma:verify-claims`, which arrives in milestone 2. Say so in one line, then run the bibliography audit without that flag.
+If the arguments contain `--cite-claim`: claim checks belong to `/ploma:verify-claims`. Say so in one line, then run the bibliography audit without that flag.
 
 ## 1. Run
 

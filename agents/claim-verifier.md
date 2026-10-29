@@ -61,13 +61,23 @@ For each `verification_question`:
 2. Use Read, WebFetch, WebSearch, Grep and Bash to find a grounded answer. For a citation claim whose source is a bibliography entry, check that the entry exists with the plugin's lookup script:
 
    ```bash
-   python3 "<ploma scripts>/cite_lookup.py" <refs.bib> --keys <k> --json
+   python3 "<ploma scripts>/cite_lookup.py" <refs.bib> --keys <k> --json --max <limits.doi_lookups_per_run>
    ```
 
-   `<refs.bib>` is the bibliography file named in the source material (one of `build.bib_files`), `<k>` the comma-separated entry keys, and `<ploma scripts>` the absolute path on the `ploma scripts:` line of the injected block (`${CLAUDE_PLUGIN_ROOT}/scripts` without it). The script queries Crossref, OpenAlex and Semantic Scholar within the DOI lookup cap in limits; a resolver timeout is MED-WARN, an entry no index knows is evidence for HIGH-WARN.
+   `<refs.bib>` is the bibliography file named in the source material (one of `build.bib_files`), `<k>` the comma-separated entry keys, and `<ploma scripts>` the absolute path on the `ploma scripts:` line of the injected block (`${CLAUDE_PLUGIN_ROOT}/scripts` without it). `<limits.doi_lookups_per_run>` is the DOI lookup cap: the "DOI lookups per run" value in the summary's limits line, else `limits.doi_lookups_per_run` in `ploma.yaml`, else the default in `<ploma root>/rules/eager/limits.md`. Never pass a larger value. The script queries Crossref, DataCite, OpenAlex and Semantic Scholar and returns a status per entry. Map it:
+
+   | Script status | What it means for the claim |
+   |---|---|
+   | `verified` | the entry exists as cited; go on to check what the work says |
+   | `partial` | the work exists but a field differs (year, venue, DOI); `partial`, tier LOW, naming the field |
+   | `missing` | every index answered and none knows the work: evidence for HIGH-WARN (fabricated reference) |
+   | `mismatch` | the DOI resolves to a different work: evidence for HIGH-WARN |
+   | `unreachable` | every source failed (network, rate limit): `cannot-verify`, MED-WARN |
+   | `not_indexed` | an entry type indexes often lack (report, preprint, software, web page): `cannot-verify`, LOW-WARN, or LOW once a canonical URL confirms it exists; never HIGH on this status alone |
+   | `skipped` | the lookup cap was reached: `cannot-verify`, MED-WARN (re-run later) |
 3. Record:
    - `independent_answer`: what the source actually says;
-   - `matches_claim`: yes / partial / no / cannot-verify;
+   - `matches_claim`: yes / partial / no / cannot-verify / not-verifiable-claim-type;
    - `evidence`: a direct quote with page number, or a URL.
 
 Never answer "the claim is correct because it sounds right." Either you found evidence or you did not.
@@ -97,7 +107,7 @@ Each per-claim finding carries a **severity tier**:
 
 | ID | Claim | Independent answer | Evidence | Match? | Tier |
 |----|-------|--------------------|----------|--------|------|
-| C1 | "<claim as given>" | <what the source says> | <quote + location> | yes / partial / no / cannot-verify | none / LOW / MED / HIGH |
+| C1 | "<claim as given>" | <what the source says> | <quote + location> | yes / partial / no / cannot-verify / not-verifiable-claim-type | none / LOW / MED / HIGH |
 
 ### HIGH-WARN (blocks the commit gate)
 

@@ -14,7 +14,7 @@ The manuscript is proofread before any submission commit. The proofreader never 
 
 ### Phase 1: review and propose (no edits)
 
-The `ploma:proofreader` agent reads each file in full and writes a report to `<outputs.dir>/proofread_<document.slug>.md`. Every proposed change carries location (file:line or section), current text, proposed fix and category. No source file is modified.
+The `ploma:proofreader` agent reads each file in full and returns a report that `/ploma:proofread` writes to `<outputs.dir>/<stem>_report.md` (one per file; `<stem>` is the file name without `.tex`). Every proposed change carries location (file:line or section), current text, proposed fix and category. No source file is modified.
 
 ### Phase 2: approval
 

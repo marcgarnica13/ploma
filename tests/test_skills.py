@@ -170,7 +170,7 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
-             "audit-reproducibility"}
+             "audit-reproducibility", "proofread", "verify-claims"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -207,7 +207,8 @@ def test_planned_check_catches_a_bare_planned_command():
 
 # ---------------------------------------------------------------- eval setup (R91)
 
-SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "status", "validate-bib")
+SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "proofread", "status", "validate-bib",
+                  "verify-claims")
 
 
 def test_evals_contain_no_symlinks():
@@ -246,7 +247,8 @@ def test_eval_scaffold_runs(name, tmp_path):
     assert (tmp_path / "ploma.yaml").exists() == (name != "onboard")
 
 
-@pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "status", "validate-bib"))
+@pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "proofread", "status", "validate-bib",
+                                  "verify-claims"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -311,7 +313,7 @@ def test_report_header_fields():
 
 # ---------------------------------------------------------------- validate stage (milestone 2, Tasks 4 and 8)
 
-VALIDATE_SKILLS = ("audit-reproducibility",)
+VALIDATE_SKILLS = ("audit-reproducibility", "proofread", "verify-claims")
 
 
 def _skill(name: str) -> str:
@@ -385,3 +387,38 @@ def test_passport_reference_example_validates(tmp_path):
     findings, info = consistency._passport_findings(p)
     assert not [f for f in findings if f.id == "consistency.passport_invalid"], [f.summary for f in findings]
     assert info["claims"] == len(data["claims"])
+
+
+def test_proofread_contract():
+    text = _skill("proofread")
+    assert "ploma:proofreader" in text and "<outputs.dir>/<stem>_report.md" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" record proofread' in text
+    assert "--extra open_high=" in text and "WARN" in text and "PASS" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record proofread' in text
+    assert "never edits" in text.lower() or "never edit" in text.lower()
+    for phase in ("Propose", "Approve", "Apply"):
+        assert phase in text, phase
+    fm, _ = split_frontmatter(text)
+    assert "Edit" not in str(fm["allowed-tools"]).replace("Edit,", "")  # no pre-approved edits
+    assert "Agent" in str(fm["allowed-tools"])
+
+
+def test_verify_claims_contract():
+    text = _skill("verify-claims")
+    assert "ploma:claim-verifier" in text and "skills/_shared/references/cove.md" in text
+    assert "<outputs.dir>/verify_claims_<stem>.md" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" record claims' in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record verify-claims' in text
+    assert "HIGH-WARN" in text and "never" in text.lower()
+    assert "allowHighWarn" not in text and "--no-fail-closed" not in text
+    assert "context: fork" not in text and "context=fork" not in text
+    assert "commit anyway" in text  # the gate override replaces the old opt-outs
+    fm, _ = split_frontmatter(text)
+    assert "Agent" in str(fm["allowed-tools"])
+
+
+def test_proofread_rule_and_agent_agree_on_the_report_path():
+    rule = (REPO / "rules" / "reference" / "proofreading-protocol.md").read_text(encoding="utf-8")
+    agent = (REPO / "agents" / "proofreader.md").read_text(encoding="utf-8")
+    assert "<outputs.dir>/<stem>_report.md" in rule and "<outputs.dir>/<stem>_report.md" in agent
+    assert "_proofread_report.md" not in agent and "proofread_<document.slug>.md" not in rule
