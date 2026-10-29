@@ -32,7 +32,7 @@ On macOS, where `--suffix` is not supported, run `mktemp -t ploma-respond`. The 
 | `.html`, `.htm` | `pandoc "<file>" -t plain -o "<path>"` |
 | anything else | Ask for a plain-text version and skip the file. |
 
-Quote every path. Read and Grep the converted text; cite the original file in the output. Remove the temporary files at the end of the run.
+Quote every path. Read and Grep the converted text; cite the original file in the output. Delete the temporary files at the end of the run with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/respond_files.py" clean-tmp "<path>" ...` (never a shell `rm`).
 
 When the converter is missing (`command -v pdftotext`, `command -v pandoc`, `command -v docx2txt` print nothing) or the conversion fails or yields empty text, stop for that file and say which tool is needed and how to install it: poppler-utils for `pdftotext` (`apt install poppler-utils`, `brew install poppler`), pandoc for `.docx` and `.html` (`apt install pandoc`, `brew install pandoc`), or `pip install docx2txt`. Ask the user for a plain-text version (`.txt` or `.md`) of the report as the alternative. Never guess the content of a report that could not be read.
 

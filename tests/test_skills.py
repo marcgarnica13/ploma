@@ -1458,3 +1458,26 @@ def test_audit_reproducibility_audits_unkeyed_placements():
     text = _skill("audit-reproducibility")
     phase2 = text[text.index("## Phase 2"):text.index("## Phase 3")]
     assert "placed_by_unkeyed_value" in phase2
+
+
+def test_respond_asks_new_round_when_the_report_set_changes():
+    """A different **Reports:** list means a new referee round may have started: ask, never merge silently."""
+    text = _skill("respond")
+    phase0 = text.split("## Phase 0", 1)[1].split("## Phase 1", 1)[0]
+    for s in ("**Reports:**", "AskUserQuestion", "new round or update of round <N>?", "New round (Recommended)",
+              "response_to_referees_r<N>.md", "response_to_referees_matrix_r<N>.csv", "<N>+1",
+              "Without `AskUserQuestion`, choose the new round and say so"):
+        assert s in phase0, s
+    fm, _ = split_frontmatter(text)
+    assert "AskUserQuestion" in _tools(fm)
+
+
+def test_respond_deletes_temp_files_with_the_script():
+    """R158: no Bash(rm -f /tmp/*) pre-approval; respond_files.py clean-tmp deletes the mktemp files."""
+    text = _skill("respond")
+    fm, body = split_frontmatter(text)
+    assert not any(t.startswith("Bash(rm") for t in _tools(fm))
+    cmd = 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/respond_files.py" clean-tmp'
+    assert cmd in body
+    assert cmd in _respond_ref("ingestion")
+    assert "rm -f" not in body and "rm -f" not in _respond_ref("ingestion")
