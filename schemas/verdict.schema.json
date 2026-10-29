@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "commit-gate.json",
+  "description": "Commit gate verdict written by scripts/gate.py (spec section 6.3). Each check entry stores the manuscript_sha it ran against; an entry is fresh when that sha equals the current one.",
+  "type": "object",
+  "required": [
+    "schema",
+    "manuscript_sha",
+    "checks",
+    "overrides",
+    "override_streak"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "integer",
+      "description": "Verdict format version, 1."
+    },
+    "manuscript_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "sha256 over all .tex and .bib under document.root, excluding *_suggestion.tex and gitignored files, at the last record."
+    },
+    "checks": {
+      "type": "object",
+      "description": "Required: compile, bib. Recommended: consistency, claims, proofread.",
+      "additionalProperties": false,
+      "properties": {
+        "compile": {
+          "type": "object",
+          "required": [
+            "status",
+            "at",
+            "artifact",
+            "manuscript_sha"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ]
+            },
+            "at": {
+              "type": "string",
+              "description": "UTC ISO 8601 timestamp ending in Z."
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "manuscript_sha": {
+              "type": "string"
+            }
+          },
+          "description": "Extra keys (pages, overfull, undefined, open_high, ...) are allowed."
+        },
+        "bib": {
+          "type": "object",
+          "required": [
+            "status",
+            "at",
+            "artifact",
+            "manuscript_sha"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ]
+            },
+            "at": {
+              "type": "string",
+              "description": "UTC ISO 8601 timestamp ending in Z."
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "manuscript_sha": {
+              "type": "string"
+            }
+          },
+          "description": "Extra keys (pages, overfull, undefined, open_high, ...) are allowed."
+        },
+        "consistency": {
+          "type": "object",
+          "required": [
+            "status",
+            "at",
+            "artifact",
+            "manuscript_sha"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ]
+            },
+            "at": {
+              "type": "string",
+              "description": "UTC ISO 8601 timestamp ending in Z."
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "manuscript_sha": {
+              "type": "string"
+            }
+          },
+          "description": "Extra keys (pages, overfull, undefined, open_high, ...) are allowed."
+        },
+        "claims": {
+          "type": "object",
+          "required": [
+            "status",
+            "at",
+            "artifact",
+            "manuscript_sha"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ]
+            },
+            "at": {
+              "type": "string",
+              "description": "UTC ISO 8601 timestamp ending in Z."
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "manuscript_sha": {
+              "type": "string"
+            }
+          },
+          "description": "Extra keys (pages, overfull, undefined, open_high, ...) are allowed."
+        },
+        "proofread": {
+          "type": "object",
+          "required": [
+            "status",
+            "at",
+            "artifact",
+            "manuscript_sha"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "WARN",
+                "FAIL"
+              ]
+            },
+            "at": {
+              "type": "string",
+              "description": "UTC ISO 8601 timestamp ending in Z."
+            },
+            "artifact": {
+              "type": "string"
+            },
+            "manuscript_sha": {
+              "type": "string"
+            }
+          },
+          "description": "Extra keys (pages, overfull, undefined, open_high, ...) are allowed."
+        }
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "reason",
+          "checks"
+        ],
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "override_streak": {
+      "type": "integer",
+      "description": "Consecutive overrides since a required check last recorded PASS; overrides are refused at 3."
+    }
+  }
+}
