@@ -392,3 +392,24 @@ def test_non_finite_results_values_are_ignored(tmp_path):
     (res / "m.json").write_text('{"a": NaN, "b": Infinity, "c": 0.5}')
     (res / "t.csv").write_text("x\nnan\ninf\n")
     assert _run(main, results_dir=res).verdict == "PASS"
+
+
+@pytest.mark.parametrize("text,raw,value", [("1,234.5", "1,234.5", 1234.5), ("12\\,430.25", "12,430.25", 12430.25)])
+def test_thousands_with_decimal_part(text, raw, value):
+    nums = extract_numbers(f"We got {text} points.")
+    assert [(n["raw"], n["value"], n["kind"]) for n in nums] == [(raw, value, "decimal")]
+
+
+def test_thousands_decimal_matches_plain_form():
+    a, b = extract_numbers("1,234.5")[0], extract_numbers("1234.5")[0]
+    assert consistency.same_number(a, b) and consistency.same_number(b, a)
+
+
+def test_comma_lists_are_not_thousands():
+    assert [n["value"] for n in extract_numbers("values 1,2 and 3, also 4,56 and 7")] == [1, 2, 3, 4, 56, 7]
+
+
+def test_thousands_decimal_table_cell(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & 1,234.5 \\\\\n\\end{tabular}\n\\end{document}\n")
+    assert [(c["raw"], c["kind"]) for c in _run(main).table_cells] == [("1,234.5", "decimal")]

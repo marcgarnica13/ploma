@@ -77,7 +77,7 @@ _ROW_SPACING_RE = re.compile(r"\\\\\*?\s*(\[[^\]]*\])")
 _DIM_RE = re.compile(r"(?<![\w.])-?\d*\.?\d+\s*\\(?:linewidth|textwidth|columnwidth|textheight|hsize|vsize|"
                      r"baselineskip|paperwidth|paperheight)\b")
 _INDEX_RE = re.compile(r"(?<!\\)[_^]\s*(?:\{[^{}]*\}|\d+)")
-_NUM = r"(?:\d{1,3}(?:(?:,|\\,)\d{3})+(?!\d)|\d+(?:\.\d+)?|\.\d+)"
+_NUM = r"(?:\d{1,3}(?:(?:,|\\,)\d{3})+(?:\.\d+)?(?!\d)|\d+(?:\.\d+)?|\.\d+)"
 NUM_RE = re.compile(r"(?<![\w.\\])(?<![A-Za-z]-)(?P<sign>(?<![-\d])-)?(?P<num>" + _NUM + r")(?P<pct>\s*\\?%)?(?!\w)")
 CELL_RE = re.compile(r"(?P<sign>-)?(?P<num>" + _NUM + r")(?P<pct>\\?%)?")
 # siunitx: \num[opts]{x}, \qty[opts]{x}{unit}, \SI[opts]{x}{unit}
