@@ -63,7 +63,7 @@ def test_doi_hit_is_verified():
 def test_title_fallback_order():
     calls = []
     r = lookup(ENTRY_NO_DOI, fetch=recording_fetch(calls, miss_all=True), cache={})
-    assert r.status == "missing"
+    assert r.status == "not_indexed"  # R168: proceedings with neither DOI nor ISBN are grey literature
     assert [host(c) for c in calls] == ["api.crossref.org", "api.openalex.org", "api.semanticscholar.org"]
 
 
@@ -408,11 +408,11 @@ def test_article_not_found_with_all_sources_answering_is_missing():
     assert r.status == "missing"
 
 
-def test_article_not_found_with_s2_rate_limited_is_missing():
-    """D13: keyless Semantic Scholar answers 429 as a rule; Crossref and OpenAlex answering decides."""
+def test_article_not_found_with_s2_rate_limited_is_not_indexed():
+    """R168 (replacing D13): with no DOI, missing needs all three sources; S2's 429 leaves a WARN."""
     routes = dict(ALL_MISS, **{"api.semanticscholar.org": (429, "")})
     r = lookup(_typed("article"), fetch=fake_fetch(routes), cache={})
-    assert r.status == "missing" and "1 of 3 sources did not answer" in r.evidence
+    assert r.status == "not_indexed" and "1 of 3 sources did not answer" in r.evidence
 
 
 def test_article_not_found_with_openalex_rate_limited_is_not_indexed():
@@ -424,10 +424,14 @@ def test_article_not_found_with_openalex_rate_limited_is_not_indexed():
 
 
 def test_every_strict_type_can_be_missing():
-    for t in ("article", "inproceedings", "conference", "book", "incollection", "inbook", "phdthesis",
-              "mastersthesis"):
+    for t in ("article", "book", "incollection", "inbook"):
         assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "missing", t
-    for t in ("techreport", "online", "software", "unpublished"):
+    isbn = parse_bib("@inproceedings{K, author = {Dana Lindqvist}, title = {An Unindexed Work}, year = 2019,"
+                     " isbn = {978-0-00-000000-0}}")[0]
+    assert lookup(isbn, fetch=fake_fetch(ALL_MISS), cache={}).status == "missing"
+    # R168: grey-literature types, and proceedings with neither DOI nor ISBN, stay not_indexed without a dead DOI
+    for t in ("inproceedings", "conference", "phdthesis", "mastersthesis", "techreport", "online", "software",
+              "unpublished"):
         assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "not_indexed", t
 
 
@@ -618,8 +622,9 @@ def test_theses_need_all_three_sources_for_missing():
     """R165: Crossref and OpenAlex cover theses poorly; without Semantic Scholar a thesis stays not_indexed."""
     for t in ("phdthesis", "mastersthesis"):
         assert lookup(_typed(t), fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={}).status == "not_indexed", t
-        assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "missing", t
-    assert lookup(_typed("book"), fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={}).status == "missing"
+        assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "not_indexed", t  # R168 grey
+    assert lookup(_typed("book"), fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={}).status == "not_indexed"
+    assert lookup(_typed("book"), fetch=fake_fetch(ALL_MISS), cache={}).status == "missing"
 
 
 def test_thesis_with_dead_doi_still_needs_all_three_sources():
@@ -636,3 +641,72 @@ def test_empty_200_body_counts_as_not_answered():
     assert "api.datacite.org" not in [host(c) for c in calls]
     fetch = fake_fetch({**ALL_MISS, "api.openalex.org": (200, "")})
     assert lookup(_typed("article"), fetch=fetch, cache={}).status == "not_indexed"  # OpenAlex did not answer
+
+
+# ---------------------------------------------------------------- field fixes 3: R168 grey literature
+
+WEIJTERS = parse_bib(r"""@Article{Weijters2006,
+  author = {Weijters, A. J. M. M. and van der Aalst, Wil M. P. and De Medeiros, A. K. Alves},
+  title = {Process Mining with the {HeuristicsMiner} Algorithm},
+  journal = {Technische Universiteit Eindhoven, Tech. Rep. WP},
+  volume = {166},
+  pages = {1--34},
+  year = {2006},
+  publisher = {Citeseer}
+}""")[0]
+SIVARAMAN = parse_bib(r"""@InProceedings{Sivaraman2002,
+  author = {Sivaraman, E. and Kamath, M.},
+  title = {On the Use of {Petri} Nets for Business Process Modeling},
+  booktitle = {IIE Annual Conference. Proceedings},
+  pages = {1},
+  year = {2002},
+  organization = {Citeseer}
+}""")[0]
+FABRICATED = parse_bib(r"""@article{Fake2021, author = {Nobody, Ann}, title = {A Study That Was Never Written},
+  journal = {Journal of Imaginary Results}, year = 2021}""")[0]
+
+
+def test_grey_literature_with_s2_rate_limited_is_not_indexed():
+    for e in (WEIJTERS, SIVARAMAN):
+        r = lookup(e, fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={})
+        assert r.status == "not_indexed", (e.key, r.evidence)
+
+
+def test_grey_literature_with_all_sources_answering_is_not_indexed():
+    for e in (WEIJTERS, SIVARAMAN):
+        assert lookup(e, fetch=fake_fetch(ALL_MISS), cache={}).status == "not_indexed", e.key
+
+
+def test_fabricated_article_with_dead_doi_is_missing():
+    e = parse_bib(r"@article{Fake2020, author = {Nobody, Ann}, title = {A Study That Was Never Written},"
+                  r" journal = {Journal of Imaginary Results}, year = 2020, doi = {10.9999/fake.456}}")[0]
+    r = lookup(e, fetch=fake_fetch({**DEAD_DOI, **ALL_MISS}), cache={})
+    assert r.status == "missing", r.evidence
+
+
+def test_fabricated_article_no_doi_all_three_answering_is_missing():
+    assert lookup(FABRICATED, fetch=fake_fetch(ALL_MISS), cache={}).status == "missing"
+
+
+def test_fabricated_article_no_doi_with_s2_rate_limited_is_not_indexed():
+    r = lookup(FABRICATED, fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={})
+    assert r.status == "not_indexed", r.evidence
+    assert "1 of 3 sources did not answer" in r.evidence
+
+
+def test_grey_markers():
+    from cite_lookup import grey_marker
+    def e(src):
+        return parse_bib(src)[0]
+    assert grey_marker(WEIJTERS) and grey_marker(SIVARAMAN)
+    assert not grey_marker(FABRICATED)
+    assert grey_marker(e("@article{K, title = {T}, journal = {Working Paper Series}}"))
+    assert grey_marker(e("@article{K, title = {T}, note = {Technical Report 12}}"))
+    assert grey_marker(e("@article{K, title = {T}, institution = {MIT}, type = {Doctoral Dissertation}}"))
+    assert grey_marker(e("@article{K, title = {T}, journal = {X}, howpublished = {CiteSeer}}"))
+    assert not grey_marker(e("@article{K, title = {T}, journal = {Swposium}}"))  # wp only as a word
+    for t in ("techreport", "misc", "unpublished", "phdthesis", "mastersthesis"):
+        assert grey_marker(e(f"@{t}{{K, title = {{T}}}}")), t
+    assert grey_marker(e("@proceedings{K, title = {T}}"))
+    assert not grey_marker(e("@inproceedings{K, title = {T}, booktitle = {B}, isbn = {978-1}}"))
+    assert not grey_marker(e("@inproceedings{K, title = {T}, booktitle = {B}, doi = {10.1/x}}"))

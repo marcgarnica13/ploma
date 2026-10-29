@@ -75,7 +75,7 @@ For each `verification_question`:
    | `missing` | every index answered and none knows the work: evidence for HIGH-WARN (fabricated reference) |
    | `mismatch` | the DOI resolves to a different work: evidence for HIGH-WARN |
    | `unreachable` | every source failed (network, rate limit): `cannot-verify`, MED-WARN |
-   | `not_indexed` | an entry type indexes often lack (report, preprint, software, web page): `cannot-verify`, LOW-WARN; once a canonical URL (DOI page, publisher, arXiv, official site) confirms it exists, the existence part is verified (`yes`, no tier); never HIGH on this status alone |
+   | `not_indexed` | not found in Crossref or OpenAlex, but not decided: grey literature indexes often lack (report, working paper, thesis, proceedings without DOI or ISBN, preprint, software, web page) or a source did not answer: `cannot-verify`, LOW-WARN; once a canonical URL (DOI page, publisher, arXiv, official site) confirms it exists, the existence part is verified (`yes`, no tier); never HIGH on this status alone |
    | `skipped` | the lookup cap was reached: `cannot-verify`, MED-WARN (re-run later) |
 3. Record:
    - `independent_answer`: what the source actually says;

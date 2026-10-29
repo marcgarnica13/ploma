@@ -51,8 +51,7 @@ LOOKUP_STATUS = {"missing": FAIL, "mismatch": FAIL, "partial": WARN, "not_indexe
 LOOKUP_FIX = {
     "missing": "no source knows this work: check the title and DOI against the publisher page, then fix or remove the entry",
     "mismatch": "the DOI resolves to a different work: correct the DOI, or the title, authors and year",
-    "not_indexed": "no reachable index lists this work, which is common for reports, preprints, software and web "
-                   "pages: confirm it exists (URL, DOI or publisher page) before submitting",
+    "not_indexed": "not found in Crossref or OpenAlex; confirm it exists",  # R168
     "partial": "the work exists but a field disagrees: compare title, first author, year and DOI with the record",
     "unreachable": "no source answered; nothing was concluded: run /ploma:validate-bib --semantic again later",
     "skipped": "not looked up in this run; it is checked on the next run (cached results are free)",

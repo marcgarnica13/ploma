@@ -300,7 +300,7 @@ def test_article_not_found_all_sources_answering_is_fail(sample_paper, cfg, cach
 
 
 def test_article_not_found_with_s2_429_is_fail(sample_paper, cfg, cache):
-    """D13: keyless Semantic Scholar answers 429; Crossref and OpenAlex answering is enough for missing."""
+    """D13, R168: keyless Semantic Scholar answers 429; a DOI dead on Crossref and DataCite still gives missing."""
     def s2_rate_limited(url, headers):
         if "semanticscholar" in url:
             return 429, ""
@@ -373,3 +373,44 @@ def test_unresolved_doi_on_a_title_matched_entry_is_its_own_warn(sample_paper, c
     assert "the printed DOI will be dead" in f.summary and "10.2307/2334029" in f.summary + f.observed
     assert "bib.doi_unresolved.Elo1978" not in ids  # no DOI in the entry
     assert "bib.doi_unresolved.Bradley1952" in rep.report_path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- field fixes 3: R168 grey literature
+
+GREY_BIB = r"""
+@Article{Weijters2006,
+  author = {Weijters, A. J. M. M. and van der Aalst, Wil M. P.},
+  title = {Process Mining with the {HeuristicsMiner} Algorithm},
+  journal = {Technische Universiteit Eindhoven, Tech. Rep. WP},
+  year = {2006},
+  publisher = {Citeseer}
+}
+@InProceedings{Sivaraman2002,
+  author = {Sivaraman, E. and Kamath, M.},
+  title = {On the Use of {Petri} Nets for Business Process Modeling},
+  booktitle = {IIE Annual Conference. Proceedings},
+  year = {2002},
+  organization = {Citeseer}
+}
+"""
+
+
+def test_grey_literature_with_s2_429_is_warn_not_indexed(sample_paper, cfg, cache):
+    (sample_paper / "refs.bib").write_text((sample_paper / "refs.bib").read_text(encoding="utf-8") + GREY_BIB,
+                                           encoding="utf-8")
+    intro = sample_paper / "sections" / "intro.tex"
+    intro.write_text(intro.read_text(encoding="utf-8").replace("\\cite{Elo1978}",
+                                                               "\\cite{Elo1978,Weijters2006,Sivaraman2002}"),
+                     encoding="utf-8")
+
+    def s2_rate_limited(url, headers):
+        if "semanticscholar" in url:
+            return 429, ""
+        return missing_fetch(url, headers)
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=s2_rate_limited, cache_path=cache, delay_s=0)
+    ids = _ids(rep)
+    for key in ("Weijters2006", "Sivaraman2002", "Elo1978"):
+        assert ids.get(f"bib.lookup.not_indexed.{key}") == "WARN", key
+        assert f"bib.lookup.missing.{key}" not in ids
+    f = next(f for f in rep.findings if f.id == "bib.lookup.not_indexed.Weijters2006")
+    assert f.remediation == "not found in Crossref or OpenAlex; confirm it exists"

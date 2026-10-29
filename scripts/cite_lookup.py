@@ -4,12 +4,14 @@ search on Crossref, OpenAlex, Semantic Scholar.
 Usage: python3 scripts/cite_lookup.py <refs.bib> [--keys k1,k2] [--max 50] [--mailto x]
        [--openalex-key K] [--s2-key K] [--json]
 Statuses: verified, partial, mismatch, missing, not_indexed, unreachable, skipped.
-``missing`` needs an entry type that citation indexes cover (STRICT_TYPES) and either Crossref and OpenAlex
-both answering without a title match (Semantic Scholar without a key answers 429 as a rule, D13), or a DOI
-that both Crossref and DataCite answer 404 for with no title match among the sources that answered;
-otherwise a work no source knows is ``not_indexed`` (R94). A title-matched entry whose DOI both registries
-answer 404 for is ``partial`` with ``doi_unresolved`` set (D14). Theses (ALL_SOURCES_TYPES) are missing only
-when all three sources answered (R165). A 200 with an empty or unreadable body counts as not answering.
+``missing`` needs an entry type that citation indexes cover (STRICT_TYPES) and either a DOI that both
+Crossref and DataCite answer 404 for with no title match among the sources that answered, or (R168) all three
+sources answering without a title match on an entry with no grey-literature marker (grey_marker: report,
+working paper or thesis wording, a Citeseer publisher, a report or thesis type, proceedings with neither DOI
+nor ISBN); otherwise a work no source knows is ``not_indexed`` (R94), so keyless Semantic Scholar's 429 (D13)
+leaves a DOI-less entry a WARN. A title-matched entry whose DOI both registries answer 404 for is ``partial``
+with ``doi_unresolved`` set (D14). Theses (ALL_SOURCES_TYPES) with a dead DOI are missing only when all three
+sources answered (R165). A 200 with an empty or unreadable body counts as not answering.
 Results are cached for 90 days in ``default_cache_path()``; run() saves the cache every
 SAVE_EVERY network lookups and skips the remaining network lookups once its time budget is spent.
 Exit codes: 0 no result is missing or mismatch, 1 at least one is, 2 usage error or unreadable bib file.
@@ -42,9 +44,16 @@ STATUSES = ("verified", "partial", "mismatch", "missing", "not_indexed", "unreac
 # Entry types that citation indexes are expected to cover; others (misc, techreport, online, software) may be absent.
 STRICT_TYPES = frozenset({"article", "inproceedings", "conference", "book", "incollection", "inbook",
                           "phdthesis", "mastersthesis"})
-# Strict types the two-source rule does not cover (R165): Crossref and OpenAlex list theses poorly, so a
-# thesis is missing only when all three sources answered without a match.
+# Strict types whose dead-DOI rule needs all three sources (R165): Crossref and OpenAlex list theses poorly, so a
+# thesis with a dead DOI is missing only when all three sources answered without a match.
 ALL_SOURCES_TYPES = frozenset({"phdthesis", "mastersthesis"})
+# R168: wording in these fields, publishers and entry types that mark grey literature, which indexes list poorly.
+GREY_FIELDS = ("journal", "booktitle", "institution", "type", "note")
+GREY_WORDS_RE = re.compile(r"tech\.\s*rep|technical report|working paper|report|thesis|dissertation|\bwp\b", re.I)
+GREY_PUBLISHER_FIELDS = ("publisher", "organization", "howpublished")
+GREY_PUBLISHER_RE = re.compile(r"citeseer", re.I)
+GREY_TYPES = frozenset({"techreport", "misc", "unpublished", "phdthesis", "mastersthesis"})
+PROCEEDINGS_TYPES = frozenset({"inproceedings", "conference", "proceedings"})
 SAVE_EVERY = 5
 TIME_BUDGET_S = 480
 TITLE_MATCH = 0.90
@@ -243,6 +252,25 @@ def _judge(entry: Entry, hit: _Hit) -> tuple[float, list[str], str]:
     return ratio, problems, evidence
 
 
+def grey_marker(entry: Entry) -> str:
+    """Why the entry looks like grey literature (R168), or "" when nothing marks it."""
+    etype = entry.type.lower()
+    if etype in GREY_TYPES:
+        return f"type {etype}"
+    for name in GREY_FIELDS:
+        m = GREY_WORDS_RE.search(entry.fields.get(name, ""))
+        if m:
+            return f"{name} says {m.group(0)!r}"
+    for name in GREY_PUBLISHER_FIELDS:
+        m = GREY_PUBLISHER_RE.search(entry.fields.get(name, ""))
+        if m:
+            return f"{name} {m.group(0)!r}"
+    if etype in PROCEEDINGS_TYPES and not entry.fields.get("doi", "").strip() \
+            and not entry.fields.get("isbn", "").strip():
+        return f"type {etype} with neither DOI nor ISBN"
+    return ""
+
+
 def _failed(status: int) -> bool:
     """Source-level failure: network error, rate limit, server error or other non-200 except 404."""
     return status != 200 and status != 404
@@ -336,8 +364,8 @@ class _Facts:
 
 def _title_search(entry: Entry, facts: _Facts, *, doi_dead: bool = False) -> LookupResult:
     """Title search on every source in turn. With no match, the entry is decided (missing for strict types)
-    when Crossref and OpenAlex both answered, or when doi_dead (Crossref and DataCite both 404) and at least
-    one source answered."""
+    when doi_dead (Crossref and DataCite both 404) and at least one source answered (all three for a thesis,
+    R165), or when all three sources answered and no grey-literature marker applies (R168)."""
     title = query_title(entry.fields.get("title", ""))
     failures, best = 0, None
     answered: set[str] = set()
@@ -360,16 +388,20 @@ def _title_search(entry: Entry, facts: _Facts, *, doi_dead: bool = False) -> Loo
         evidence += f" ({failures} of {len(SOURCES)} sources did not answer)"
     if best:
         evidence += f"; closest {best[1]}: {best[2]}"
-    if entry.type.lower() in ALL_SOURCES_TYPES:
-        decided = answered == set(SOURCES)
+    all_answered = answered == set(SOURCES)
+    grey = grey_marker(entry)
+    if doi_dead:
+        decided = all_answered if entry.type.lower() in ALL_SOURCES_TYPES else bool(answered)
     else:
-        decided = {"crossref", "openalex"} <= answered or (doi_dead and bool(answered))
+        decided = all_answered and not grey
+    if grey and not decided:
+        evidence += f"; grey literature ({grey})"
     return _not_found(entry, evidence, decided=decided)
 
 
 def _not_found(entry: Entry, evidence: str, *, decided: bool) -> LookupResult:
-    """R94 as amended by D13: missing only when the lookup is decided (see _title_search) and the entry type is
-    one indexes cover; else not_indexed."""
+    """R94 as amended by D13 and R168: missing only when the lookup is decided (see _title_search) and the entry
+    type is one indexes cover; else not_indexed."""
     if decided and entry.type.lower() in STRICT_TYPES:
         return LookupResult(entry.key, "missing", "", evidence)
     return LookupResult(entry.key, "not_indexed", "",
