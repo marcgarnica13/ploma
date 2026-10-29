@@ -89,10 +89,13 @@ def _two_column_page(rows: dict[int, tuple[str, str]], n: int = 40) -> str:
 
 def test_right_column_heading_above_the_previous_hit_is_found():
     page1 = _two_column_page({3: ("1 Introduction", "Body text of the right column.")})
-    page2 = _two_column_page({1: ("Body text of the left column here.", "4 Results"),
+    # Lines 1 and 2 are the running head and the page number (R160 skips them in the upward search);
+    # "4 Results" opens the right column at line 3, above "3 Method" at line 22 of the left column.
+    page2 = _two_column_page({1: ("", "A Method for Ranking Things"), 2: ("", "2"),
+                              3: ("Body text of the left column here.", "4 Results"),
                               22: ("3 Method", "Body text of the right column.")})
     hits = pdf_pages.heading_positions([page1, page2], [["1 Introduction"], ["3 Method"], ["4 Results"]])
-    assert [(h["page"], h["line"]) for h in hits] == [(1, 3), (2, 22), (2, 1)]
+    assert [(h["page"], h["line"]) for h in hits] == [(1, 3), (2, 22), (2, 3)]
     assert hits[2]["column"] > hits[1]["column"]
 
 
@@ -107,3 +110,14 @@ def test_both_columns_on_one_line_are_found_in_order():
     page = _two_column_page({5: ("2 Related Work", "3 Method")})
     hits = pdf_pages.heading_positions([page], [["2 Related Work"], ["3 Method"]])
     assert [(h["line"], h["column"]) for h in hits] == [(5, 0), (5, 48)]
+
+
+def test_running_head_equal_to_a_later_heading_is_not_taken():
+    """R160: the first two non-empty lines of a page (running head, page number) are never searched
+    above the previous hit; the heading is found at its real line."""
+    rows = {1: ("", "4 Results"), 2: ("", "7"), 22: ("3 Method", "Body text of the right column."),
+            30: ("Body text of the left column here.", "4 Results")}
+    page2 = _two_column_page(rows)
+    page1 = _two_column_page({3: ("1 Introduction", "Body text of the right column.")})
+    hits = pdf_pages.heading_positions([page1, page2], [["1 Introduction"], ["3 Method"], ["4 Results"]])
+    assert [(h["page"], h["line"]) for h in hits] == [(1, 3), (2, 22), (2, 30)]

@@ -118,6 +118,11 @@ def _columns(pattern: re.Pattern, line: str) -> list[int]:
     return [m.start() + len(m.group()) - len(m.group().lstrip()) for m in pattern.finditer(line)]
 
 
+def _head_lines(lines: list[str]) -> set[int]:
+    """Indices of the first two non-empty lines of a page (running head and page number)."""
+    return set([i for i, line in enumerate(lines) if line.strip()][:2])
+
+
 def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict | None]:
     """Where each heading starts, searching in order: each heading is looked for after the previous one
     found, so a heading word in the abstract or a running head before it is not taken for the heading.
@@ -129,7 +134,8 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
     (fractional pages from the start of the PDF). "After the previous one" orders hits by (page, line,
     column), except that on the previous hit's page the lines above it are searched too, right of its
     column: in a two-column layout the right column's first heading can sit higher on the page than
-    the left column's last one.
+    the left column's last one. The page's first two non-empty lines (running head, page number) are
+    skipped in that upward search.
     """
     split = [p.split("\n") for p in pages]
     out: list[dict | None] = []
@@ -141,9 +147,13 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
                 continue
             pattern = _heading_re(needle)
             for pi in range(cur_page, len(split)):
+                head = _head_lines(split[pi]) if pi == cur_page else set()
                 for li, text in enumerate(split[pi]):
                     # On the previous hit's page, its line and the lines above it count only right of its
-                    # column (a two-column page: a right-column heading printed higher up).
+                    # column (a two-column page: a right-column heading printed higher up); above it, the
+                    # page's first two non-empty lines (running head, page number) never count (R160).
+                    if pi == cur_page and li < cur_line and li in head:
+                        continue
                     min_col = cur_col if pi == cur_page and li <= cur_line else -1
                     cols = [c for c in _columns(pattern, text) if c > min_col]
                     if cols:
