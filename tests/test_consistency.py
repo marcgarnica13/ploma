@@ -597,3 +597,44 @@ def test_sparse_pool_reports_all_cells_match(tmp_path):
     rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
     assert "consistency.table_check_uninformative" not in _ids(rep)
     assert "All 9 numeric table cells match a results value" in consistency.render_report(rep, "m.tex")
+
+
+# ---------------------------------------------------------------- D10: a FAIL claim whose location changed
+
+PASSPORT_FAIL = """paper: {slug: main}
+claims:
+  - id: C1
+    claim: "average fitness = 0.81"
+    location: "%s"
+    status: FAIL
+"""
+
+
+@pytest.mark.parametrize("location", ["sections/results.tex:17", "sections/results.tex:15-17",
+                                      "sections/results.tex:Table 1, row Ours"])
+def test_fail_claim_whose_value_left_the_location_is_stale(tmp_path, sample_paper, location):
+    res = sample_paper / "sections" / "results.tex"
+    res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.83")
+                   .replace("fitness of 0.81", "fitness of 0.83"))
+    p = tmp_path / "p.yaml"
+    p.write_text(PASSPORT_FAIL % location)
+    rep = _run(sample_paper / "main.tex", passport=p)
+    by_id = {f.id: f for f in rep.findings}
+    assert "consistency.passport.C1" not in by_id
+    f = by_id["consistency.passport_stale.C1"]
+    assert f.status == "WARN" and "claim location changed; re-run /ploma:audit-reproducibility" in f.summary
+
+
+def test_fail_claim_still_shown_at_its_location_stays_fail(tmp_path, sample_paper):
+    p = tmp_path / "p.yaml"
+    p.write_text(PASSPORT_FAIL % "sections/results.tex:17")
+    rep = _run(sample_paper / "main.tex", passport=p)
+    assert {f.id: f.status for f in rep.findings}["consistency.passport.C1"] == "FAIL"
+    assert "consistency.passport_stale.C1" not in _ids(rep)
+
+
+def test_fail_claim_value_moved_off_the_cited_lines_is_stale(tmp_path, sample_paper):
+    p = tmp_path / "p.yaml"
+    p.write_text(PASSPORT_FAIL % "sections/results.tex:1-3")  # 0.81 is on lines 5 and 17, not 1-3
+    rep = _run(sample_paper / "main.tex", passport=p)
+    assert "consistency.passport_stale.C1" in _ids(rep)

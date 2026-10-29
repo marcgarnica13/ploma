@@ -2,7 +2,7 @@
 
 One file per paper at `<outputs.dir>/passports/<document.slug>.yaml`. It records, for each numeric claim of a result, where the number comes from and how its last check went. Schema: `${CLAUDE_PLUGIN_ROOT}/schemas/passport.schema.json`. Scope: numbers only (metric values, counts, percentages in text, tables and captions). Prose and citation claims belong to `/ploma:verify-claims`.
 
-`/ploma:audit-reproducibility` creates it when absent and updates it in place; `scripts/consistency.py` reads it (a FAIL or STALE claim is a consistency FAIL, an UNVERIFIED claim an INFO line). The passport is never required by the commit gate.
+`/ploma:audit-reproducibility` creates it when absent and updates it in place; `scripts/consistency.py` reads it (a FAIL or STALE claim is a consistency FAIL, an UNVERIFIED claim an INFO line). A FAIL claim whose number no longer appears at its `location` (the cited lines, or the whole file when the location names a table or figure) is reported as `consistency.passport_stale.<id>` WARN instead: the manuscript was corrected after the audit, so re-run `/ploma:audit-reproducibility`. The passport is never required by the commit gate.
 
 ## Example
 

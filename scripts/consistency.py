@@ -38,6 +38,8 @@ Rules (spec section 7.2):
   consistency.metric_key_missing.<key>             WARN  a metric key appears in no results file
   consistency.results_unreadable.<file>            WARN  a results file could not be parsed
   consistency.passport.<id>                        FAIL  passport claim with status FAIL or STALE
+  consistency.passport_stale.<id>                  WARN  a FAIL claim whose number no longer appears at
+                                                         its location (cited lines, or the file)
                                                    INFO  passport claim with status UNVERIFIED
   consistency.passport_invalid                     FAIL  passport missing, unparsable or off schema
 
@@ -583,7 +585,38 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], l
 
 # ---------------------------------------------------------------- passport
 
-def _passport_findings(path: Path) -> tuple[list[Finding], dict]:
+_LINES_RE = re.compile(r"\s*(\d+)(?:\s*-\s*(\d+))?\s*")
+
+
+def _claim_left_location(claim: dict, base: Path | None) -> bool:
+    """Whether the manuscript no longer shows the claim's number where the claim says it is: the
+    location's file (relative to the main file's folder or one of its parents) exists, and none of the
+    numbers in the claim text appear in its cited line range, or in the whole file when the location
+    names a table, a figure or a section instead of lines. False when this cannot be decided."""
+    numbers = extract_numbers(str(claim.get("claim") or ""))
+    location = str(claim.get("location") or "")
+    if base is None or not numbers or not location:
+        return False
+    name, _, where = location.partition(":")
+    name = name.strip()
+    target = next((d / name for d in (base, *list(base.parents)[:3]) if name and (d / name).is_file()), None)
+    if target is None:
+        return False
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    lines = _texmask.strip_comments(text).splitlines()
+    span = _LINES_RE.fullmatch(where)
+    if span:
+        first = int(span.group(1))
+        last = int(span.group(2) or first)
+        lines = lines[max(first - 1, 0):last]
+    shown = extract_numbers("\n".join(lines))
+    return not any(same_number(n, s) for n in numbers for s in shown)
+
+
+def _passport_findings(path: Path, base: Path | None = None) -> tuple[list[Finding], dict]:
     def invalid(problem: str, observed: str = "") -> tuple[list[Finding], dict]:
         return [Finding("consistency.passport_invalid", FAIL, f"passport {path.name}: {problem}",
                         observed=observed or str(path),
@@ -612,7 +645,14 @@ def _passport_findings(path: Path) -> tuple[list[Finding], dict]:
         where = f"{c.get('location') or 'no location'}; claim: {c.get('claim')}"
         if c.get("notes"):
             where += f"; notes: {str(c['notes']).strip()}"
-        if status in ("FAIL", "STALE"):
+        if status == "FAIL" and _claim_left_location(c, base):
+            out.append(Finding(f"consistency.passport_stale.{c.get('id')}", WARN,
+                               f"passport claim {c.get('id')}: claim location changed; re-run "
+                               f"/ploma:audit-reproducibility",
+                               observed=f"{where}; the claim's number no longer appears at that location",
+                               remediation="The manuscript was corrected after the audit; re-run "
+                                           "/ploma:audit-reproducibility to update the passport.", group="passport"))
+        elif status in ("FAIL", "STALE"):
             fix = ("re-run the pipeline and /ploma:audit-reproducibility, or correct the manuscript number"
                    if status == "FAIL" else
                    "the source or output changed after the last verification; re-run /ploma:audit-reproducibility")
@@ -812,7 +852,7 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
 
     passport_info: dict = {}
     if passport is not None:
-        pf, passport_info = _passport_findings(Path(passport))
+        pf, passport_info = _passport_findings(Path(passport), main.parent)
         findings.extend(pf)
 
     return ConsistencyReport(
