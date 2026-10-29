@@ -118,6 +118,43 @@ def _columns(pattern: re.Pattern, line: str) -> list[int]:
     return [m.start() + len(m.group()) - len(m.group().lstrip()) for m in pattern.finditer(line)]
 
 
+def _gutter(lines: list[str]) -> int | None:
+    """Start column of the right column on a two-column -layout page, else None. A line is split when a gap
+    of three or more spaces is followed by text starting between 35% and 65% of the page width; the page is
+    two-column when at least a quarter of its non-empty lines are split and most of those starts line up
+    (within 2 columns of their median, which is the gutter). Justified one-column text, whose occasional
+    wide gaps fall anywhere, is not taken for two columns."""
+    text = [line.rstrip() for line in lines if line.strip()]
+    if not text:
+        return None
+    width = max(len(line) for line in text)
+    starts = []
+    for line in text:
+        for m in re.finditer(r"\S\s{3,}(?=\S)", line):
+            start = m.end()
+            if 0.35 * width <= start <= 0.65 * width:
+                starts.append(start)
+                break
+    if len(starts) * 4 < len(text):
+        return None
+    starts.sort()
+    median = starts[len(starts) // 2]
+    aligned = sum(1 for s in starts if abs(s - median) <= 2)
+    return median if aligned * 5 >= len(starts) * 3 else None
+
+
+def page_fraction(lines: list[str], li: int, column: int, gutter: int | None = -1) -> float:
+    """Where 0-based line li, column `column`, sits within its page, as a fraction in [0, 1): li / lines on a
+    one-column page; on a two-column page the left column covers [0, 0.5) and the right one [0.5, 1), each
+    as li / (2 * lines) (R162). gutter is _gutter(lines), computed when left at -1."""
+    n = max(1, len(lines))
+    if gutter == -1:
+        gutter = _gutter(lines)
+    if gutter is None:
+        return li / n
+    return (0.5 if column >= gutter - 2 else 0.0) + li / (2 * n)
+
+
 def _head_lines(lines: list[str]) -> set[int]:
     """Indices of the first two non-empty lines of a page (running head and page number)."""
     return set([i for i, line in enumerate(lines) if line.strip()][:2])
@@ -130,14 +167,16 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
     Each heading is a list of candidate needles tried in turn (for example "2 Method", then "Method").
     A line matches only where it holds the heading itself (see _heading_re), never a mention in prose.
     A hit is {page, line, column, lines, position, needle}: 1-based page and line, the 0-based column
-    of the heading text, the page's line count, and position = page - 1 + (line - 1) / lines
-    (fractional pages from the start of the PDF). "After the previous one" orders hits by (page, line,
+    of the heading text, the page's line count, and position = page - 1 + page_fraction (fractional
+    pages from the start of the PDF: (line - 1) / lines on a one-column page; on a two-column page the
+    left column maps to the first half of the page and the right column to the second, R162). "After the previous one" orders hits by (page, line,
     column), except that on the previous hit's page the lines above it are searched too, right of its
     column: in a two-column layout the right column's first heading can sit higher on the page than
     the left column's last one. The page's first two non-empty lines (running head, page number) are
     skipped in that upward search.
     """
     split = [p.split("\n") for p in pages]
+    gutters: dict[int, int | None] = {}
     out: list[dict | None] = []
     cur_page, cur_line, cur_col = 0, -1, -1  # 0-based; -1: nothing found yet
     for candidates in headings:
@@ -158,8 +197,11 @@ def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict 
                     cols = [c for c in _columns(pattern, text) if c > min_col]
                     if cols:
                         lines = max(1, len(split[pi]))
+                        if pi not in gutters:
+                            gutters[pi] = _gutter(split[pi])
+                        frac = page_fraction(split[pi], li, cols[0], gutters[pi])
                         hit = {"page": pi + 1, "line": li + 1, "column": cols[0], "lines": lines,
-                               "position": round(pi + li / lines, 3), "needle": needle}
+                               "position": round(pi + frac, 3), "needle": needle}
                         break
                 if hit:
                     break

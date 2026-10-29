@@ -8,7 +8,8 @@ document.main, numbered as LaTeX numbers them). Each is located in the PDF text 
 in reading order, first as "<number> <title>", then by its bare title; a section is never placed
 before the one ahead of it. The start of the references is the last line that is only "References"
 or "Bibliography" (the compile skill's rule). Estimated pages per section are the distance from
-its heading to the next heading, or to the references, or to the end of the PDF.
+its heading to the next heading, or to the references, or to the end of the PDF. Positions are column-aware (R162): on a two-column page the left column
+counts as the first half of the page and the right column as the second.
 
 Budget: --budget, else venue.page_budget. When venue.page_budget_includes_refs is false, the pages
 counted are those up to and including the page where the references start (as /ploma:compile
@@ -48,8 +49,9 @@ def _references(pages: list[str]) -> dict | None:
         lines = page.split("\n")
         for li, line in enumerate(lines):
             if _REFS_LINE.match(line):
-                n = max(1, len(lines))
-                last = {"page": pi + 1, "line": li + 1, "position": round(pi + li / n, 3)}
+                col = len(line) - len(line.lstrip())
+                last = {"page": pi + 1, "line": li + 1,
+                        "position": round(pi + pdf_pages.page_fraction(lines, li, col), 3)}
     return last
 
 

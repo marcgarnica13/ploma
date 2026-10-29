@@ -139,3 +139,55 @@ def test_heading_in_the_right_column_is_found():
 def test_lower_case_words_are_not_a_numeral_prefix():
     assert pdf_pages.heading_positions(["mild method\n"], [["Method"]]) == [None]
     assert pdf_pages.heading_positions(["II. METHOD\n"], [["Method"]])[0]["line"] == 1
+
+
+# ---------------------------------------------------------------- R162: column-aware positions
+
+def _two_column_page(left: dict[int, str], right: dict[int, str], n: int = 40) -> str:
+    """n lines of a two-column page; left/right map a 1-based line to its text, other lines are filler."""
+    rows = []
+    for i in range(1, n + 1):
+        lt = left.get(i, "left column text goes on here")
+        rt = right.get(i, "right column text goes on too")
+        rows.append(f"{lt:<44}{rt}")
+    return "\n".join(rows) + "\n"
+
+
+TWO_COL = [
+    _two_column_page({3: "1 Introduction"}, {}),
+    _two_column_page({25: "2 Method"}, {10: "3 Results"}),
+    _two_column_page({30: "References"}, {30: ""}),
+    "[1] A. Author.\n",
+]
+
+
+def test_two_column_right_heading_above_left_one_keeps_positive_sizes(sample_paper, monkeypatch):
+    _fake_tools(monkeypatch, pages=TWO_COL)
+    _pdf(sample_paper)
+    rep = page_map.build(sample_paper)
+    rows = {s["title"]: s for s in rep["sections"]}
+    assert rows["Method"]["start_page"] == 2 and rows["Results"]["start_page"] == 2
+    assert rows["Method"]["est_pages"] > 0, rows["Method"]
+    assert rows["Method"]["position"] < rows["Results"]["position"]
+    assert 1.5 <= rows["Results"]["position"] < 2  # right column: page - 1 + 0.5 + line / (2 * lines)
+    assert 1 <= rows["Method"]["position"] < 1.5   # left column: page - 1 + line / (2 * lines)
+    assert 2 <= rep["references"]["position"] < 2.5  # left column of page 3, line 30 of 40
+
+
+def test_one_column_positions_are_unchanged():
+    hits = pdf_pages.heading_positions(PAGES, [["1 Introduction"], ["2 Method"], ["3 Results"]])
+    lines = [len(p.split("\n")) for p in PAGES]
+    assert hits[1]["position"] == round(1 + 1 / lines[1], 3)
+
+
+def test_justified_one_column_page_is_not_two_columns():
+    import random
+    rng = random.Random(3)
+    words = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda", "mu"]
+    rows = []
+    for i in range(30):  # every other line has one wide justification gap at a random word
+        w = rng.sample(words, len(words))
+        k = rng.randrange(3, 9)
+        rows.append(" ".join(w[:k]) + "   " + " ".join(w[k:]) if i % 2 else " ".join(w))
+    assert pdf_pages._gutter(rows) is None
+    assert pdf_pages._gutter(TWO_COL[1].split("\n")) == 44
