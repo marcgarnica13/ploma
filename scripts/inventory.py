@@ -202,9 +202,8 @@ def _pick_main(candidates: list[str], builds: list[dict]) -> str | None:
 
 
 def _build_for(main: str | None, builds: list[dict]) -> dict:
-    """Ruling R46: the main's own dir, then a build naming the main, then the root.
-
-    A root build file that names no main is never used for a main in a subdirectory.
+    """Rulings R46/R48: a build file in the main's own dir, else one elsewhere whose MAIN or
+    @default_files resolves to this main; any other build file is never used (kind None).
     """
     if main is None:
         root_b = next((b for b in builds if b["cwd"] == "."), None)
@@ -215,9 +214,6 @@ def _build_for(main: str | None, builds: list[dict]) -> dict:
             return dict(b)
     for b in builds:
         if _named_main(b) == main:
-            return dict(b)
-    for b in builds:
-        if b["cwd"] == "." and b["main_from_makefile"]:
             return dict(b)
     return dict(_NO_BUILD)
 

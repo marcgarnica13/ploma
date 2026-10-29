@@ -5,7 +5,7 @@ document:
   root: "."
   title: "A Method for Ranking Things"
   slug: main
-  anonymized: false
+  anonymized: true
 build:
   command: "make"
   cwd: "."

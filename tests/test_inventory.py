@@ -249,6 +249,14 @@ def test_root_makefile_without_main_is_not_used_for_subdir_paper(tmp_path):
     assert inventory.propose_config(inv)["build"]["pdf"] == "paper/main.pdf"
 
 
+def test_root_makefile_naming_another_file_is_not_used(tmp_path):
+    (tmp_path / "Makefile").write_text("MAIN = other\n")
+    (tmp_path / "paper").mkdir()
+    _paper(tmp_path / "paper", "\\author{J}", name="main.tex")
+    inv = inventory.inventory(tmp_path)
+    assert inv["main"] == "paper/main.tex" and inv["build"]["kind"] is None
+
+
 def test_root_makefile_naming_subdir_main_is_used(tmp_path):
     (tmp_path / "Makefile").write_text("MAIN = paper/main\n")
     (tmp_path / "paper").mkdir()
