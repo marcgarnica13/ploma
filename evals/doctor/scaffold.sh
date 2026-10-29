@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stage a copy of the sample paper in the eval workspace (the current directory).
+# Stage a clean copy of the sample paper in the eval workspace (the current directory).
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"
-cp -R "$here/examples/sample-paper/." .
+src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/../../examples/sample-paper"
+cp -R "$src/." .
+rm -rf .ploma quality_reports build main.pdf main.log main.aux main.bbl main.blg

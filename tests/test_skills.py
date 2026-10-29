@@ -103,7 +103,11 @@ def test_every_skill_has_an_eval_case(d):
     graders = {p.stem: split_frontmatter(p.read_text(encoding="utf-8"))[0]
                for p in (case / "graders").glob("*.md")}
     used = [g for g in graders.values() if g.get("type") == "tool_used" and g.get("tool") == "Skill"]
-    assert used and all(d.name in str(g.get("input_match", "")) for g in used)
+    if d.name == "onboard":
+        # A slash-command prompt does not register as a Skill tool call; a regex on the dry-run line grades it.
+        assert any(g.get("type") == "regex" for g in graders.values())
+    else:
+        assert used and all(d.name in str(g.get("input_match", "")) for g in used)
     assert any(g.get("type") == "llm" for g in graders.values()), "an llm rubric grader"
 
 
@@ -197,3 +201,62 @@ def test_planned_check_catches_a_bare_planned_command():
     assert not _planned_mention_problems("/ploma:format (planned, milestone 2) gives the map.", "x")
     assert not _planned_mention_problems("trim manually; /ploma:format arrives in milestone 2", "x")
     assert not _planned_mention_problems("Run /ploma:compile next.", "x")
+
+
+# ---------------------------------------------------------------- eval setup (R91)
+
+SCAFFOLD_CASES = ("compile", "doctor", "onboard", "status", "validate-bib")
+
+
+def test_evals_contain_no_symlinks():
+    """The eval runner refuses symlinks in case directories (R91)."""
+    links = [str(p.relative_to(REPO)) for p in (REPO / "evals").rglob("*") if p.is_symlink()]
+    assert not links, links
+
+
+def test_eval_results_are_gitignored():
+    lines = (REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "evals/results/" in lines
+
+
+@pytest.mark.parametrize("name", SCAFFOLD_CASES)
+def test_eval_case_scaffold_copies_and_cleans_the_sample(name):
+    case = REPO / "evals" / name
+    data = _yamlio.load_yaml(case / "case.yaml")
+    assert data["context"] == {"scaffold_script": "scaffold.sh"}
+    text = (case / "scaffold.sh").read_text(encoding="utf-8")
+    assert '"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/../../examples/sample-paper"' in text
+    assert 'cp -R "$src/." .' in text
+    assert "rm -rf .ploma quality_reports build main.pdf main.log main.aux main.bbl main.blg" in text
+    assert ("rm -f ploma.yaml" in text) == (name == "onboard")
+
+
+@pytest.mark.parametrize("name", SCAFFOLD_CASES)
+def test_eval_scaffold_runs(name, tmp_path):
+    import shutil
+    import subprocess
+    if shutil.which("bash") is None:
+        pytest.skip("bash not installed")
+    (tmp_path / "main.log").write_text("stale")
+    subprocess.run(["bash", str(REPO / "evals" / name / "scaffold.sh")], cwd=tmp_path, check=True, timeout=30)
+    assert (tmp_path / "main.tex").is_file() and (tmp_path / "refs.bib").is_file()
+    assert not (tmp_path / "main.log").exists() and not (tmp_path / "quality_reports").exists()
+    assert (tmp_path / "ploma.yaml").exists() == (name != "onboard")
+
+
+@pytest.mark.parametrize("name", ("compile", "doctor", "status", "validate-bib"))
+def test_eval_prompts_are_plain_language(name):
+    _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
+    assert "/ploma:" not in body and len(body.split()) >= 5
+
+
+def test_onboard_eval_grades_the_dry_run_statement():
+    _, prompt = split_frontmatter((REPO / "evals" / "onboard" / "prompt.md").read_text(encoding="utf-8"))
+    assert prompt.strip() == "/ploma:onboard --dry-run"
+    fm, body = split_frontmatter((REPO / "evals" / "onboard" / "graders" / "dry_run_statement.md").read_text(encoding="utf-8"))
+    assert fm["type"] == "regex"
+    skill = (REPO / "skills" / "onboard" / "SKILL.md").read_text(encoding="utf-8")
+    statement = re.search(r'Say "(dry run:[^"]*)"', skill).group(1)
+    flags = re.I if "i" in str(fm.get("flags", "")) else 0
+    assert re.search(body.strip(), statement, flags)
+    assert re.search(body.strip(), "Dry run: nothing written.", flags)

@@ -4,4 +4,4 @@ timeout_seconds: 900
 allowed_tools: [Skill, Read, Glob, Grep, Bash]
 ---
 
-/ploma:compile
+Build the paper and tell me whether it compiles.

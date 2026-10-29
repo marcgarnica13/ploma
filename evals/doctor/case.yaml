@@ -3,5 +3,4 @@ name: doctor-sample-paper
 description: "/ploma:doctor on a copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *)'."
 tags: [milestone-1, read-only]
 context:
-  add_dirs: [examples/sample-paper]
   scaffold_script: scaffold.sh

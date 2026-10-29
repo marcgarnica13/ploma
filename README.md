@@ -75,6 +75,22 @@ claude plugin validate .
 
 Tests need Python 3.10 or later and pytest. CI runs pytest on Python 3.10 and 3.12; `claude plugin validate .` runs locally, since the Claude CLI is not assumed in CI.
 
+## Running the evals
+
+Each case under `evals/` stages a clean copy of `examples/sample-paper` with its `scaffold.sh`, so the runner needs `--scaffold`, and the skills call their scripts through Bash, so it needs `--allow-tools 'Bash(python3 *)'`. Smoke run, one case, one run, no baseline arm:
+
+```
+claude plugin eval . --trust-plugin --scaffold --allow-tools 'Bash(python3 *)' --case <case-name> --runs 1 --ablation none --keep-temp
+```
+
+Full run, with a cost ceiling:
+
+```
+claude plugin eval . --trust-plugin --scaffold --allow-tools 'Bash(python3 *)' --max-cost-usd 5
+```
+
+`<case-name>` is the `name` in a case's `case.yaml` (for example `doctor-sample-paper`). Results go to `evals/results/`, which is gitignored. Without a TeX installation the compile case expects a correctly reported FAIL.
+
 ## Licence
 
 Apache-2.0. See [`LICENSE`](LICENSE) and [`UPSTREAMS.md`](UPSTREAMS.md).

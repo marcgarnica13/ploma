@@ -4,4 +4,4 @@ timeout_seconds: 300
 allowed_tools: [Skill, Read, Glob, Grep, Bash]
 ---
 
-/ploma:validate-bib
+Check the bibliography: are any cited keys missing, misspelt or duplicated?

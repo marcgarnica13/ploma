@@ -4,4 +4,4 @@ timeout_seconds: 300
 allowed_tools: [Skill, Read, Glob, Grep, Bash]
 ---
 
-Where does this paper stand in the ploma lifecycle? Give me the ploma status.
+Where does this paper stand right now, and what should I do next?
