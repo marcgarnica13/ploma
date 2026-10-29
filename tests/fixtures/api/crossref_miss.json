@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "message-type": "work-list",
+  "message": {
+    "total-results": 1,
+    "items": [
+      {
+        "DOI": "10.9/unrelated",
+        "title": ["A Survey of Unrelated Topics in Soil Chemistry"],
+        "author": [{"given": "Carl", "family": "Rivera"}],
+        "issued": {"date-parts": [[2015]]}
+      }
+    ]
+  }
+}

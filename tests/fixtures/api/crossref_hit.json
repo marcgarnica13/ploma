@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "message-type": "work",
+  "message": {
+    "DOI": "10.1/x",
+    "type": "journal-article",
+    "title": ["Sequence Models for Event Logs"],
+    "author": [
+      {"given": "Ana", "family": "Müller", "sequence": "first"},
+      {"given": "Ben", "family": "Okafor", "sequence": "additional"}
+    ],
+    "issued": {"date-parts": [[2021, 5, 3]]}
+  }
+}

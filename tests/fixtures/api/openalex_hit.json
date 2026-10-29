@@ -1,0 +1,15 @@
+{
+  "meta": {"count": 1, "page": 1, "per_page": 3},
+  "results": [
+    {
+      "id": "https://openalex.org/W1",
+      "doi": "https://doi.org/10.5/ol",
+      "title": "Graph Methods for Process Discovery",
+      "publication_year": 2019,
+      "authorships": [
+        {"author_position": "first", "author": {"id": "https://openalex.org/A1", "display_name": "Dana Lindqvist"}},
+        {"author_position": "last", "author": {"id": "https://openalex.org/A2", "display_name": "Eli Park"}}
+      ]
+    }
+  ]
+}

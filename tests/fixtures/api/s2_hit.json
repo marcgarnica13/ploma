@@ -1,0 +1,13 @@
+{
+  "total": 1,
+  "offset": 0,
+  "data": [
+    {
+      "paperId": "abc123",
+      "title": "Graph Methods for Process Discovery",
+      "year": 2019,
+      "externalIds": {"DOI": "10.5/ol"},
+      "authors": [{"authorId": "1", "name": "Dana Lindqvist"}, {"authorId": "2", "name": "Eli Park"}]
+    }
+  ]
+}
