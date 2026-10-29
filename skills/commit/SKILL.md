@@ -98,6 +98,13 @@ git add -- <outputs.dir>/verdicts/commit-gate.json
 
 Exit 1 means refused (cap reached, or the gate passes now): quote it, say the paths stay staged and nothing was committed, and stop.
 
+Record the commit in the lifecycle state now, before `git commit`, and stage the state file, so the commit carries it and the tree is clean afterwards. PASS when the gate passed, WARN when the commit goes through on an override:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record commit <PASS|WARN> --artifact <outputs.dir>/verdicts/commit-gate.json --extra branch=<branch> --extra override=<yes|no>
+git add -- <outputs.dir>/ploma-state.yaml
+```
+
 Message: the message from the arguments, used exactly; otherwise write one from the staged diff (`git diff --cached --stat`) that says why, not only what: a short subject line, a blank line, a short body. After an override, add the line `ploma-override: <reason>` to the body. End the message with the attribution lines the session's instructions ask for, if any.
 
 ```bash
@@ -106,7 +113,7 @@ git commit -F - <<'PLOMA_COMMIT'
 PLOMA_COMMIT
 ```
 
-A failing pre-commit hook: quote its output and stop; never retry with `--no-verify`.
+A failing pre-commit hook: quote its output and stop; never retry with `--no-verify`. The commit state event recorded above stays staged; say so.
 
 ## Step 5: Push and pull request (outward-facing, ask first)
 
@@ -128,14 +135,6 @@ PLOMA_PR
 
 Open a pull request only when the branch differs from the remote default branch (`gh repo view --json defaultBranchRef`); otherwise push only. Never merge it; report the URL.
 
-## Step 6: Record
+## Step 6: Report
 
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record commit <PASS|WARN> --artifact <outputs.dir>/verdicts/commit-gate.json --extra commit=<short sha> --extra override=<yes|no>
-```
-
-PASS when the gate passed, WARN when the commit went through on an override.
-
-## Step 7: Report
-
-One block: the commit's short sha and subject, the branch, the staged paths count, the gate verdict (and the override reason if any), the pull request URL if one was opened, and the recommended checks still missing or stale with their commands.
+The state event was recorded in Step 4; nothing is written after the commit. Read the new commit with `git log --oneline -1`. One block: the commit's short sha and subject, the branch, the staged paths count, the gate verdict (and the override reason if any), the pull request URL if one was opened, and the recommended checks still missing or stale with their commands.

@@ -393,3 +393,13 @@ def test_changed_bib_reruns_structural_and_supersedes_semantic(sample_paper, cfg
     assert entry["mode"] == "structural" and entry["status"] == "PASS"
     assert "bib" in prep.refreshed and prep.verdict == "PASS"
     assert any("superseded" in n and "/ploma:validate-bib --semantic" in n for n in prep.notes)
+
+
+def test_state_event_is_recorded_and_staged_before_the_commit():
+    """The tree is clean after /ploma:commit: ploma-state.yaml is written and staged before git commit."""
+    text = (REPO / "skills" / "commit" / "SKILL.md").read_text(encoding="utf-8").split("\n---\n", 1)[1]
+    rec = text.index('scripts/state.py" record commit')
+    stage = text.index("git add -- <outputs.dir>/ploma-state.yaml")
+    commit = text.index("git commit -F -")
+    assert rec < stage < commit
+    assert "commit=<short sha>" not in text
