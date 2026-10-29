@@ -1524,3 +1524,5 @@ def test_respond_archives_under_the_existing_documents_round():
     assert "archive-round <M> --json" in step6 and "archive-round <N>" not in step6
     assert "`<M>` is the round in the existing document's `**Response round:**` header" in step6
     assert "response_to_referees_r<M>.md" in step6 and "response_to_referees_r<N>.md" not in step6
+    assert ("In short: an update keeps the existing round `<N>`; a new round archives round `<M>` and the "
+            "fresh document's round becomes `<M>+1`") in step6
