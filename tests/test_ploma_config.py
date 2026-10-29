@@ -282,3 +282,19 @@ def test_literature_sources_default_and_schema(tmp_path):
     assert not [i for i in findings if i.startswith("config.type") or i.startswith("config.unknown")], list(findings)
     f = findings["config.path.literature.sources"]
     assert f.status == "WARN" and f.observed == "missing_dir"
+
+
+def test_pipeline_stages_accepted_by_the_schema(tmp_path):
+    """R102: pipeline.stages is an optional list of strings; a non-list is a type finding."""
+    import ploma_config
+    assert ploma_config.DEFAULTS["pipeline"]["stages"] == []
+    (tmp_path / "main.tex").write_text("\\documentclass{article}\n")
+    base = 'ploma: "0.1"\ndocument: {main: main.tex}\nbuild: {engine: pdflatex}\nvenue: {profile: generic-journal}\n'
+    (tmp_path / "ploma.yaml").write_text(base + "pipeline:\n  stages: [load, fit, evaluate]\n")
+    cfg = ploma_config.load(tmp_path)
+    assert cfg["pipeline"]["stages"] == ["load", "fit", "evaluate"]
+    ids = [f.id for f in ploma_config.validate(cfg, tmp_path)]
+    assert not [i for i in ids if i.startswith(("config.type", "config.unknown"))], ids
+    (tmp_path / "ploma.yaml").write_text(base + "pipeline:\n  stages: load\n")
+    ids = [f.id for f in ploma_config.validate(ploma_config.load(tmp_path), tmp_path)]
+    assert any(i.startswith("config.type") and "stages" in i for i in ids), ids

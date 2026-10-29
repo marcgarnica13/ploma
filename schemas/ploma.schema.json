@@ -257,6 +257,13 @@
             "type": "string"
           }
         },
+        "stages": {
+          "type": "array",
+          "description": "Ordered stage names of the analysis pipeline, for the analysis-pipeline project skill.",
+          "items": {
+            "type": "string"
+          }
+        },
         "tolerances": {
           "type": "object",
           "properties": {

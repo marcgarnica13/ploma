@@ -42,7 +42,7 @@ DEFAULTS: dict[str, Any] = {
     "style": {"sentences": "short-direct", "forbid_em_dash": True, "forbid_phrases": [],
               "figures": "compact-horizontal"},
     "pipeline": {"enabled": False, "language": "python", "run_from": None, "rerun": None,
-                 "outputs_dir": None, "metric_keys": [], "env_contract": [], "gotchas": [],
+                 "outputs_dir": None, "metric_keys": [], "env_contract": [], "gotchas": [], "stages": [],
                  "tolerances": {"counts": "exact", "metrics": 0.01, "aggregates": 0.02,
                                 "percentages_pp": 0.1},
                  "figure_provenance": "optional"},
