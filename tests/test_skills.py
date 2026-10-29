@@ -1467,7 +1467,7 @@ def test_respond_asks_new_round_when_the_report_set_changes():
     text = _skill("respond")
     phase0 = text.split("## Phase 0", 1)[1].split("## Phase 1", 1)[0]
     for s in ("**Reports:**", "AskUserQuestion", "new round or update of round <N>?", "New round (Recommended)",
-              "response_to_referees_r<N>.md", "response_to_referees_matrix_r<N>.csv", "<N>+1",
+              "response_to_referees_r<M>.md", "response_to_referees_matrix_r<M>.csv", "<M>+1",
               "Without `AskUserQuestion`, choose the new round and say so"):
         assert s in phase0, s
     fm, _ = split_frontmatter(text)
@@ -1514,3 +1514,12 @@ def test_peer_review_dir_is_per_venue(repo_root):
         assert "peer_review_<slug>_<venue>/" in (repo_root / name).read_text(encoding="utf-8"), name
     peer = (repo_root / "skills/review/references/peer-pipeline.md").read_text(encoding="utf-8")
     assert "the resolved venue key" in peer and "AskUserQuestion" in peer
+
+
+def test_respond_archives_under_the_existing_documents_round():
+    """The archive takes the existing document's **Response round:** number, never the new reports' round."""
+    text = _skill("respond")
+    step6 = text.split("6. New round or update", 1)[1].split("\n## ", 1)[0]
+    assert "archive-round <M> --json" in step6 and "archive-round <N>" not in step6
+    assert "`<M>` is the round in the existing document's `**Response round:**` header" in step6
+    assert "response_to_referees_r<M>.md" in step6 and "response_to_referees_r<N>.md" not in step6
