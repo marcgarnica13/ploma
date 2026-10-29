@@ -1,6 +1,6 @@
 # ploma
 
-**Status: under construction (0.1.0, unreleased).** The plugin skeleton is in place; the lifecycle skills are being built. Start with [`BRIEF.md`](BRIEF.md) and the design spec in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+**Status: milestone 1 (0.1.0-m1, unreleased).** Install, health, compile and bibliography checks work; writing, review and commit skills arrive in milestone 2. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
 ## What ploma is
 
@@ -8,15 +8,42 @@ ploma is a Claude Code plugin: a harness for writing, validating, reviewing and 
 
 ## Install
 
+The same commands work on both hosts (the development machine and the paper host). Inside Claude Code:
+
 ```
-gh auth login && gh auth setup-git          # HTTPS credentials
-export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1    # skip the SSH probe (needed on Marc's paper host)
 /plugin marketplace add marcgarnica13/ploma
 /plugin install ploma@ploma
 /ploma:onboard
 ```
 
+On a host without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
+
+```
+gh auth login && gh auth setup-git          # HTTPS credentials for git
+export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1    # clone over HTTPS, skip the SSH probe
+```
+
 Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
+
+## What milestone 1 contains
+
+- Skills: `/ploma:onboard`, `/ploma:doctor`, `/ploma:status`, `/ploma:help`, `/ploma:compile`, `/ploma:validate-bib`.
+- Hooks: session context on start and after compaction, a pre-compact snapshot, a context monitor, a verify reminder after edits, a session log reminder on stop. Every hook is silent in a repo without `ploma.yaml`.
+- Rules: eager core, style and limits rules; reference rules loaded on demand.
+- Venue profiles (`venues/`) and discipline profiles (`disciplines/`), overridable per project in `ploma.d/`.
+- Scripts behind the skills (`scripts/`), each with `--json` output, and eval cases for every installed skill (`evals/`).
+
+Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them.
+
+## Commit gate
+
+`/ploma:commit` (milestone 2) refuses to commit until the required checks have passed on the current files.
+
+- Required: `compile` and `bib` (written by `/ploma:compile` and `/ploma:validate-bib`).
+- Recommended: `consistency`, `claims`, `proofread`. `consistency` is recommended in 0.1.x and becomes required from 0.1.1.
+- Override: reply `commit anyway: <reason>`. The reason is logged. After three consecutive overrides the gate stops accepting them until the required checks pass.
+
+Until then, `python3 scripts/gate.py check` shows the gate state.
 
 ## Lifecycle
 
