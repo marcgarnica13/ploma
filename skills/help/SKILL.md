@@ -56,7 +56,7 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:lit-review <topic> [--no-verify]`: literature search and synthesis; BibTeX entries offered only after a citation lookup, never written to your bibliography.
 - `/ploma:grill [topic or file]`: one question per turn with a recommended answer until no design decision is open; writes a decision log.
 - `/ploma:spec [topic | start fresh] [--no-verify]`: the binding paper spec (claims with evidence, venue constraints, section page targets, decisions); edits an existing spec section by section.
-- `/ploma:respond <report-path-or-dir> [revised-manuscript] [--audit <draft>] [--no-verify]`: point-by-point response to referee reports in any format (reviewer numbers read from the content), every concern classified, location claims fact-checked; `--audit` checks an existing draft.
+- `/ploma:respond <report-path-or-dir> [revised-manuscript] [--since <git-ref>] [--audit <draft>] [--no-verify]`: point-by-point response to referee reports in any format (reviewer numbers read from the content), every concern classified, location claims fact-checked; `--audit` checks an existing draft.
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)

@@ -16,15 +16,23 @@ Process the files in sorted order. Files are only read. The skill never edits, r
 
 ## 2. Converting to text
 
+First create the temporary file, as its own Bash call, and capture the path it prints:
+
+```bash
+mktemp --suffix=.txt
+```
+
+On macOS, where `--suffix` is not supported, run `mktemp -t ploma-respond`. The path is never a predictable `/tmp/<name>`: names with spaces, concurrent runs and symlink races all break a fixed name. Then convert into that `<path>`, again as a separate Bash call (each command matches one allowed-tools pattern; never chain them with shell operators or command substitution):
+
 | Extension | How to read it |
 |---|---|
-| `.md`, `.txt` | Read directly. |
-| `.pdf` | `TMP=$(mktemp --suffix=.txt) && pdftotext -layout "<file>" "$TMP"` (poppler-utils) |
-| `.docx` | `TMP=$(mktemp --suffix=.txt) && pandoc "<file>" -t plain -o "$TMP"`, or `docx2txt "<file>" "$TMP"` when pandoc is absent |
-| `.html`, `.htm` | `TMP=$(mktemp --suffix=.txt) && pandoc "<file>" -t plain -o "$TMP"` |
+| `.md`, `.txt` | Read directly; no conversion. |
+| `.pdf` | `pdftotext -layout "<file>" "<path>"` (poppler-utils) |
+| `.docx` | `pandoc "<file>" -t plain -o "<path>"`, or, when pandoc is absent, `docx2txt "<file>" > "<path>"` (docx2txt prints to standard output) |
+| `.html`, `.htm` | `pandoc "<file>" -t plain -o "<path>"` |
 | anything else | Ask for a plain-text version and skip the file. |
 
-Always create the temporary file with `mktemp` (on macOS, `mktemp -t ploma-respond` when `--suffix` is not supported), never a predictable `/tmp/<name>` path: names with spaces, concurrent runs and symlink races all break a fixed name. Quote every path. Read and Grep the converted text; cite the original file in the output. Remove the temporary files at the end of the run.
+Quote every path. Read and Grep the converted text; cite the original file in the output. Remove the temporary files at the end of the run.
 
 When the converter is missing (`command -v pdftotext`, `command -v pandoc`, `command -v docx2txt` print nothing) or the conversion fails or yields empty text, stop for that file and say which tool is needed and how to install it: poppler-utils for `pdftotext` (`apt install poppler-utils`, `brew install poppler`), pandoc for `.docx` and `.html` (`apt install pandoc`, `brew install pandoc`), or `pip install docx2txt`. Ask the user for a plain-text version (`.txt` or `.md`) of the report as the alternative. Never guess the content of a report that could not be read.
 
@@ -39,21 +47,32 @@ Search the text of each report for the reviewer's number. These patterns count, 
 
 The first match in the file gives the reviewer number n. A file whose matches disagree (two different reviewer numbers) holds several reports: split it at each header line and give each part its own number.
 
-The file name is never used for the ID, not even as a fallback. When the content names no reviewer, assign the next free number (one above the highest number found in the other reports, or 1) and say so in the reply and in that reviewer's section: "No reviewer number in <file>; assigned Reviewer <n>." Two files that both claim the same number are both kept: the second gets the next free number, and the reply says so.
+The file name is never used for the ID, not even as a fallback. On a re-run against an existing response document, keep the reviewer numbers already assigned there: a report whose content gives no number keeps the number the document gave it (matched by its source file), and is never renumbered. When the content names no reviewer, assign the next free number (one above the highest number found in the other reports, or 1) and say so in the reply and in that reviewer's section: "No reviewer number in <file>; assigned Reviewer <n>." Two files that both claim the same number are both kept: the second gets the next free number, and the reply says so.
 
 Record for each reviewer, when the report states them: the recommendation or overall rating, and the confidence. Copy them verbatim; they go in the reviewer's section heading.
 
 ## 4. Splitting into concerns
 
-A concern is one thing the referee asks the authors to change, explain or justify. Split the report into concerns with these shapes, in this order of preference:
+A concern is one thing the referee asks the authors to change, explain or justify. Pick the shape first, then split.
+
+**Form blocks: detection takes precedence.** When the report has a `Questions` line, or numbered prompts each followed by the referee's answer (`1. Relevance: ...`, `4. Main weaknesses ...`, `5. Detailed review ...`), treat it as a web-form export, whatever bullets or numbers appear inside it:
+
+- The prompt text is the venue's, not the referee's (prompt 5 of a typical form is one long paragraph of reviewing guidelines): never quote it as a concern.
+- The bullets inside an answer are the concerns within that answer, one per bullet, unless a bullet makes several distinct asks. A free-text answer with no bullets is split per distinct ask.
+- Answers to the summary, strengths and relevance prompts are context, not concerns, unless they hold a criticism or a request (a parenthetical complaint in a summary is a concern).
+- Weaknesses, detailed comments and comments to the authors are split into concerns.
+- The reproducibility, deployment, rating and confidence answers are context: the overall rating and the confidence go in the reviewer's section heading. A reproducibility answer that asks for something is a concern.
+
+**Otherwise:**
 
 1. **Numbered items** (`1.`, `(a)`, `Comment 3`, `Q2`) and **bullets** (`-`, `*`, `•`): one concern per item, unless one item makes several distinct asks.
-2. **Prompt and answer form blocks.** Web-form exports carry a `Questions` line and numbered prompts (`1. Relevance: ...`, `4. Main weaknesses ...`), each followed by the referee's answer. The prompt text is the venue's, not the referee's: never quote it as a concern. Answers to summary, strengths, relevance, rating, confidence and deployment prompts are context, not concerns, unless they hold a criticism or a request (a parenthetical complaint in a summary is a concern). Weaknesses, detailed comments and comments to the authors are split into concerns.
-3. **Long paragraphs:** one concern per distinct ask. "Please add a second season or a cross-validation split, and report variance across runs" is two concerns.
+2. **Long paragraphs:** one concern per distinct ask. "Please add a second season or a cross-validation split, and report variance across runs" is two concerns.
 
 When the same point appears twice (once under weaknesses, once in the detailed comments), keep one concern, quote the fuller wording, and note the other place in its summary.
 
-Number concerns R{n}.{m}: n is the reviewer number from step 3, m counts that reviewer's concerns from 1 in the order they appear. On a re-run against an existing response, keep the ids already assigned and give a new concern the next free m.
+Number concerns R{n}.{m}: n is the reviewer number from step 3, m counts that reviewer's concerns from 1 in the order they appear.
+
+On a re-run against an existing response, keep the reviewer numbers already assigned and keep the ids already assigned. Match each concern to an existing entry by reviewer plus source file and line range (the entry's recorded source), or, when the source moved, by reviewer plus topic; the quote is only a supporting signal, since a referee's wording may be re-quoted differently. A concern that matches one entry keeps its id. A concern with no match gets the next free m for its reviewer. A match that is ambiguous (two candidate entries, or one entry claimed by two concerns) is listed for the author to resolve and is never silently duplicated or merged.
 
 Each concern records:
 
@@ -64,4 +83,4 @@ Each concern records:
 | quote | the most representative sentence, verbatim, 25 words or fewer; cut with `...`, never reword |
 | summary | one line in your own words |
 
-Keep the concern list with its source file and line for each quote.
+Keep the concern list with its source file and line range for each concern; the response records it so a re-run can match by source.

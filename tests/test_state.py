@@ -171,3 +171,28 @@ def test_in_memory_non_dict_events_are_skipped(cfg):
     st = {"ploma_state": "0.1", "stage": "compile", "rounds": {}, "events": ["hello", {"skill": "compile", "status": "PASS", "at": "2026-10-29T00:00:00Z"}]}
     assert state.next_stage(st, cfg)["stage"] == "format"
     assert "compile PASS" in state.render(st, cfg)
+
+
+def test_explicit_round_sets_the_round_without_incrementing(sample_paper, cfg):
+    """R142: an explicit round wins (max with the current); re-recording the same round does not bump it."""
+    st = state.record(sample_paper, cfg, "respond", "WARN", round=2)
+    assert st["rounds"]["respond"] == 2
+    st = state.record(sample_paper, cfg, "respond", "PASS", round=2)
+    assert st["rounds"]["respond"] == 2
+    st = state.record(sample_paper, cfg, "respond", "PASS", round=1)
+    assert st["rounds"]["respond"] == 2  # never goes down
+    st = state.record(sample_paper, cfg, "review", "PASS", round=3)
+    assert st["rounds"]["review"] == 3
+
+
+def test_round_increments_only_without_an_explicit_round(sample_paper, cfg):
+    state.record(sample_paper, cfg, "review", "PASS")
+    st = state.record(sample_paper, cfg, "review", "PASS")
+    assert st["rounds"]["review"] == 2
+    # The CLI parses --extra round=2 as an int: same round, no bump.
+    assert state.main(["--root", str(sample_paper), "record", "review", "PASS", "--extra", "round=2"]) == 0
+    assert state.load(sample_paper, cfg)["rounds"]["review"] == 2
+    # A respond audit (mode=audit, no round) checks a draft and never moves the round.
+    st = state.record(sample_paper, cfg, "respond", "PASS", round=1)
+    st = state.record(sample_paper, cfg, "respond", "WARN", mode="audit")
+    assert st["rounds"]["respond"] == 1 and st["events"][-1]["mode"] == "audit"

@@ -14,6 +14,7 @@
 **Date:** <YYYY-MM-DD>
 **Reports:** <each report file, with the reviewer number read from its content>
 **Revised manuscript:** <main file and the files it inputs>
+**Checked against:** <"the submitted version at <ref> (--since)" or "Locations were not checked against the submitted version (no --since ref).">
 
 ## Cover letter
 
@@ -24,12 +25,15 @@
 <One or two sentences thanking the referee for the specific points they raised.>
 
 ### R{n}.{m}: <short title>
+<!-- ploma: source <report file>:<first line>-<last line> -->
 
 - **Comment:** "<verbatim quote, 25 words or fewer>"
 - **Severity:** major | minor | typo
 - **Status:** Addressed | Partially addressed | Deferred | Disagreement | UNADDRESSED - REQUIRES AUTHOR INPUT
 - **Location:** <file:line, section, table or figure in the revised manuscript; "none" when nothing changed>
 - **Response:** <3 to 6 sentences: acknowledge, state the change or the reason for not changing, point to the location, optionally justify>
+
+> ploma: <verifier evidence, only on a re-run when the evidence contradicts the author's Response>
 
 <... one entry per concern ...>
 
@@ -39,6 +43,10 @@
 |---|---|---|---|---|---|
 | R{n}.{m} | <n> | <severity> | <one-line summary> | <status> | <location> |
 ```
+
+## Re-run rule
+
+Entries are updated in place by id. Never rewrite an existing Response field: it may hold the author's words. A re-run changes only Status and Location of an existing entry, and when the verifier's evidence contradicts the author's text it adds `> ploma: <verifier evidence>` on its own line directly under the entry. Response text is drafted only for new entries and for entries still holding the UNADDRESSED placeholder. The `ploma: source` comment records where the concern sits in the report, so a re-run matches the concern by reviewer and source and keeps its id.
 
 ## Status labels
 

@@ -1047,17 +1047,18 @@ def test_respond_restates_no_cap():
 
 def test_respond_frontmatter_and_tools():
     fm, _ = split_frontmatter(_skill("respond"))
-    assert fm["argument-hint"] == "<report-path-or-dir> [revised-manuscript] [--audit <draft>] [--no-verify]"
+    assert fm["argument-hint"] == ("<report-path-or-dir> [revised-manuscript] [--since <git-ref>] [--audit <draft>] "
+                                  "[--no-verify]")
     tools = _tools(fm)
     for tool in ("Read", "Grep", "Glob", "Write", "Edit", "Agent", "Bash(python3 *)", "Bash(mktemp *)",
-                 "Bash(pdftotext *)", "Bash(pandoc *)", "Bash(docx2txt *)"):
+                 "Bash(pdftotext *)", "Bash(pandoc *)", "Bash(docx2txt *)", "Bash(git diff *)"):
         assert tool in tools, tool
 
 
 def test_respond_ingestion_reference():
     text = _respond_ref("ingestion")
     # Converters, always through mktemp, never a predictable name; a missing converter stops.
-    for s in ("mktemp", 'pdftotext -layout "<file>" "$TMP"', "pandoc", "docx2txt", ".md", ".txt", ".pdf",
+    for s in ("mktemp", "pandoc", "docx2txt", ".md", ".txt", ".pdf",
               ".docx", ".html", "never a predictable", "install", "plain-text version"):
         assert s in text, s
     # Reviewer ID from content only.
@@ -1127,3 +1128,80 @@ def test_respond_eval():
     # The sample report's header is what the rubric relies on.
     sample = (REPO / "examples" / "sample-paper" / "review" / "review1.md").read_text(encoding="utf-8")
     assert sample.splitlines()[0].strip() == "Reviewer #3"
+
+
+# ---------------------------------------------------------------- Task 11 fix round 1 (R142, R143, R145)
+
+def test_respond_round_is_the_referee_round():
+    text = _skill("respond")
+    assert "--extra round=<N>" in text
+    for s in ('"second round"', "existing response document's header", "1 for a first response"):
+        assert s in text, s
+    audit_record = next(line for line in text.splitlines() if "--extra mode=audit" in line)
+    assert "round=" not in audit_record
+    assert "rounds.respond" not in text  # the round is no longer derived from the state counter
+
+
+def test_respond_since_ref_checks_revised_lines():
+    text = _skill("respond")
+    phase2 = text.split("## Phase 2", 1)[1].split("## Phase 3", 1)[0]
+    for s in ("--since <git-ref>", "git diff -U0 <ref> -- <file>", "hunk header"):
+        assert s in phase2, s
+    assert "Locations were not checked against the submitted version" in text
+    tmpl = _respond_ref("response-template")
+    assert "Locations were not checked against the submitted version" in tmpl
+
+
+def test_respond_rerun_never_rewrites_a_response():
+    text = _skill("respond")
+    phase6 = text.split("## Phase 6", 1)[1].split("## Audit mode", 1)[0]
+    tmpl = _respond_ref("response-template")
+    for t in (phase6, tmpl):
+        assert "Never rewrite an existing Response field" in t
+        assert "> ploma: <verifier evidence>" in t
+        assert "only Status and Location" in t
+        assert "UNADDRESSED placeholder" in t
+    step5 = text.split("## Phase 0", 1)[1].split("## Phase 1", 1)[0]
+    assert "In drafting mode" in step5
+
+
+def test_respond_rerun_matches_ids_by_reviewer_and_source():
+    text = _skill("respond") + _respond_ref("ingestion")
+    for s in ("keep the reviewer numbers already assigned", "source file and line range", "reviewer plus topic",
+              "supporting signal", "ambiguous", "never silently duplicated"):
+        assert s in text, s
+
+
+def test_respond_conversion_commands_match_allowed_tools():
+    text = _respond_ref("ingestion")
+    for s in ("mktemp --suffix=.txt", 'pdftotext -layout "<file>" "<path>"', 'pandoc "<file>" -t plain -o "<path>"',
+              'docx2txt "<file>" > "<path>"', "separate Bash call"):
+        assert s in text, s
+    assert "TMP=$(mktemp" not in text and "&&" not in text
+
+
+def test_respond_reconciles_other_cannot_verify():
+    text = _skill("respond")
+    phase5 = text.split("## Phase 5", 1)[1].split("## Phase 6", 1)[0]
+    assert "`cannot-verify` for another reason" in phase5 and "keep the status" in phase5 and "flag" in phase5
+
+
+def test_web_form_fixture_is_covered_by_ingestion():
+    """R145: a real-shaped web-form export (header number differs from the file name) is covered part by part."""
+    fixture = REPO / "tests" / "fixtures" / "reviews" / "review2.md"
+    lines = fixture.read_text(encoding="utf-8").splitlines()
+    header = re.match(r"Reviewer #(\d+)$", lines[0])
+    assert header and header.group(1) not in fixture.stem  # file name says 2, content says 4
+    assert lines[1] == "Questions"
+    prompt5 = next(i for i, line in enumerate(lines) if line.startswith("5. Detailed review"))
+    assert len(lines[prompt5]) > 300  # the long venue prompt
+    bullets = [line for line in lines[prompt5 + 1:] if line.startswith("- ")][:4]
+    assert len(bullets) == 4 and not lines[prompt5 + 5].startswith("6.")
+    for word in ("Deployment status", "Overall rating", "Confidence"):
+        assert any(line.split(". ", 1)[-1].startswith(word) for line in lines), word
+    text = _respond_ref("ingestion")
+    form = text.split("## 4.", 1)[1]
+    for s in ("`Questions` line", "takes precedence", "bullets inside an answer are the concerns within that answer",
+              "never quote it as a concern", "rating", "confidence", "deployment", "parenthetical"):
+        assert s in form, s
+    assert "file name is never used" in text.lower()

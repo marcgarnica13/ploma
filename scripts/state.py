@@ -119,7 +119,11 @@ def load(root: Path, cfg: dict) -> dict:
 
 
 def record(root: Path, cfg: dict, skill: str, status: str, artifact: str | None = None, **extra: Any) -> dict:
-    """Append an event, update the stage and review/respond rounds, write atomically, return the state."""
+    """Append an event, update the stage and review/respond rounds, write atomically, return the state.
+
+    A review or respond event with an integer ``round`` extra sets that skill's round to max(current, round);
+    without one, the round increments, except for a ``mode=audit`` event, which leaves it.
+    """
     if skill not in SKILL_TO_STAGE:
         raise ValueError(f"unknown skill {skill!r}; known: {', '.join(SKILL_TO_STAGE)}")
     if status not in STATUSES:
@@ -136,7 +140,13 @@ def record(root: Path, cfg: dict, skill: str, status: str, artifact: str | None 
     if stage is not None:
         st["stage"] = stage
     if skill in ROUND_SKILLS:
-        st["rounds"][skill] = int(st["rounds"].get(skill, 0)) + 1
+        current = int(st["rounds"].get(skill, 0))
+        explicit = extra.get("round")
+        if isinstance(explicit, int) and not isinstance(explicit, bool):
+            # R142: an explicit round sets the round (never lowers it); re-recording a round does not bump it.
+            st["rounds"][skill] = max(current, explicit)
+        elif extra.get("mode") != "audit":
+            st["rounds"][skill] = current + 1
     _atomic_write(path(root, cfg), _yamlio.dump_yaml(st))
     return st
 
