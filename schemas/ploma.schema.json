@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ploma.yaml",
+  "description": "Project configuration for the ploma plugin (spec section 5). Paths are relative to the repo root.",
+  "type": "object",
+  "required": [
+    "ploma",
+    "document",
+    "build",
+    "venue"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ploma": {
+      "type": [
+        "string",
+        "number"
+      ],
+      "description": "Config format version, \"0.1\"."
+    },
+    "document": {
+      "type": "object",
+      "required": [
+        "main"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "paper",
+            "proposal",
+            "thesis"
+          ],
+          "description": "Only paper is supported in v0.1."
+        },
+        "main": {
+          "type": "string",
+          "description": "Main .tex file."
+        },
+        "root": {
+          "type": "string",
+          "description": "Manuscript directory; defaults to the directory of main."
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "slug": {
+          "type": "string",
+          "description": "Used in report filenames; defaults to the stem of main."
+        },
+        "anonymized": {
+          "type": "boolean"
+        },
+        "discipline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Key into disciplines/*.yaml."
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "required": [
+        "engine"
+      ],
+      "properties": {
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Run verbatim from build.cwd; null means the latexmk fallback."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Defaults to document.root."
+        },
+        "engine": {
+          "type": "string",
+          "enum": [
+            "pdflatex",
+            "xelatex",
+            "lualatex"
+          ]
+        },
+        "bib_tool": {
+          "type": "string",
+          "enum": [
+            "bibtex",
+            "biber"
+          ]
+        },
+        "bib_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pdf": {
+          "type": "string",
+          "description": "Output; defaults to <build.cwd>/<stem of main>.pdf."
+        },
+        "log": {
+          "type": "string",
+          "description": "Output; defaults to <build.cwd>/<stem of main>.log."
+        },
+        "overfull_threshold_pt": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "venue": {
+      "type": "object",
+      "required": [
+        "profile"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "description": "Key into venues/*.yaml or ploma.d/venues/*.yaml."
+        },
+        "doc_class": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page_budget": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "page_budget_includes_refs": {
+          "type": "boolean"
+        },
+        "cite_style": {
+          "type": "string",
+          "enum": [
+            "numeric",
+            "author-year"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "reviews": {
+      "type": "object",
+      "properties": {
+        "glob": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Prior-round referee reports."
+        }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "style": {
+      "type": "object",
+      "properties": {
+        "sentences": {
+          "type": "string"
+        },
+        "forbid_em_dash": {
+          "type": "boolean"
+        },
+        "forbid_phrases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "figures": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "description": "Optional code add-on; absent or enabled: false disables it.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rerun": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputs_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metric_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env_contract": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gotchas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tolerances": {
+          "type": "object",
+          "properties": {
+            "counts": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "metrics": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "aggregates": {
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            "percentages_pp": {
+              "type": [
+                "string",
+                "number"
+              ]
+            }
+          }
+        },
+        "figure_provenance": {
+          "type": "string",
+          "enum": [
+            "optional",
+            "required"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "review_rounds": {
+          "type": "integer"
+        },
+        "cove_regenerations": {
+          "type": "integer"
+        },
+        "doi_lookups_per_run": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "superpowers": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

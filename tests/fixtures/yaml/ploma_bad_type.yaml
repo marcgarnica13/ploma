@@ -1,0 +1,8 @@
+ploma: "0.1"
+document:
+  main: paper/main.tex
+build:
+  engine: pdflatex
+  overfull_threshold_pt: "ten"
+venue:
+  profile: generic-conference

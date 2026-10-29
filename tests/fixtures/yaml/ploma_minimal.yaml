@@ -1,0 +1,7 @@
+ploma: "0.1"
+document:
+  main: paper/main.tex
+build:
+  engine: pdflatex
+venue:
+  profile: generic-conference
