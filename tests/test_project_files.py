@@ -523,3 +523,94 @@ def test_cli_plan_from_proposed_config_on_stdin(sample_paper, capsys, monkeypatc
     monkeypatch.setattr("sys.stdin", io.StringIO("a: [b\n"))
     assert project_files.main(["--root", str(sample_paper), "--config", "-", "plan"]) == 2
     assert not (sample_paper / "ploma.yaml").exists()
+
+
+# ---------------------------------------------------------------- learnings rule (R103, milestone 2 Task 12)
+
+LEARNINGS_RULE = ".claude/rules/ploma-learnings.md"
+
+
+def _write_learnings_rule(root):
+    p = root / LEARNINGS_RULE
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("# Project learnings\n\n- [LEARN:build] run the build from the repo root.\n", encoding="utf-8")
+    return p
+
+
+def test_onboard_never_renders_or_plans_the_learnings_rule(sample_paper, cfg):
+    """R103: only /ploma:learn --promote writes the learnings rule; onboard never renders it."""
+    assert project_files.LEARNINGS_RULE == LEARNINGS_RULE
+    assert LEARNINGS_RULE not in {s.path for s in project_files.render_all(cfg, sample_paper)}
+    assert LEARNINGS_RULE not in _actions(sample_paper, cfg)
+    _write_learnings_rule(sample_paper)
+    assert LEARNINGS_RULE not in {s.path for s in project_files.render_all(cfg, sample_paper)}
+    assert LEARNINGS_RULE not in _actions(sample_paper, cfg)
+
+
+def test_apply_leaves_the_learnings_rule_alone(sample_paper, cfg):
+    p = _write_learnings_rule(sample_paper)
+    before = p.read_text(encoding="utf-8")
+    rows = _apply(sample_paper, cfg)
+    assert LEARNINGS_RULE not in {r["path"] for r in rows}
+    assert p.read_text(encoding="utf-8") == before
+
+
+def test_record_created_once_adds_the_rule_to_the_receipt(sample_paper, cfg):
+    _apply(sample_paper, cfg)
+    p = _write_learnings_rule(sample_paper)
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    entries = {e["path"]: e for e in receipt.load(sample_paper, cfg)["files"]}
+    assert entries[LEARNINGS_RULE]["mode"] == "created-once"
+    assert entries[LEARNINGS_RULE]["sha256"] == receipt.sha256_file(p)
+    assert "CLAUDE.md" in entries  # onboard's entries survive
+    # A second promotion appends and records again: the sha follows the file, one entry only.
+    p.write_text(p.read_text(encoding="utf-8") + "- [LEARN:bib] keep keys stable.\n", encoding="utf-8")
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    files = receipt.load(sample_paper, cfg)["files"]
+    assert [e["path"] for e in files].count(LEARNINGS_RULE) == 1
+    assert {e["path"]: e for e in files}[LEARNINGS_RULE]["sha256"] == receipt.sha256_file(p)
+    assert all(r["state"] == "unchanged" for r in receipt.compare(sample_paper, cfg))
+
+
+def test_record_created_once_without_a_receipt_starts_one(sample_paper, cfg):
+    _write_learnings_rule(sample_paper)
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    assert [e["path"] for e in receipt.load(sample_paper, cfg)["files"]] == [LEARNINGS_RULE]
+
+
+def test_record_created_once_refuses_onboard_files_missing_files_and_escapes(sample_paper, cfg):
+    _apply(sample_paper, cfg)
+    for bad in ("CLAUDE.md", MANUSCRIPT, "../outside.md", "/etc/passwd", "nope/missing.md"):
+        with pytest.raises(ValueError):
+            project_files.record_created_once(sample_paper, cfg, bad)
+
+
+def test_reapply_keeps_the_recorded_learnings_rule_in_the_receipt(sample_paper, cfg):
+    _apply(sample_paper, cfg)
+    _write_learnings_rule(sample_paper)
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    _apply(sample_paper, cfg)
+    entries = {e["path"]: e for e in receipt.load(sample_paper, cfg)["files"]}
+    assert entries[LEARNINGS_RULE]["mode"] == "created-once"
+    (sample_paper / LEARNINGS_RULE).unlink()
+    _apply(sample_paper, cfg)  # a recorded file that is gone drops out of the receipt
+    assert LEARNINGS_RULE not in {e["path"] for e in receipt.load(sample_paper, cfg)["files"]}
+
+
+def test_record_cli(sample_paper, cfg, capsys):
+    _apply(sample_paper, cfg)
+    _write_learnings_rule(sample_paper)
+    assert project_files.main(["--root", str(sample_paper), "--json", "record", LEARNINGS_RULE]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"path": LEARNINGS_RULE, "mode": "created-once", "recorded": True}
+    assert project_files.main(["--root", str(sample_paper), "record"]) == 2
+    assert project_files.main(["--root", str(sample_paper), "record", "CLAUDE.md"]) == 2
+    assert project_files.main(["--root", str(sample_paper), "plan", LEARNINGS_RULE]) == 2
+
+
+def test_doctor_counts_the_recorded_learnings_rule_as_unchanged(sample_paper, cfg):
+    _apply(sample_paper, cfg)
+    _write_learnings_rule(sample_paper)
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    f = _ids(_doctor(sample_paper))
+    assert f["project-files.receipt"].status == PASS

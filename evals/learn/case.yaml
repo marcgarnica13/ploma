@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: learn-note-sample-paper
+description: "/ploma:learn with a note on an onboarded copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *),Edit'. Expected: exactly one [LEARN:<topic>] line appended to quality_reports/learnings.md; no rule or skill written."
+tags: [milestone-2, session]
+context:
+  scaffold_script: scaffold.sh

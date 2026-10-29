@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PostToolUse hook (Bash|Task|Agent): coarse context-usage nudges, de-duplicated per session.
 
-At 40, 55 and 65 percent it suggests saving decisions to disk (/ploma:checkpoint (planned, milestone 2)); at 80 an info note; at 90 a caution.
+At 40, 55 and 65 percent it suggests saving decisions to disk with /ploma:checkpoint; at 80 an info note; at 90 a caution.
 Below 80 percent checks are throttled to one per 60 s. The percentage is a coarse proxy: the
 transcript size (4 bytes per token) against PLOMA_CONTEXT_WINDOW_TOKENS (default 1,000,000),
 else a tool-call counter against PLOMA_CONTEXT_MAX_TOOL_CALLS (default 400).
@@ -97,10 +97,10 @@ def _message(pct: float, cache: dict) -> tuple[str, str] | None:
         if pct >= threshold and threshold not in shown:
             shown.append(threshold)
             return (f"Context about {pct:.0f}% (approximate). Save decisions and the active plan to disk before "
-                    "auto-compaction (/ploma:checkpoint (planned, milestone 2) will automate this).",
+                    "auto-compaction: run /ploma:checkpoint.",
                     f"Context usage is about {pct:.0f}% (coarse proxy). If decisions or a reusable finding "
                     "emerged this session, write them to the active plan or session log now so they reach disk "
-                    "before auto-compaction; /ploma:checkpoint (planned, milestone 2) is not installed yet.")
+                    "before auto-compaction; /ploma:checkpoint saves them in one step, /ploma:compress-session distils the session.")
     if pct >= THRESHOLD_CRITICAL and not cache.get("shown_warn_90"):
         cache["shown_warn_90"] = True
         return (f"Context about {pct:.0f}% (approximate). Auto-compaction is near; finish the current task at full quality.",

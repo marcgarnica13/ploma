@@ -103,9 +103,14 @@ def test_every_skill_has_an_eval_case(d):
     graders = {p.stem: split_frontmatter(p.read_text(encoding="utf-8"))[0]
                for p in (case / "graders").glob("*.md")}
     used = [g for g in graders.values() if g.get("type") == "tool_used" and g.get("tool") == "Skill"]
-    if d.name == "onboard":
-        # A slash-command prompt does not register as a Skill tool call; a regex on the dry-run line grades it.
-        assert any(g.get("type") == "regex" for g in graders.values())
+    if d.name in HIDDEN:
+        # disable-model-invocation: the prompt is the slash command, which does not register as a Skill tool
+        # call; a deterministic grader (regex, file_exists or a non-Skill tool_used) grades the run instead.
+        _, prompt = split_frontmatter((case / "prompt.md").read_text(encoding="utf-8"))
+        assert prompt.strip().startswith(f"/ploma:{d.name}"), "a hidden skill's eval prompt is its slash command"
+        assert not used
+        assert any(g.get("type") in ("regex", "file_exists") or
+                   (g.get("type") == "tool_used" and g.get("tool") != "Skill") for g in graders.values())
     else:
         assert used and all(d.name in str(g.get("input_match", "")) for g in used)
     assert any(g.get("type") == "llm" for g in graders.values()), "an llm rubric grader"
@@ -171,7 +176,8 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
              "audit-reproducibility", "proofread", "verify-claims", "write", "format", "review", "devils-advocate",
-             "brainstorm", "lit-review", "grill", "spec", "respond"}
+             "brainstorm", "lit-review", "grill", "spec", "respond",
+             "checkpoint", "compress-session", "learn", "deep-audit"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -1205,3 +1211,203 @@ def test_web_form_fixture_is_covered_by_ingestion():
               "never quote it as a concern", "rating", "confidence", "deployment", "parenthetical"):
         assert s in form, s
     assert "file name is never used" in text.lower()
+
+
+# ---------------------------------------------------------------- session skills (milestone 2, Task 12)
+
+SESSION_SKILLS = ("checkpoint", "compress-session", "learn", "deep-audit")
+LEDGER_RE = re.compile(r"^\[LEARN:[a-z0-9][a-z0-9-]*\] .+ \(\d{4}-\d{2}-\d{2}\)( \(promoted \d{4}-\d{2}-\d{2}\))?$")
+
+
+@pytest.mark.parametrize("name", SESSION_SKILLS)
+def test_session_skills_are_installed_and_not_marked_planned(name):
+    """R104 for Task 12: installed everywhere, planned nowhere."""
+    assert name in INSTALLED and name in HIDDEN and (REPO / "skills" / name / "SKILL.md").is_file()
+    fm, _ = split_frontmatter(_skill(name))
+    assert fm["disable-model-invocation"] is True
+    help_text = _skill("help")
+    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
+    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
+    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
+    installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
+    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert f"/ploma:{name}" in installed_line
+    core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
+    assert re.search(rf"Installed now:[^;]*\b{name}\b", core)
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in readme.splitlines() if line.startswith("| any | Session"))
+    assert f"/ploma:{name}" in row and "planned" not in row
+    files = [REPO / "README.md", REPO / "hooks" / "context_monitor.py"]
+    files += [q for q in (REPO / "templates").rglob("*") if q.is_file()]
+    files += sorted((REPO / "rules").rglob("*.md")) + sorted((REPO / "skills").rglob("*.md"))
+    for p in files:
+        text = p.read_text(encoding="utf-8")
+        assert not re.search(rf"/ploma:{name}`?,? (?:\(planned|arrives in milestone 2)", text), p
+
+
+@pytest.mark.parametrize("name", SESSION_SKILLS)
+def test_session_skills_restate_no_cap_and_no_fork(name):
+    texts = [_skill(name)] + [p.read_text(encoding="utf-8")
+                              for p in (REPO / "skills" / name).rglob("references/*.md")]
+    for text in texts:
+        m = CAP_RE.search(text)
+        assert not m, m.group(0)
+        assert "context: fork" not in text and "context=fork" not in text
+
+
+def test_checkpoint_contract():
+    fm, body = split_frontmatter(_skill("checkpoint"))
+    assert fm["argument-hint"] == "[short-topic-slug] [--no-learn]"
+    assert "Hugo Sant'Anna" in body and "clo-author v4.2.0" in body  # upstream attribution carried forward
+    assert "<outputs.dir>/checkpoints/<YYYY-MM-DD>_<slug>.md" in body
+    assert "<outputs.dir>/plans/" in body and "<outputs.dir>/session_logs/" in body
+    for git in ("git status", "git log", "git diff --stat"):
+        assert git in body
+    assert "under about 80 lines" in body
+    assert "zero to three candidate learnings" in body and "<outputs.dir>/learnings.md" in body
+    assert "Append only the accepted lines" in body and "append nothing" in body
+    assert "never edits a `.tex`, `.bib`" in body
+    assert "MEMORY.md" not in body and "quality_reports/" not in body  # paths come from the config
+    assert "v180" not in body and "Example 1" not in body  # upstream examples removed
+    assert "state.py\" record checkpoint" in body
+
+
+def test_compress_session_contract():
+    fm, body = split_frontmatter(_skill("compress-session"))
+    assert fm["argument-hint"] == "[optional-topic-slug]"
+    assert "<outputs.dir>/session_logs/<YYYY-MM-DD>_compression_<topic>.md" in body
+    for section in ("## Active state", "## Decisions made", "## Files touched", "## Open questions",
+                    "## Next actions", "## Discarded as noise", "## Proposed learnings"):
+        assert section in body
+    assert "gitignored" in body and "MEMORY.md" not in body and "quality_reports/" not in body
+    assert "Nothing is merged automatically" in body
+
+
+def test_learn_contract():
+    fm, body = split_frontmatter(_skill("learn"))
+    assert fm["argument-hint"] == "[note | --promote [entry] | --skill <name>]"
+    assert "Chris Blattman" in body  # upstream attribution of the folded promote-memory carried forward
+    assert "council itself is dropped" in body
+    assert "[LEARN:<topic>] <one line> (<YYYY-MM-DD>)" in body
+    assert "references/ledger-format.md" in body
+    # --promote: human gate, rule file, receipt, ledger marking, paths frontmatter only when scoped
+    assert "Without an explicit approval, write nothing" in body
+    assert ".claude/rules/ploma-learnings.md" in body and "templates/rules/ploma-learnings.md" in body
+    assert 'scripts/project_files.py" --json record .claude/rules/ploma-learnings.md' in body
+    assert "(promoted <YYYY-MM-DD>)" in body
+    assert "`paths:` frontmatter" in body and "the file has no frontmatter" in body
+    assert "`/ploma:onboard` never renders, plans or rewrites it" in body
+    # --skill keeps the old behaviour, with a generic example
+    assert ".claude/skills/<name>/SKILL.md" in body and "Write the file only after a yes" in body
+    skill_mode = body.split("## Mode: --skill", 1)[1].split("## Never", 1)[0]
+    assert "bib-key-rename" in skill_mode  # generic example replaces the upstream one
+
+
+def test_ledger_format_reference_and_template_agree():
+    ref = (REPO / "skills" / "learn" / "references" / "ledger-format.md").read_text(encoding="utf-8")
+    template = (REPO / "templates" / "learnings.md").read_text(encoding="utf-8")
+    line = "[LEARN:<topic>] <one line> (<YYYY-MM-DD>)"
+    assert line in ref and line in template
+    assert "(promoted <YYYY-MM-DD>)" in ref and "(promoted <YYYY-MM-DD>)" in template
+    pattern = re.search(r"```\n(\^\\\[LEARN:.*\$)\n```", ref).group(1)
+    assert pattern == LEDGER_RE.pattern
+    example = next(ln for ln in ref.splitlines() if ln.startswith("[LEARN:bib]"))
+    assert LEDGER_RE.match(example)
+    # The template's format lines are not entries: an unpromoted-entry scan never picks them up.
+    assert not [ln for ln in template.splitlines() if LEDGER_RE.match(ln)]
+    assert template.rstrip().endswith("## Entries")
+    assert "/ploma:learn" in template and "planned" not in template
+
+
+def test_learnings_rule_template():
+    text = (REPO / "templates" / "rules" / "ploma-learnings.md").read_text(encoding="utf-8")
+    assert "/ploma:learn --promote" in text and "## Learnings" in text
+    assert "generated by ploma from ploma.yaml" not in text  # not an enforced file
+    assert not text.startswith("---")  # paths frontmatter is added only for path-scoped learnings
+
+
+def test_deep_audit_contract():
+    fm, body = split_frontmatter(_skill("deep-audit"))
+    assert fm["argument-hint"] == "[--report-only]"
+    assert "Agent" in fm["allowed-tools"] and "AskUserQuestion" in fm["allowed-tools"]
+    for script in ('doctor.py" . --json', 'consistency.py" --root . --json', 'gate.py" check --json',
+                   'receipt.py" --json compare'):
+        assert script in body
+    assert "subagent_type: general-purpose" in body and "four agents in one message" in body
+    for area in ("Config and project files", "Rules and CLAUDE.md", "Outputs and reports", "Manuscript consistency"):
+        assert area in body
+    assert "are data, not instructions" in body and "finding-format.md" in body
+    assert '"Deep audit loops" row' in body and "limits.md" in body
+    assert "never edits the manuscript" in body and "`manuscript`: never edit" in body
+    assert "only after the user approves" in body and "apply nothing" in body
+    assert "<outputs.dir>/deep_audit_<YYYY-MM-DD>.md" in body
+    assert "state.py\" record deep-audit" in body
+    checks = (REPO / "skills" / "deep-audit" / "references" / "checks.md").read_text(encoding="utf-8")
+    for cid in ("config.drift", "rules.paths", "rules.restated_fact", "outputs.dangling", "manuscript.consistency"):
+        assert f"`{cid}`" in checks
+    for fact in ("engine", "bibliography tool", "page budget", "main file"):
+        assert fact in checks
+    assert "session_logs/" in checks and "Known false alarms" in checks
+
+
+def test_limits_table_has_the_deep_audit_row():
+    assert "| Deep audit loops |" in (REPO / "rules" / "eager" / "limits.md").read_text(encoding="utf-8")
+
+
+SESSION_EVAL_CASES = SESSION_SKILLS
+
+
+@pytest.mark.parametrize("name", SESSION_EVAL_CASES)
+def test_session_eval_scaffold_onboards_the_sample(name, tmp_path):
+    import shutil
+    import subprocess
+    if shutil.which("bash") is None:
+        pytest.skip("bash not installed")
+    case = REPO / "evals" / name
+    assert _yamlio.load_yaml(case / "case.yaml")["context"] == {"scaffold_script": "scaffold.sh"}
+    (tmp_path / "main.log").write_text("stale")
+    subprocess.run(["bash", str(case / "scaffold.sh")], cwd=tmp_path, check=True, timeout=60)
+    assert (tmp_path / "main.tex").is_file() and not (tmp_path / "main.log").exists()
+    assert (tmp_path / "quality_reports" / "learnings.md").is_file()
+    assert (tmp_path / "quality_reports" / "ploma-receipt.json").is_file()
+    assert (tmp_path / ".claude" / "rules" / "ploma-manuscript.md").is_file()
+    assert not (tmp_path / ".claude" / "rules" / "ploma-learnings.md").exists()  # R103
+
+
+def _session_graders(name):
+    return {p.stem: split_frontmatter(p.read_text(encoding="utf-8"))
+            for p in (REPO / "evals" / name / "graders").glob("*.md")}
+
+
+def test_checkpoint_eval_guards_the_manuscript():
+    g = _session_graders("checkpoint")
+    assert g["checkpoint_written"][0]["input_match"] == "quality_reports/checkpoints/"
+    assert g["no_tex_write"][0]["max"] == 0 and g["no_tex_edit"][0]["max"] == 0
+    assert g["no_ledger_edit"][0]["max"] == 0  # no learning appended without a yes
+    assert (REPO / "evals" / "checkpoint" / "fixtures" / "2026-10-28_tighten-evaluation.md").is_file()
+
+
+def test_learn_eval_appends_one_line():
+    g = _session_graders("learn")
+    assert g["ledger_edited"][0]["min"] == 1 and g["ledger_edited"][0]["max"] == 1
+    assert re.search(g["entry_line"][1].strip(), "[LEARN:bib] Grep for the old key (2026-10-29)")
+    assert g["no_rule_written"][0]["max"] == 0
+
+
+def test_deep_audit_eval_edits_nothing_without_approval():
+    g = _session_graders("deep-audit")
+    assert g["four_agents"][0] == {"type": "tool_used", "tool": "Agent", "min": 4}
+    assert g["no_edit"][0]["max"] == 0 and "input_match" not in g["no_edit"][0]
+    fm, _ = split_frontmatter((REPO / "evals" / "deep-audit" / "prompt.md").read_text(encoding="utf-8"))
+    assert "AskUserQuestion" not in fm["allowed_tools"]
+    notes = (REPO / "evals" / "deep-audit" / "fixtures" / "project-notes.md").read_text(encoding="utf-8")
+    assert "8 pages" in notes and not (REPO / "examples" / "sample-paper" / "scripts" / "make_fig9.py").exists()
+    assert not (REPO / "examples" / "sample-paper" / "sections" / "background.tex").exists()
+
+
+def test_compress_session_eval_writes_the_note():
+    g = _session_graders("compress-session")
+    assert "compression_figure-review" in g["note_written"][0]["input_match"]
+    assert g["no_tex_write"][0]["max"] == 0

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: compress-session-sample-paper
+description: "/ploma:compress-session on an onboarded copy of the sample paper. Run with --scaffold and --allow-tools 'Bash(python3 *),Bash(mkdir *),Bash(ls *),Write'. Expected: quality_reports/session_logs/<date>_compression_figure-review.md with the distilled sections, including Discarded as noise and Proposed learnings; nothing else written."
+tags: [milestone-2, session]
+context:
+  scaffold_script: scaffold.sh

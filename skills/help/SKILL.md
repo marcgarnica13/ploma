@@ -57,11 +57,15 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:grill [topic or file]`: one question per turn with a recommended answer until no design decision is open; writes a decision log.
 - `/ploma:spec [topic | start fresh] [--no-verify]`: the binding paper spec (claims with evidence, venue constraints, section page targets, decisions); edits an existing spec section by section.
 - `/ploma:respond <report-path-or-dir> [revised-manuscript] [--since <git-ref>] [--audit <draft>] [--no-verify]`: point-by-point response to referee reports in any format (reviewer numbers read from the content), every concern classified, location claims fact-checked; `--audit` checks an existing draft.
+- `/ploma:checkpoint [slug] [--no-learn]`: save a structured snapshot (plan, decisions, path:line pointers, open questions, next actions) under `<outputs.dir>/checkpoints/`; learnings reach the ledger only after your yes.
+- `/ploma:compress-session [slug]`: distil the session into a note under `<outputs.dir>/session_logs/` before auto-compaction, with what was discarded as noise.
+- `/ploma:learn [note | --promote [entry] | --skill <name>]`: append a learning to the ledger; `--promote` writes approved entries to `.claude/rules/ploma-learnings.md`; `--skill` drafts a project skill after approval.
+- `/ploma:deep-audit [--report-only]`: audit the ploma installation (config drift, rule and CLAUDE.md paths, restated config facts, dangling report references, manuscript consistency) with four parallel agents; fixes only after approval, never the manuscript.
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)
 
-commit, checkpoint, compress-session, learn, deep-audit.
+commit.
 
 If the user asks for one of these, say it is not installed yet and name the nearest installed skill, if any (`/ploma:doctor` or `/ploma:status` for state, `/ploma:review` for feedback on the paper). Until `/ploma:commit` arrives, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed.
 

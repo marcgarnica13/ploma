@@ -11,7 +11,7 @@ ploma is active in this repo. `ploma.yaml` at the repo root is the single source
 - Reference rules: `${CLAUDE_PLUGIN_ROOT}/rules/reference/*.md`. Read one when a skill cites it.
 
 ## Lifecycle
-onboard, brainstorm, lit-review, grill, spec, write, compile, format, validate, review, respond, commit. Installed now: onboard, doctor, status, help, compile, validate-bib, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, brainstorm, lit-review, grill, spec, respond; the other stages are planned (milestone 2) and must not be invoked. `/ploma:status` shows the stage and the next step. `/ploma:help` lists the skills.
+onboard, brainstorm, lit-review, grill, spec, write, compile, format, validate, review, respond, commit. Installed now: onboard, doctor, status, help, compile, validate-bib, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, brainstorm, lit-review, grill, spec, respond, checkpoint, compress-session, learn, deep-audit; the other stages are planned (milestone 2) and must not be invoked. `/ploma:status` shows the stage and the next step. `/ploma:help` lists the skills.
 
 ## Working rules
 1. Critics are report-only. Reviewers, referees, the proofreader and the verifier never edit the manuscript. Drafts go to a `<section>_suggestion.tex` sibling.

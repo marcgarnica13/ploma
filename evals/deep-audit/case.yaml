@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: deep-audit-onboarded-sample
+description: "/ploma:deep-audit on an onboarded copy of the sample paper with two seeded problems: .claude/rules/project-notes.md restates the page budget and names a missing script, and quality_reports/old_review_notes.md cites a missing section file. Run with --scaffold and --allow-tools 'Bash(python3 *),Bash(mkdir *),Bash(ls *),Write,Agent'. No AskUserQuestion: the run cannot get approval, so it must report and apply nothing. Expected: four parallel agents, quality_reports/deep_audit_<date>.md listing both seeded problems, no edit to any file."
+tags: [milestone-2, session, report-only]
+context:
+  scaffold_script: scaffold.sh
