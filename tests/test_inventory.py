@@ -293,7 +293,7 @@ def test_code_and_results_enable_pipeline(tmp_path):
                                 "outputs_dir": "analysis/results", "metric_keys": [], "gotchas": []}
     g = _gaps(inv)
     assert g["pipeline.enabled"]["recommended"] is True
-    assert g["pipeline.metric_keys"]["recommended"] == ["f1", "n"]
+    assert g["pipeline.metric_keys"]["recommended"] == ["f1"]  # "n" is a count (R127 D3)
 
 
 def test_r_code_tree(tmp_path):
@@ -423,3 +423,29 @@ def test_proposed_slug_matches_the_schema_pattern(tmp_path):
     shutil.copy(FIX_TEX / "llncs_main.tex", tmp_path / "my paper (v2).tex")
     prop = inventory.propose_config(inventory.inventory(tmp_path))
     assert prop["document"]["slug"] == "my-paper-v2"
+
+
+def _pipeline_repo(tmp_path: Path, results: dict[str, object]) -> dict:
+    shutil.copy(FIX_TEX / "two_mains_a.tex", tmp_path / "paper.tex")
+    (tmp_path / "analysis" / "results").mkdir(parents=True)
+    (tmp_path / "analysis" / "pyproject.toml").write_text("[project]\nname='x'\n")
+    for name, data in results.items():
+        (tmp_path / "analysis" / "results" / name).write_text(json.dumps(data))
+    return inventory.inventory(tmp_path)
+
+
+def test_metric_keys_skip_config_and_read_nested_children(tmp_path):
+    """R127 D3: config-like top-level keys are excluded; metrics nested under teams.<id> are recommended."""
+    real = json.loads((FIX / "results" / "team_metrics.json").read_text(encoding="utf-8"))
+    g = _gaps(_pipeline_repo(tmp_path, {"a_summary.json": real}))["pipeline.metric_keys"]
+    assert g["recommended"] == ["avg_fitness", "dependency", "generalization"]
+    assert g["options"] == g["recommended"]
+
+
+def test_metric_keys_none_plausible_recommends_nothing(tmp_path):
+    """R127 D3: only config-like keys left: no recommendation and an open question."""
+    cfg = {"competition_id": 1, "season": 2022, "seed": 7, "num_runs": 3, "version": 2, "year": 2021,
+           "threshold": 0.5}
+    g = _gaps(_pipeline_repo(tmp_path, {"config.json": cfg}))["pipeline.metric_keys"]
+    assert g["recommended"] == [] and g["options"] == []
+    assert "could not" in g["question"].lower()

@@ -346,14 +346,49 @@ def _superpowers(root: Path, home: Path) -> dict:
     return {"enabled": False, "id": None}
 
 
+_CONFIG_TOKENS = {"id", "ids", "threshold", "seed", "season", "year", "version"}
+_COUNT_PREFIXES = {"n", "num"}
+
+
+def _config_like(key: str) -> bool:
+    """Ids, thresholds, counts and run configuration rather than reported metrics (R127 D3)."""
+    tokens = [t for t in re.split(r"[^a-z0-9]+", key.lower()) if t]
+    return not tokens or bool(_CONFIG_TOKENS & set(tokens)) or tokens[0] in _COUNT_PREFIXES
+
+
+def _numeric_keys(data: dict) -> set[str]:
+    return {k for k, v in data.items() if isinstance(v, (int, float)) and not isinstance(v, bool) and not _config_like(k)}
+
+
+def _plausible_metrics(data: dict) -> set[str]:
+    """Numeric non-config keys at the top level and one level down; for a dict of dicts, the inner keys
+    most children share."""
+    keys = _numeric_keys(data)
+    for value in data.values():
+        if not isinstance(value, dict) or not value:
+            continue
+        children = [c for c in value.values() if isinstance(c, dict)]
+        if len(children) * 2 > len(value):
+            counts: dict[str, int] = {}
+            for child in children:
+                for k in _numeric_keys(child):
+                    counts[k] = counts.get(k, 0) + 1
+            keys |= {k for k, n in counts.items() if n * 2 > len(children)}
+        else:
+            keys |= _numeric_keys(value)
+    return keys
+
+
 def _metric_keys(root: Path, results_dir: str | None) -> list[str]:
+    """Recommended metric keys from the first results JSON that has any plausible ones; [] when none does."""
     if not results_dir:
         return []
     for path in sorted((root / results_dir).rglob("*.json")):
         data = _load_json(path)
         if isinstance(data, dict):
-            return sorted(k for k, v in data.items() if isinstance(v, (int, float)) and not isinstance(v, bool))
-        return []
+            keys = _plausible_metrics(data)
+            if keys:
+                return sorted(keys)
     return []
 
 
@@ -559,8 +594,12 @@ def gaps(inv: dict, proposal: dict) -> list[dict]:
                     "recommended": bool(inv.get("results_dir")), "options": [True, False]})
     if (proposal.get("pipeline") or {}).get("enabled"):
         keys = _metric_keys(root, inv.get("results_dir"))
+        question = "Which result keys are metrics the manuscript reports?"
+        if not keys:
+            question = ("Which result keys are metrics the manuscript reports? ploma could not tell metrics from "
+                        "configuration in the results files; name the keys, or leave the list empty.")
         out.append({"key": "pipeline.metric_keys",
-                    "question": "Which result keys are metrics the manuscript reports?",
+                    "question": question,
                     "recommended": keys, "options": keys})
     return out
 

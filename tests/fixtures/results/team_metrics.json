@@ -1,0 +1,14 @@
+{
+  "competition_id": 43,
+  "season": 2022,
+  "dependency_threshold": 0.35,
+  "n_matches": 64,
+  "small_sample_threshold": 5,
+  "generated": "2026-10-01",
+  "teams": {
+    "771": {"name": "A", "avg_fitness": 0.81, "generalization": 0.74, "dependency": 0.22, "n_matches": 7},
+    "772": {"name": "B", "avg_fitness": 0.79, "generalization": 0.71, "dependency": 0.31, "n_matches": 6},
+    "773": {"name": "C", "avg_fitness": 0.66, "generalization": 0.60, "dependency": 0.18, "n_matches": 3,
+            "team_id": 773}
+  }
+}
