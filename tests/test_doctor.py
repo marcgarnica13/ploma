@@ -379,3 +379,29 @@ def test_missing_document_root_skips_pdf_freshness(onboarded_sample):
     r = _run(onboarded_sample)
     f = _by_id(r, "manuscript.pdf_fresh")
     assert f.status == SKIP and f.summary == "document.root missing"
+
+
+def test_legacy_harness_grouped_one_warn_per_kind(onboarded_sample, monkeypatch):
+    """R127 D5: one WARN per legacy kind, the count in the summary, paths one per line in Observed (25 then "and N more")."""
+    found = [{"kind": "rule_restates_facts", "path": f".claude/rules/r{i:02d}.md",
+              "consequence": "rule restates build facts that ploma.yaml now owns"} for i in range(28)]
+    found += [{"kind": "skill_name_conflict", "path": ".claude/skills/compile",
+               "consequence": "duplicate skill name: /compile would shadow or confuse /ploma:compile"},
+              {"kind": "skill_name_conflict", "path": ".claude/skills/doctor",
+               "consequence": "duplicate skill name: /doctor would shadow or confuse /ploma:doctor"},
+              {"kind": "statusline", "path": ".claude/scripts/statusline.sh",
+               "consequence": "legacy status line replaces the one that shows ploma's lifecycle stage"}]
+    monkeypatch.setattr(doctor.inventory, "detect_legacy_harness", lambda root: found)
+    r = _run(onboarded_sample)
+    g = next(g for g in r.groups if g["id"] == "legacy-harness")
+    assert [f.id for f in g["findings"]] == ["legacy-harness.skill_name_conflict", "legacy-harness.statusline",
+                                             "legacy-harness.rule_restates_facts"]
+    rules = g["findings"][2]
+    assert rules.status == WARN and "28" in rules.summary
+    lines = rules.observed.splitlines()
+    assert lines[:25] == [f".claude/rules/r{i:02d}.md" for i in range(25)] and lines[25] == "and 3 more"
+    skills = g["findings"][0]
+    assert "2" in skills.summary and skills.observed.splitlines() == [".claude/skills/compile", ".claude/skills/doctor"]
+    text = r.render()
+    assert "\n    .claude/rules/r01.md" in text or "\n  .claude/rules/r01.md" in text
+    assert sum(1 for line in text.splitlines() if line.startswith("- WARN legacy-harness.")) == 3

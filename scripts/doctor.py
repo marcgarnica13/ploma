@@ -92,7 +92,9 @@ class DoctorReport:
             for f in g["findings"]:
                 lines.append(f"- {f.status} {f.id}: {f.summary}")
                 if f.observed:
-                    lines.append(f"  Observed: {f.observed}")
+                    first, *rest = f.observed.splitlines()
+                    lines.append(f"  Observed: {first}")
+                    lines.extend(f"    {line}" for line in rest)
                 if f.remediation:
                     lines.append(f"  Remediation: {f.remediation}")
         return "\n".join(lines)
@@ -460,13 +462,39 @@ def _dependencies(root: Path, home: Path) -> list[Finding]:
     return out
 
 
+# Legacy kinds in report order: (noun for the count, what goes wrong). One WARN per kind (R127 D5).
+LEGACY_KINDS = {
+    "skill_name_conflict": ("skill(s) share a name with a ploma skill", "they shadow or confuse the ploma skill"),
+    "hook_entry": ("hook entry file(s)", "they run alongside ploma's hooks and double-fire"),
+    "statusline": ("status line(s)", "they replace the one that shows ploma's lifecycle stage"),
+    "rule_restates_facts": ("rule file(s) restate build facts", "ploma.yaml now owns those facts"),
+}
+LEGACY_LIST_MAX = 25
+
+
 def _legacy(root: Path) -> list[Finding]:
     g = "legacy-harness"
     found = inventory.detect_legacy_harness(root)
     if not found:
         return [_f(g, "none", PASS, "no legacy harness conflicts")]
-    return [Finding(f"{g}.{c['kind']}.{Path(c['path']).name}", WARN, c["consequence"], observed=c["path"],
-                    remediation="retire it (see the onboard retirement checklist)", group=g) for c in found]
+    by_kind: dict[str, list[dict]] = {}
+    for c in found:
+        by_kind.setdefault(c["kind"], []).append(c)
+    order = list(LEGACY_KINDS) + [k for k in by_kind if k not in LEGACY_KINDS]
+    out = []
+    for kind in order:
+        items = by_kind.get(kind)
+        if not items:
+            continue
+        noun, why = LEGACY_KINDS.get(kind, (f"{kind} item(s)", items[0]["consequence"]))
+        summary = items[0]["consequence"] if len(items) == 1 else f"{len(items)} legacy {noun}: {why}"
+        paths = [c["path"] for c in items]
+        shown = paths[:LEGACY_LIST_MAX]
+        if len(paths) > LEGACY_LIST_MAX:
+            shown.append(f"and {len(paths) - LEGACY_LIST_MAX} more")
+        out.append(_f(g, kind, WARN, summary, observed="\n".join(shown),
+                      remediation=f"retire {'it' if len(items) == 1 else 'them'} (see the onboard retirement checklist)"))
+    return out
 
 
 # ---------------------------------------------------------------- entry points
