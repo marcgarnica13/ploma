@@ -159,6 +159,12 @@ def _fit(head: str, status: str, resume: str, cap: int = CAP) -> str:
     return join(head, resume)
 
 
+def _plugin_paths(plugin_root: Path) -> str:
+    """R108: absolute plugin paths for agents (Read targets; scripts for agents with Bash)."""
+    base = Path(plugin_root).resolve()
+    return f"ploma root: {base}\nploma scripts: {base / 'scripts'}"
+
+
 def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path) -> str:
     root = Path(root)
     if not hu.has_config(root):
@@ -171,10 +177,11 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
     except ploma_config.ConfigError as exc:
         msg = exc.message.replace("\n", " ")
         notice = msg if "could not be parsed" in msg else f"ploma.yaml could not be parsed: {msg}"
-        return "\n\n".join([rules, "## ploma project", notice[:1000] + " Fix it or run /ploma:doctor."])
+        text = "\n\n".join([rules, "## ploma project", notice[:1000] + " Fix it or run /ploma:doctor."])
+        return text + "\n" + _plugin_paths(plugin_root) if subagent else text
     head = rules + "\n\n## ploma project\n" + ploma_config.summary(cfg)
     if subagent:
-        return head
+        return head + "\n" + _plugin_paths(plugin_root)
     try:
         status = _status_block(root, cfg)
     except Exception as exc:  # noqa: BLE001 - the rules and project block must survive

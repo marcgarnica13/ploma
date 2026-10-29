@@ -196,7 +196,7 @@ def test_summary_never_prints_none(sample_paper):
     cfg = ploma_config.load(sample_paper)
     assert cfg["pipeline"]["rerun"] is None
     s = ploma_config.summary(cfg)
-    assert "None" not in s and "pipeline: enabled; run from .; outputs results" in s
+    assert "None" not in s and "pipeline: enabled; language python; run from .; outputs results" in s
     cfg["venue"]["profile"] = None
     cfg["build"]["cwd"] = None
     cfg["limits"]["review_rounds"] = None
@@ -228,3 +228,36 @@ def test_document_slug_pattern(sample_paper, slug, ok):
 def test_schema_declares_the_slug_pattern(repo_root):
     schema = json.loads((repo_root / "schemas" / "ploma.schema.json").read_text(encoding="utf-8"))
     assert schema["properties"]["document"]["properties"]["slug"]["pattern"] == "^[A-Za-z0-9._-]+$"
+
+
+def test_summary_carries_agent_facts(sample_paper):
+    """R107: agents without a shell read discipline, slug, style, language, env contract and gotchas here."""
+    cfg = ploma_config.load(sample_paper)
+    cfg["document"]["discipline"] = "ml"
+    cfg["style"]["forbid_phrases"] = ["very unique"]
+    cfg["pipeline"]["env_contract"] = ["DATA_DIR", "API_TOKEN"]
+    cfg["pipeline"]["gotchas"] = ["Config is read at import time", "Keys use a double-hash separator"]
+    s = ploma_config.summary(cfg)
+    for needle in ("slug main", "discipline ml", "anonymized", "em-dash forbidden", "very unique",
+                   "language python", "env contract: DATA_DIR, API_TOKEN",
+                   "(1) Config is read at import time", "(2) Keys use a double-hash separator"):
+        assert needle in s, needle
+    cfg["document"]["discipline"] = None
+    assert "discipline generic (unset)" in ploma_config.summary(cfg)
+
+
+def test_summary_truncates_long_gotchas_under_cap(sample_paper):
+    cfg = ploma_config.load(sample_paper)
+    cfg["pipeline"]["gotchas"] = [f"gotcha number {i} " + "x" * 300 for i in range(20)]
+    s = ploma_config.summary(cfg)
+    assert len(s) < 1500
+    assert "- pipeline gotchas: (1) gotcha number 0" in s and "(truncated; 20 in ploma.yaml)" in s
+    assert s.splitlines()[-1].startswith("- pipeline gotchas:")
+    assert "- limits:" in s  # earlier lines are never cut for gotchas
+
+
+def test_summary_omits_gotchas_when_pipeline_disabled(sample_paper):
+    cfg = ploma_config.load(sample_paper)
+    cfg["pipeline"]["enabled"] = False
+    cfg["pipeline"]["gotchas"] = ["something"]
+    assert "gotchas" not in ploma_config.summary(cfg)

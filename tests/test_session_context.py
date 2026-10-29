@@ -188,3 +188,23 @@ def test_status_block_crash_keeps_rules(onboarded_sample, repo_root, monkeypatch
     monkeypatch.setattr(session_context, "_status_block", boom)
     out = _ctx(onboarded_sample, repo_root)
     assert out.startswith("# ploma core rules") and "status unavailable: kaput" in out
+
+
+def test_subagent_context_names_plugin_paths(onboarded_sample, repo_root):
+    """R108: agents get absolute plugin paths after the summary; the main session does not."""
+    out = _ctx(onboarded_sample, repo_root, subagent=True)
+    lines = out.splitlines()
+    root_line = next(l for l in lines if l.startswith("ploma root: "))
+    scripts_line = next(l for l in lines if l.startswith("ploma scripts: "))
+    root = root_line.split(": ", 1)[1]
+    scripts = scripts_line.split(": ", 1)[1]
+    assert os.path.isabs(root) and os.path.samefile(root, repo_root)
+    assert os.path.isfile(os.path.join(scripts, "ploma_config.py")) and scripts == os.path.join(root, "scripts")
+    assert out.index("## ploma project") < out.index(root_line) < out.index(scripts_line)
+    assert "ploma root: " not in _ctx(onboarded_sample, repo_root)
+
+
+def test_subagent_paths_survive_a_broken_config(tmp_path, repo_root):
+    (tmp_path / "ploma.yaml").write_text("document: [unclosed\n")
+    out = _ctx(tmp_path, repo_root, subagent=True)
+    assert "## ploma project" in out and "ploma scripts: " in out

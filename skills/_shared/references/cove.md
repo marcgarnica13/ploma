@@ -42,10 +42,20 @@ claims:
 
 Never pass the draft, a summary of it, or the surrounding section. Do not paste the conversation. Isolation comes from what you put in the prompt; there is no fork parameter to rely on.
 
-The verifier returns a report with a tier per claim. Map it to an outcome:
+The verifier returns a report with a match value and a tier per claim. Map each claim first:
 
-- **PASS**: every claim matches (no HIGH-WARN, MED-WARN or LOW-WARN). Return the draft.
-- **PARTIAL**: no HIGH-WARN, at least one MED-WARN, LOW-WARN or cannot-verify. Return the draft with each unverified claim flagged inline.
+| Verifier result | Treatment |
+|---|---|
+| `yes`, no tier | verified |
+| `partial` with no tier (a reasonable gloss of the source) | counts toward PARTIAL; keep the claim and add an uncertainty flag inline saying what the source says exactly |
+| `partial` or `cannot-verify` with LOW-WARN or MED-WARN | counts toward PARTIAL; flag the claim inline as unverified, with the reason |
+| `no`, or any HIGH-WARN | counts toward FAIL |
+| `not-verifiable-claim-type` | excluded from the claim count and from the outcome; listed under "Not verifiable (claim type)" with the verifier's one-line reason |
+
+Then the outcome:
+
+- **PASS**: every counted claim is verified. Return the draft.
+- **PARTIAL**: no claim counts toward FAIL, and at least one counts toward PARTIAL. Return the draft with each such claim flagged inline.
 - **FAIL**: at least one HIGH-WARN (a contradiction or a fabricated reference). Regenerate the affected section from the verifier's evidence and re-verify the changed claims. After the CoVe regeneration cap in limits (`limits.cove_regenerations`), stop and return the best draft with the remaining discrepancies in a warning block. Never ship a known-wrong claim silently.
 
 ## Output block
@@ -55,7 +65,7 @@ Every skill that runs this protocol ends its reply with:
 ```markdown
 ## Post-flight verification
 
-**Claims extracted:** N
+**Claims extracted:** N (excluding not-verifiable claim types)
 **Verified independently:** N (ploma:claim-verifier, fresh context)
 **Outcome:** PASS | PARTIAL | FAIL, regenerated | FAIL, cap reached
 
@@ -68,6 +78,10 @@ Every skill that runs this protocol ends its reply with:
 ### Unverifiable (user review recommended)
 
 - **C4**: <reason, for example a paywalled source> (tier)
+
+### Not verifiable (claim type)
+
+- **C6**: <the verifier's one-line reason, for example "an opinion, not a factual assertion">
 
 ### Discrepancies
 

@@ -288,6 +288,9 @@ def test_cove_reference_isolates_the_verifier():
         assert outcome in text
     assert "## Post-flight verification" in text  # the output block
     assert "never the draft" in text.lower() or "never pass the draft" in text.lower()
+    assert "`partial` with no tier (a reasonable gloss of the source) | counts toward PARTIAL" in text
+    assert "`not-verifiable-claim-type` | excluded from the claim count" in text
+    assert "### Not verifiable (claim type)" in text
 
 
 def test_finding_format_names_the_four_fields():

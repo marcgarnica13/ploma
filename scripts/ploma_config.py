@@ -283,8 +283,11 @@ def summary(cfg: dict) -> str:
     command = g("build.command")
     fmt = g("ploma")
     lines = ["ploma project config (ploma.yaml" + (f", format {fmt}" if _present(fmt) else "") + ")"]
-    doc = _clauses(("{}", g("document.type")), ("main {}", g("document.main")), ("root {}", g("document.root")))
-    lines.append("- document: " + (", ".join(doc) or "not set") + (", anonymized" if g("document.anonymized") else ""))
+    doc = _clauses(("{}", g("document.type")), ("main {}", g("document.main")), ("root {}", g("document.root")),
+                   ("slug {}", g("document.slug")))
+    doc.append(f"discipline {_short(g('document.discipline'), 40)}" if _present(g("document.discipline"))
+               else "discipline generic (unset)")
+    lines.append("- document: " + ", ".join(doc) + (", anonymized" if g("document.anonymized") else ", not anonymized"))
     tools = " + ".join(_clauses(("{}", g("build.engine")), ("{}", g("build.bib_tool"))))
     how = (f"command `{_short(command)}`" if _present(command) else "latexmk fallback") \
         + "".join(" " + c for c in _clauses(("from {}", g("build.cwd"))))
@@ -298,10 +301,14 @@ def summary(cfg: dict) -> str:
     lines.append("- venue: " + ", ".join(venue))
     lines.extend(_clauses(("- reports: {}/", g("outputs.dir"))))
     if g("pipeline.enabled") is True:
-        pipe = ["enabled"] + _clauses(("run from {}", g("pipeline.run_from")), ("rerun `{}`", g("pipeline.rerun")),
+        pipe = ["enabled"] + _clauses(("language {}", g("pipeline.language")),
+                                      ("run from {}", g("pipeline.run_from")), ("rerun `{}`", g("pipeline.rerun")),
                                       ("outputs {}", g("pipeline.outputs_dir")),
                                       ("figure provenance {}", g("pipeline.figure_provenance")))
         lines.append("- pipeline: " + "; ".join(pipe))
+        env = g("pipeline.env_contract")
+        if isinstance(env, list) and env:
+            lines.append("- pipeline env contract: " + _list(env, limit=12))
     else:
         lines.append("- pipeline: disabled")
     phrases = g("style.forbid_phrases")
@@ -309,7 +316,7 @@ def summary(cfg: dict) -> str:
     style.append("em-dash " + ("forbidden" if g("style.forbid_em_dash") else "allowed"))
     style += _clauses(("figures {}", g("style.figures")))
     if isinstance(phrases, list) and phrases:
-        style.append(f"{len(phrases)} extra forbidden phrases")
+        style.append("extra forbidden phrases: " + _list(phrases, limit=6))
     lines.append("- style: " + "; ".join(style))
     limits = _clauses(("review rounds {}", g("limits.review_rounds")),
                       ("CoVe regenerations {}", g("limits.cove_regenerations")),
@@ -317,7 +324,25 @@ def summary(cfg: dict) -> str:
     if limits:
         lines.append("- limits: " + ", ".join(limits))
     text = "\n".join(lines)
-    return text if len(text) < 1500 else text[:1496] + "..."
+    gotchas = g("pipeline.gotchas") if g("pipeline.enabled") is True else None
+    if isinstance(gotchas, list) and gotchas:
+        line = _gotchas_line([str(x) for x in gotchas], SUMMARY_MAX - len(text) - 1)
+        text += "\n" + line if line else ""
+    return text if len(text) < SUMMARY_MAX else text[:SUMMARY_MAX - 4] + "..."
+
+
+SUMMARY_MAX = 1500
+_GOTCHAS_HEAD = "- pipeline gotchas: "
+
+
+def _gotchas_line(gotchas: list[str], room: int) -> str:
+    """Numbered gotchas, cut so the line fits in room (the summary stays under SUMMARY_MAX)."""
+    full = _GOTCHAS_HEAD + " ".join(f"({i}) {x}" for i, x in enumerate(gotchas, 1))
+    if len(full) < room:
+        return full
+    tail = f" ... (truncated; {len(gotchas)} in ploma.yaml)"
+    keep = room - len(tail) - 1
+    return (full[:keep] + tail) if keep > len(_GOTCHAS_HEAD) + 10 else ""
 
 
 def main(argv: list[str] | None = None) -> int:
