@@ -184,3 +184,9 @@ Field fixes 2: implemented (commits 73b3d0a..112511e); review: Critical D9 one-r
 Field fixes 2: fix rounds 1-3 complete (8a777cb..216dfe5); re-review probes clean; residual (parked, Minor): an ambiguous row label such as "Model" against model_a and model_b gets no cross-row check; short team or model codes are a documented gap.
 - Ruling R167: extraction/ deleted in one commit; the seed commit b02f494 is tagged `seed` and docs point there — cost if wrong: none, git show seed:extraction/... recovers any file.
 
+
+## Field re-test 2 (traces session, fd7a1e4)
+
+D9 PASS with gaps (attribution names the file stem, not the entity; a same-entity other-method cell passes), D13 PASS but regression: real grey-literature entries Weijters2006 (tech report typed @Article) and Sivaraman2002 (proceedings, no DOI) FAIL bib.lookup.missing with S2 down, blocking the required bib gate. D10 PASS, D11 PASS.
+- Ruling R168: bib.lookup.missing (FAIL) requires a DOI dead on both registries, or no DOI with all three sources answering and no grey-literature markers (tech report, working paper, report, thesis wording in journal/booktitle/institution/type; publisher or organization Citeseer; proceedings without DOI or ISBN); every other absence is not_indexed WARN worded "not found in Crossref or OpenAlex; confirm it exists" — cost if wrong: a fabricated reference with no DOI is a WARN, not a FAIL, when S2 is down or it looks like grey literature.
+- Ruling R169: table attribution names the entity by its record's name field when present, cites repo-relative paths, lists matches from the row's own file first, and applies the column-to-key mapping before entity matching; same-entity other-method detection waits on the real table structure from the traces session — cost if wrong: warnings stay hard to act on.
