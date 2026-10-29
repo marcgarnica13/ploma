@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-29)
 
 Note: `consistency` is a recommended gate check in 0.1.0 and becomes a required gate check in 0.1.1.
 
@@ -33,3 +33,15 @@ Note: `consistency` is a recommended gate check in 0.1.0 and becomes a required 
 - Onboard proposes `document.discipline`, recommending `ml` only for ML venues.
 - Doctor groups legacy-harness findings into one WARN per kind.
 - The compile report keeps the raw build tail only on FAIL and lists LaTeX warnings as INFO.
+- Table cells are checked against their row's own entity, by name field, with method context from section rows; a wrong row, column or method gives a WARN that cites the repo-relative source.
+- Each table's results source is voted table-wide per run directory; `%% ploma-source: <path>` pins it, with WARNs for missing or unused pins.
+- Bibliography lookups FAIL as missing only for a dead DOI, or for an entry with no DOI that every source answered for and that carries no grey-literature markers; other absences are WARN "not found in Crossref or OpenAlex; confirm it exists".
+- A passport claim goes stale only when its value is gone from the whole cited file.
+- The format page map reads two-column PDFs by column.
+
+### Known issues (0.1.1)
+
+- Short row codes that differ from the results' entity names (e.g. "BERT-L" vs `bert_large`) are not checked across rows.
+- `table_source_missing` prints an absolute path; the table density INFO counts the whole results pool rather than the voted source.
+- `table_method_ambiguous` can fire on unrelated numeric tables; a section naming two methods takes the first.
+
