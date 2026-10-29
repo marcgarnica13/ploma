@@ -1,0 +1,39 @@
+paper:
+  slug: main
+  title: "A Method for Ranking Things"
+  branch: main
+  last_audit: "2026-10-28T10:00:00Z"
+  last_audit_by: /ploma:audit-reproducibility
+claims:
+  - id: C1
+    claim: "average fitness = 0.81"
+    location: "sections/results.tex:Table 1"
+    source_file: scripts/fit.py
+    source_line: 12
+    output_file: results/metrics.json
+    output_field: avg_fitness
+    tolerance: {point_estimate: 0.01, n: exact}
+    last_verified_on: "2026-10-28T10:00:00Z"
+    last_verified_by: /ploma:audit-reproducibility
+    status: PASS
+  - id: C2
+    claim: "12 teams"
+    location: "main.tex:abstract"
+    source_file: scripts/fit.py
+    output_file: results/metrics.json
+    output_field: n_teams
+    tolerance: {n: exact}
+    last_verified_on: "2026-10-28T10:00:00Z"
+    last_verified_by: /ploma:audit-reproducibility
+    status: FAIL
+    notes: "results now report 11 teams"
+  - id: C3
+    claim: "0.76 for the rating baseline"
+    location: "sections/results.tex:Table 1"
+    output_file: results/metrics.json
+    output_field: baseline_rating_update
+    status: STALE
+  - id: C4
+    claim: "0.72 for the win ratio baseline"
+    location: "sections/results.tex:Table 1"
+    status: UNVERIFIED

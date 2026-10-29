@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "passport",
+  "description": "Numeric claims passport at <outputs.dir>/passports/<document.slug>.yaml: per claim, where the number comes from and its last verification status. Written by /ploma:audit-reproducibility, read by scripts/consistency.py.",
+  "type": "object",
+  "required": ["paper", "claims"],
+  "properties": {
+    "paper": {
+      "type": "object",
+      "required": ["slug"],
+      "properties": {
+        "slug": {"type": "string", "description": "document.slug; also the file name."},
+        "title": {"type": ["string", "null"]},
+        "branch": {"type": ["string", "null"], "description": "Git branch on which this passport is current."},
+        "last_audit": {"type": ["string", "null"], "description": "ISO 8601 timestamp."},
+        "last_audit_by": {"type": ["string", "null"], "description": "Skill or person that ran the audit."}
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "claim", "status"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Stable identifier, such as C1."},
+          "claim": {"type": "string", "description": "The number as stated in the manuscript."},
+          "location": {"type": ["string", "null"], "description": "<file>:<table, figure or line>."},
+          "source_file": {"type": ["string", "null"], "description": "Script that produced the value."},
+          "source_line": {"type": ["integer", "null"], "description": "Nearest line in the script."},
+          "output_file": {"type": ["string", "null"], "description": "File under pipeline.outputs_dir holding the value."},
+          "output_field": {"type": ["string", "null"], "description": "Key or column within the output file."},
+          "tolerance": {"type": ["object", "null"], "description": "Per-claim tolerances, such as {point_estimate: 0.01, n: exact}."},
+          "last_verified_on": {"type": ["string", "null"], "description": "ISO 8601 timestamp."},
+          "last_verified_by": {"type": ["string", "null"]},
+          "status": {"type": "string", "enum": ["PASS", "FAIL", "STALE", "UNVERIFIED"]},
+          "notes": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}
