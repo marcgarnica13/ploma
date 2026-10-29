@@ -28,6 +28,8 @@ _ARG_RE = re.compile(r"\s*(?:\[([^\]]*)\]|\{([^}]*)\})")
 _INCLUDE_RE = re.compile(r"\\(?:input|include)\s*\{([^}]+)\}")
 _BIBLIO_RE = re.compile(r"\\bibliography\s*\{([^}]+)\}")
 _ADDBIB_RE = re.compile(r"\\addbibresource\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
+_REF_FIELDS = {"doi", "url"}  # LaTeX escapes and braces removed at parse time (R127 D1)
+_ESCAPE_RE = re.compile(r"\\([_%&#$])")
 _DOI_PREFIXES = ("https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:")
 
 
@@ -89,6 +91,11 @@ def _value(raw: str, macros: dict[str, str]) -> str:
     return "".join(out)
 
 
+def unescape_ref(value: str) -> str:
+    """``doi``/``url`` value as a resolver needs it: ``\\_ \\% \\& \\# \\$`` unescaped, braces removed."""
+    return _ESCAPE_RE.sub(r"\1", value).replace("{", "").replace("}", "").strip()
+
+
 def _fields(chunks: list[str], macros: dict[str, str]) -> dict[str, str]:
     fields: dict[str, str] = {}
     for chunk in chunks:
@@ -97,7 +104,8 @@ def _fields(chunks: list[str], macros: dict[str, str]) -> dict[str, str]:
         name, raw = chunk.split("=", 1)
         name = name.strip().lower()
         if name:
-            fields[name] = _value(raw, macros)
+            value = _value(raw, macros)
+            fields[name] = unescape_ref(value) if name in _REF_FIELDS else value
     return fields
 
 
@@ -271,7 +279,7 @@ def levenshtein(a: str, b: str) -> int:
 
 
 def _norm_doi(doi: str) -> str:
-    d = doi.strip().lower()
+    d = unescape_ref(doi).lower()
     for prefix in _DOI_PREFIXES:
         if d.startswith(prefix):
             d = d[len(prefix):]

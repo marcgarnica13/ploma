@@ -543,3 +543,22 @@ def test_cache_saved_every_five_network_lookups(tmp_path, monkeypatch):
             for i in range(12)}
     run(entries, max_lookups=50, delay_s=0, cache_path=tmp_path / "c.json", mailto="", keys={}, fetch=fake_fetch(body))
     assert saves == [5, 10, 12]
+
+
+def test_escaped_springer_doi_is_looked_up_unescaped():
+    """R127 D1 falsification: an escaped Springer DOI resolves with the unescaped DOI in the requested URL."""
+    e = parse_bib(r"""@inproceedings{Mueller2021,
+  author = {M{\"u}ller, Ana and Okafor, Ben},
+  title = {Sequence {Models} for Event Logs},
+  year = {2021},
+  doi = {10.1007/978-3-030-85469-0\_16}
+}""")[0]
+    hit = json.loads(CROSSREF_HIT)
+    hit["message"]["DOI"] = "10.1007/978-3-030-85469-0_16"
+    calls: list = []
+    fetch = fake_fetch({"api.crossref.org/works/10.1007/978-3-030-85469-0_16": (200, json.dumps(hit))}, calls)
+    r = lookup(e, fetch=fetch, cache={})
+    assert r.status == "verified", r.evidence
+    assert r.doi == "10.1007/978-3-030-85469-0_16"
+    assert "\\" not in calls[0][0] and "%5C" not in calls[0][0]
+    assert "/works/10.1007/978-3-030-85469-0_16" in calls[0][0]

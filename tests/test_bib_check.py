@@ -177,3 +177,21 @@ def test_cli_exit_codes(sample_paper, tmp_path, capsys):
     assert bib_check.main([str(sample_paper / "main.tex")]) == 1
     assert "bib.missing.Nope" in capsys.readouterr().out
     assert bib_check.main([str(tmp_path / "absent.tex")]) == 2
+
+
+def test_escaped_doi_duplicates_unescaped_copy():
+    """R127 D1: a LaTeX-escaped DOI is the same DOI as its plain copy."""
+    text = (r"@inproceedings{A, doi = {10.1007/978-3-030-85469-0\_16}}" "\n"
+            r"@inproceedings{B, doi = {https://doi.org/10.1007/978-3-030-85469-0_16}}")
+    fs = {f.id for f in check_entries(parse_bib(text))}
+    assert "bib.duplicate_doi.A+B" in fs
+
+
+def test_doi_and_url_fields_are_unescaped():
+    """R127 D1: \\_ \\% \\& \\# \\$ unescaped and braces stripped in doi and url fields."""
+    e = parse_bib(r"@misc{K, doi = {10.1/{A}\_b\%c\&d\#e\$f}, url = {https://x.org/a\_b?q=1\&r=\%20}, "
+                  r"title = {Keep \_ {Braces}}}")[0]
+    assert e.fields["doi"] == "10.1/A_b%c&d#e$f"
+    assert e.fields["url"] == "https://x.org/a_b?q=1&r=%20"
+    assert e.fields["title"] == r"Keep \_ {Braces}"
+    assert bib_check._norm_doi(r"https://doi.org/10.1/{X}\_y") == "10.1/x_y"
