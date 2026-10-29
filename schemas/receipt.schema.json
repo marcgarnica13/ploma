@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ploma-receipt.json",
+  "description": "Onboard apply receipt at <outputs.dir>/ploma-receipt.json: the project files onboard wrote, with their apply mode and content hash.",
+  "type": "object",
+  "required": ["ploma_version", "at", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "ploma_version": {"type": "string", "description": "Plugin version that applied the files."},
+    "at": {"type": "string", "description": "UTC ISO 8601 timestamp ending in Z."},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "mode", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "description": "Repo-relative posix path."},
+          "mode": {"type": "string", "enum": ["enforced", "created-once", "merged"]},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}
