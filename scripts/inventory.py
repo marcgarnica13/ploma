@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only repository inventory for /ploma:onboard: what the repo already says about the paper.
 
-Usage: inventory.py [--root R] [--json] [inventory|propose|gaps]
+Usage: inventory.py [--root R] [--main FILE] [--json] [inventory|propose|gaps]
 
   inventory  (default) facts detected in the repo: main file, class, engine, bib, build, figures,
              reviews, results, code tree, git remote, superpowers, legacy harness
@@ -58,12 +58,13 @@ _BEGIN_DOC_RE = re.compile(r"\\begin\s*\{document\}")
 _INPUT_RE = re.compile(r"\\(?:input|include)\s*\{")
 _USEPACKAGE_RE = re.compile(r"\\(?:usepackage|RequirePackage)\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}")
 _AUTHOR_RE = re.compile(r"\\author(?![A-Za-z])")
-_COMMENTED_AUTHOR_RE = re.compile(r"^\s*%.*\\author(?![A-Za-z])")
 _ANON_CMD_RE = re.compile(r"\\anonymous(?![A-Za-z])")
+_PLACEHOLDER_AUTHOR_RE = re.compile(r"anonymi[sz]ed|anonymous", re.I)
+NON_MAIN_CLASSES = {"standalone", "subfiles"}
 _TITLE_RE = re.compile(r"\\title(?![A-Za-z])\s*")
 _GRAPHICS_RE = re.compile(r"\\includegraphics\*?\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
 _AUTHOR_YEAR_CITE_RE = re.compile(r"\\[Cc]ite[tp]\*?\s*[\[{]")
-_MAKE_MAIN_RE = re.compile(r"^\s*MAIN\s*:?=\s*(\S+)\s*$", re.M)
+_MAKE_MAIN_RE = re.compile(r"^\s*MAIN\s*[:?]?=\s*([^\s#]+)", re.M)
 _LATEXMK_FILES_RE = re.compile(r"@default_files\s*=\s*\(\s*['\"]([^'\"]+)['\"]")
 
 # Command-shaped lines in legacy rules; prose such as "make sure" never matches.
@@ -155,43 +156,70 @@ def _main_candidates(root: Path) -> list[str]:
         for name in files:
             if name.endswith(".tex"):
                 text = _code_text(dirpath / name)
-                if _DOCCLASS_RE.search(text) and _BEGIN_DOC_RE.search(text):
+                m = _DOCCLASS_RE.search(text)
+                if m and m.group(2).strip() not in NON_MAIN_CLASSES and _BEGIN_DOC_RE.search(text):
                     out.append(_rel(dirpath / name, root))
     return sorted(out)
 
 
-def _build_files(root: Path, candidates: list[str]) -> dict:
-    """Makefile or latexmkrc next to a candidate main, else at the root."""
-    dirs = []
-    for c in candidates:
-        d = posixpath.dirname(c) or "."
-        if d not in dirs:
-            dirs.append(d)
-    if "." not in dirs:
-        dirs.append(".")
-    for d in dirs:
-        base = root / d
-        for name in ("Makefile", "makefile", "GNUmakefile"):
-            if (base / name).is_file():
-                m = _MAKE_MAIN_RE.search(_read(base / name) or "")
-                return {"kind": "make", "command": "make", "cwd": d,
-                        "main_from_makefile": m.group(1) if m else None}
-        for name in (".latexmkrc", "latexmkrc"):
-            if (base / name).is_file():
-                m = _LATEXMK_FILES_RE.search(_read(base / name) or "")
-                return {"kind": "latexmk", "command": "latexmk", "cwd": d,
-                        "main_from_makefile": m.group(1) if m else None}
-    return {"kind": None, "command": None, "cwd": None, "main_from_makefile": None}
+_NO_BUILD = {"kind": None, "command": None, "cwd": None, "main_from_makefile": None}
 
 
-def _pick_main(candidates: list[str], build: dict) -> str | None:
+def _build_in(root: Path, d: str) -> dict | None:
+    """Makefile or latexmkrc in repo-relative dir ``d``, with the main file it names (stem, no .tex)."""
+    base = root / d
+    for name in ("Makefile", "makefile", "GNUmakefile"):
+        if (base / name).is_file():
+            m = _MAKE_MAIN_RE.search(_read(base / name) or "")
+            named = m.group(1) if m else None
+            return {"kind": "make", "command": "make", "cwd": d,
+                    "main_from_makefile": named[:-4] if named and named.endswith(".tex") else named}
+    for name in (".latexmkrc", "latexmkrc"):
+        if (base / name).is_file():
+            m = _LATEXMK_FILES_RE.search(_read(base / name) or "")
+            named = m.group(1) if m else None
+            return {"kind": "latexmk", "command": "latexmk", "cwd": d,
+                    "main_from_makefile": named[:-4] if named and named.endswith(".tex") else named}
+    return None
+
+
+def _named_main(build: dict) -> str | None:
     named = build.get("main_from_makefile")
-    if named:
-        name = named if named.endswith(".tex") else named + ".tex"
-        rel = posixpath.normpath(posixpath.join(build["cwd"] or ".", name))
-        if rel in candidates:
-            return rel
+    return posixpath.normpath(posixpath.join(build["cwd"], named + ".tex")) if named else None
+
+
+def _build_files(root: Path, candidates: list[str]) -> list[dict]:
+    """Build files in each candidate's directory, then the root."""
+    dirs = list(dict.fromkeys([posixpath.dirname(c) or "." for c in candidates] + ["."]))
+    return [b for b in (_build_in(root, d) for d in dirs) if b]
+
+
+def _pick_main(candidates: list[str], builds: list[dict]) -> str | None:
+    for b in builds:
+        if _named_main(b) in candidates:
+            return _named_main(b)
     return candidates[0] if len(candidates) == 1 else None
+
+
+def _build_for(main: str | None, builds: list[dict]) -> dict:
+    """Ruling R46: the main's own dir, then a build naming the main, then the root.
+
+    A root build file that names no main is never used for a main in a subdirectory.
+    """
+    if main is None:
+        root_b = next((b for b in builds if b["cwd"] == "."), None)
+        return dict(root_b or _NO_BUILD)
+    main_dir = posixpath.dirname(main) or "."
+    for b in builds:
+        if b["cwd"] == main_dir:
+            return dict(b)
+    for b in builds:
+        if _named_main(b) == main:
+            return dict(b)
+    for b in builds:
+        if b["cwd"] == "." and b["main_from_makefile"]:
+            return dict(b)
+    return dict(_NO_BUILD)
 
 
 def _packages(text: str) -> dict[str, list[str]]:
@@ -218,12 +246,29 @@ def _title(text: str) -> str | None:
     return _plain(group[0]) or None if group else None
 
 
-def _anonymized(raw_main_texts: list[str], code: str, options: list[str]) -> bool:
-    if any(o in ("anonymous", "review") for o in options) or _ANON_CMD_RE.search(code):
+def _live_authors(code: str) -> list[str]:
+    """Text of every uncommented \\author{...} (optional [..] skipped)."""
+    out = []
+    for m in _AUTHOR_RE.finditer(code):
+        i = m.end()
+        while i < len(code) and code[i].isspace():
+            i += 1
+        if i < len(code) and code[i] == "[":
+            close = code.find("]", i)
+            i = len(code) if close < 0 else close + 1
+            while i < len(code) and code[i].isspace():
+                i += 1
+        group = _braced(code, i)
+        out.append(group[0] if group else "")
+    return out
+
+
+def _anonymized(code: str, options: list[str]) -> bool:
+    """No live \\author, \\anonymous, class option anonymous, or a placeholder author name."""
+    if "anonymous" in options or _ANON_CMD_RE.search(code):
         return True
-    if not _AUTHOR_RE.search(code):
-        return True
-    return any(_COMMENTED_AUTHOR_RE.search(line) for t in raw_main_texts for line in t.splitlines())
+    authors = _live_authors(code)
+    return not authors or any(_PLACEHOLDER_AUTHOR_RE.search(a) for a in authors)
 
 
 def _figures(sources: list[Path], root: Path) -> list[dict]:
@@ -257,9 +302,9 @@ def _code(root: Path, doc_root: str | None) -> dict | None:
         for marker, lang in CODE_MARKERS:
             if (child / marker).is_file():
                 return {"dir": _rel(child, root), "language": lang}
-    for marker in ("pyproject.toml", "requirements.txt"):
+    for marker, lang in CODE_MARKERS:
         if (root / marker).is_file():
-            return {"dir": ".", "language": "python"}
+            return {"dir": ".", "language": lang}
     return None
 
 
@@ -361,13 +406,27 @@ def detect_legacy_harness(root: Path) -> list[dict]:
 
 # ---------------------------------------------------------------- public API
 
-def inventory(root: Path, home: Path | None = None) -> dict:
-    """Facts about the repo at ``root``. Reads only; writes nothing."""
+def _valid_main(root: Path, main: str | None) -> str | None:
+    if not main:
+        return None
+    path = (root / main).resolve()
+    if path.suffix != ".tex" or not path.is_file():
+        return None
+    return _rel(path, root)
+
+
+def inventory(root: Path, home: Path | None = None, main: str | None = None) -> dict:
+    """Facts about the repo at ``root``. Reads only; writes nothing.
+
+    ``main`` (repo-relative .tex) overrides detection, e.g. once the user answers the document.main gap.
+    """
     root = Path(root).resolve()
     home = Path.home() if home is None else Path(home)
     candidates = _main_candidates(root)
-    build = _build_files(root, candidates)
-    main = _pick_main(candidates, build)
+    chosen = _valid_main(root, main)
+    builds = _build_files(root, candidates + ([chosen] if chosen and chosen not in candidates else []))
+    main = chosen or _pick_main(candidates, builds)
+    build = _build_for(main, builds)
     inv: dict[str, Any] = {
         "main_candidates": candidates, "main": main, "doc_class": None, "doc_class_options": [],
         "engine_hint": "pdflatex", "bib_tool": "bibtex", "bib_files": [], "build": build, "pdf": None,
@@ -398,7 +457,7 @@ def inventory(root: Path, home: Path | None = None) -> dict:
         if (root / inv["pdf"]).is_file():
             inv["pdf_pages"] = page_count(root / inv["pdf"])[0]
         inv["title"] = _title(code)
-        inv["anonymized"] = _anonymized([_read(p) or "" for p in sources], code, inv["doc_class_options"])
+        inv["anonymized"] = _anonymized(code, inv["doc_class_options"])
         inv["figures"] = _figures(sources, root)
     inv["reviews_dir"] = _find_dir(root, lambda n: n in ("review", "reviews") or n.startswith("referee"),
                                    REVIEW_EXTS)
@@ -507,6 +566,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read-only repository inventory for ploma onboarding.")
     parser.add_argument("action", nargs="?", default="inventory", choices=("inventory", "propose", "gaps"))
     parser.add_argument("--root", default=".", help="repository root (default: current directory)")
+    parser.add_argument("--main", default=None, help="main .tex file, repo-relative (overrides detection)")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     try:
         args = parser.parse_args(argv)
@@ -516,7 +576,10 @@ def main(argv: list[str] | None = None) -> int:
     if not root.is_dir():
         print(f"inventory: {root} is not a directory", file=sys.stderr)
         return 2
-    inv = inventory(root)
+    if args.main and not _valid_main(root.resolve(), args.main):
+        print(f"inventory: --main {args.main} is not a .tex file under {root}", file=sys.stderr)
+        return 2
+    inv = inventory(root, main=args.main)
     if args.action == "inventory":
         data: Any = _public(inv)
     else:

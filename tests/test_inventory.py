@@ -56,7 +56,7 @@ def test_proposal_validates_on_sample(sample_paper):
     prop = inventory.propose_config(inv)
     assert prop["ploma"] == "0.1"
     assert prop["document"] == {"type": "paper", "main": "main.tex", "root": ".", "title": "A Method for Ranking Things",
-                                "slug": "main", "anonymized": False}
+                                "slug": "main", "anonymized": True}
     assert prop["build"]["command"] == "make" and prop["build"]["bib_files"] == ["refs.bib"]
     assert prop["build"]["pdf"] == "main.pdf" and prop["build"]["log"] == "main.log"
     assert prop["venue"] == {"profile": "generic-journal", "doc_class": "article", "page_budget": None,
@@ -138,7 +138,7 @@ def test_engine_and_author_year(tmp_path):
         "\\title[Short]{A \\emph{Long} Title\\thanks{Funded.}}\n\\author{X}\n"
         "\\begin{document}\n\\citet{a} shows it.\n\\end{document}\n")
     inv = inventory.inventory(tmp_path)
-    assert inv["engine_hint"] == "xelatex" and inv["anonymized"] is True and inv["title"] == "A Long Title"
+    assert inv["engine_hint"] == "xelatex" and inv["anonymized"] is False and inv["title"] == "A Long Title"
     prop = inventory.propose_config(inv)
     assert prop["venue"]["cite_style"] == "author-year" and prop["venue"]["profile"] == "elsevier"
 
@@ -147,6 +147,121 @@ def test_author_present_is_not_anonymized(tmp_path):
     (tmp_path / "paper.tex").write_text(
         "\\documentclass{article}\n\\title{T}\n\\author{Jane Doe}\n\\begin{document}\n\\end{document}\n")
     assert inventory.inventory(tmp_path)["anonymized"] is False
+
+
+def _paper(tmp_path, preamble: str, cls: str = "{article}", name: str = "paper.tex") -> None:
+    (tmp_path / name).write_text(f"\\documentclass{cls}\n{preamble}\n\\begin{{document}}\nText.\n\\end{{document}}\n")
+
+
+def test_commented_old_author_with_live_author_is_not_anonymized(tmp_path):
+    _paper(tmp_path, "% \\author{Old Name}\n\\author{Jane Doe}")
+    assert inventory.inventory(tmp_path)["anonymized"] is False
+
+
+def test_acmart_review_option_is_not_anonymized(tmp_path):
+    _paper(tmp_path, "\\author{Jane}", cls="[review]{acmart}")
+    assert inventory.inventory(tmp_path)["anonymized"] is False
+
+
+def test_acmart_anonymous_option_is_anonymized(tmp_path):
+    _paper(tmp_path, "\\author{Jane}", cls="[review,anonymous]{acmart}")
+    assert inventory.inventory(tmp_path)["anonymized"] is True
+
+
+def test_placeholder_author_is_anonymized(tmp_path):
+    _paper(tmp_path, "\\author{Anonymous Author(s)}")
+    assert inventory.inventory(tmp_path)["anonymized"] is True
+
+
+def test_only_commented_author_is_anonymized(tmp_path):
+    _paper(tmp_path, "% \\author{Jane Doe}")
+    assert inventory.inventory(tmp_path)["anonymized"] is True
+
+
+def test_anonymous_command_is_anonymized(tmp_path):
+    _paper(tmp_path, "\\author{Jane Doe}\n\\anonymous")
+    assert inventory.inventory(tmp_path)["anonymized"] is True
+
+
+def test_standalone_figure_is_not_a_main(tmp_path):
+    _paper(tmp_path, "\\author{J}", name="main.tex")
+    (tmp_path / "figs").mkdir()
+    _paper(tmp_path / "figs", "\\usepackage{tikz}", cls="[tikz]{standalone}", name="diagram.tex")
+    inv = inventory.inventory(tmp_path)
+    assert inv["main_candidates"] == ["main.tex"] and inv["main"] == "main.tex"
+
+
+def test_subfiles_chapters_are_not_mains(tmp_path):
+    _paper(tmp_path, "\\usepackage{subfiles}", name="main.tex")
+    for n in ("ch1.tex", "ch2.tex"):
+        _paper(tmp_path, "", cls="[main.tex]{subfiles}", name=n)
+    assert inventory.inventory(tmp_path)["main"] == "main.tex"
+
+
+def test_makefile_main_with_comment_picks_main(tmp_path):
+    _paper(tmp_path, "\\author{J}", name="main.tex")
+    _paper(tmp_path, "\\author{J}", cls="{letter}", name="response_letter.tex")
+    (tmp_path / "Makefile").write_text("MAIN = main # the paper\n\nall:\n\tpdflatex $(MAIN)\n")
+    inv = inventory.inventory(tmp_path)
+    assert inv["main"] == "main.tex" and inv["build"]["main_from_makefile"] == "main"
+
+
+def test_makefile_main_variants(tmp_path):
+    for line in ("MAIN ?= main", "MAIN := main", "MAIN=main.tex", "MAIN = main.tex # x"):
+        _paper(tmp_path, "", name="main.tex")
+        _paper(tmp_path, "", name="other.tex")
+        (tmp_path / "Makefile").write_text(line + "\n")
+        inv = inventory.inventory(tmp_path)
+        assert inv["main"] == "main.tex" and inv["build"]["main_from_makefile"] == "main", line
+
+
+def test_explicit_main_recomputes_facts(tmp_path):
+    for n in ("two_mains_a", "two_mains_b"): shutil.copy(FIX_TEX / f"{n}.tex", tmp_path / f"{n}.tex")
+    (tmp_path / "two_mains_a.tex").write_text((tmp_path / "two_mains_a.tex").read_text().replace(
+        "\\end{document}", "\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}"))
+    (tmp_path / "refs.bib").write_text("@article{k, title={T}, author={A}, year={2020}}\n")
+    inv = inventory.inventory(tmp_path, main="two_mains_a.tex")
+    assert inv["main"] == "two_mains_a.tex" and len(inv["main_candidates"]) == 2
+    assert inv["doc_class"] == "article" and inv["bib_files"] == ["refs.bib"] and inv["bib_tool"] == "bibtex"
+    assert inv["title"] == "Draft A" and inv["pdf"] == "two_mains_a.pdf"
+    prop = inventory.propose_config(inv)
+    assert "document.main" not in {g["key"] for g in inventory.gaps(inv, prop)}
+    assert [f for f in ploma_config.validate(prop, tmp_path) if f.status == "FAIL"] == []
+
+
+def test_cli_main_flag(tmp_path, capsys):
+    for n in ("two_mains_a", "two_mains_b"): shutil.copy(FIX_TEX / f"{n}.tex", tmp_path / f"{n}.tex")
+    assert inventory.main(["--root", str(tmp_path), "--main", "two_mains_b.tex", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["title"] == "Draft B"
+    assert inventory.main(["--root", str(tmp_path), "--main", "nope.tex"]) == 2
+
+
+def test_root_makefile_without_main_is_not_used_for_subdir_paper(tmp_path):
+    (tmp_path / "Makefile").write_text("all:\n\tpython3 run.py\n")
+    (tmp_path / "paper").mkdir()
+    _paper(tmp_path / "paper", "\\author{J}", name="main.tex")
+    inv = inventory.inventory(tmp_path)
+    assert inv["main"] == "paper/main.tex" and inv["build"]["kind"] is None
+    assert "command" not in inventory.propose_config(inv)["build"]
+    (tmp_path / "paper" / "Makefile").write_text("MAIN = main\n")
+    inv = inventory.inventory(tmp_path)
+    assert inv["build"]["kind"] == "make" and inv["build"]["cwd"] == "paper"
+    assert inventory.propose_config(inv)["build"]["pdf"] == "paper/main.pdf"
+
+
+def test_root_makefile_naming_subdir_main_is_used(tmp_path):
+    (tmp_path / "Makefile").write_text("MAIN = paper/main\n")
+    (tmp_path / "paper").mkdir()
+    _paper(tmp_path / "paper", "", name="main.tex")
+    _paper(tmp_path / "paper", "", name="draft.tex")
+    inv = inventory.inventory(tmp_path)
+    assert inv["main"] == "paper/main.tex" and inv["build"]["cwd"] == "."
+
+
+def test_root_level_r_code(tmp_path):
+    _paper(tmp_path, "\\author{J}")
+    (tmp_path / "DESCRIPTION").write_text("Package: x\n")
+    assert inventory.inventory(tmp_path)["code"] == {"dir": ".", "language": "r"}
 
 
 def test_figure_without_provenance(tmp_path):
