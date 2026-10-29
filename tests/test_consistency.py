@@ -1011,3 +1011,151 @@ def test_method_prefixes_and_acronyms():
 def test_docs_describe_the_source_pin(repo_root):
     skill = (repo_root / "skills" / "audit-reproducibility" / "SKILL.md").read_text(encoding="utf-8")
     assert "%% ploma-source:" in skill
+
+
+# ---------------------------------------------------------------- field fixes 4: table-wide source vote
+
+RUN_KEYS = ["hm_fitness", "hm_precision", "dfg_fitness", "dfg_precision"]
+# team id: (name, hm_fitness, hm_precision, dfg_fitness, dfg_precision)
+RUN_235 = {"36": ("Manchester City", 0.9112, 0.5457, 1.0, 0.1156),
+           "94": ("Brentford", 0.8493, 0.7702, 1.0, 0.2210),
+           "17": ("Nottingham Forest", 0.8021, 0.6634, 1.0, 0.1903)}
+# Another season: same team ids, other values; City's hm_fitness and dfg_precision and Forest's
+# hm_precision coincide with run 235, and three other teams hold Brentford's run-235 hm_precision.
+RUN_108 = {"36": ("Manchester City", 0.9112, 0.6011, 1.0, 0.1156),
+           "94": ("Brentford", 0.8302, 0.5122, 1.0, 0.3001),
+           "17": ("Nottingham Forest", 0.7655, 0.6634, 1.0, 0.2504),
+           "38": ("Leeds United", 0.7801, 0.7702, 1.0, 0.2811),
+           "39": ("Everton", 0.7712, 0.7702, 1.0, 0.2912),
+           "40": ("Wolverhampton Wanderers", 0.7623, 0.7702, 1.0, 0.3013)}
+BUILDUP_235 = {"36": ("Manchester City", 0.6512, 0.4401, 1.0, 0.0812),
+               "94": ("Brentford", 0.6233, 0.4122, 1.0, 0.0933),
+               "17": ("Nottingham Forest", 0.6044, 0.3911, 1.0, 0.0744)}
+SEASON_TABLE = ("\\begin{tabular}{lrr}\nTeam & Fitness & Precision \\\\\n"
+                "\\multicolumn{3}{l}{\\emph{Representative teams (Heuristic Miner)}} \\\\\n"
+                "Manchester City & 0.91 & 0.55 \\\\\nBrentford & 0.85 & 0.77 \\\\\n"
+                "Nottingham Forest & 0.80 & 0.66 \\\\\n\\end{tabular}\n")
+
+
+def _write_run(d: Path, teams: dict) -> None:
+    d.mkdir(parents=True)
+    fields = ("hm_fitness", "hm_precision", "dfg_fitness", "dfg_precision")
+    (d / "cc_results.json").write_text(json.dumps({"teams": {
+        tid: {"team_name": name, **dict(zip(fields, vals))} for tid, (name, *vals) in teams.items()}}))
+    rows = ["team_id,team_name," + ",".join(fields)]
+    rows += [f"{tid},{name}," + ",".join(str(v) for v in vals) for tid, (name, *vals) in teams.items()]
+    (d / "metrics_table.csv").write_text("\n".join(rows) + "\n")
+
+
+def _season_paper(tmp_path, table=SEASON_TABLE):
+    res = tmp_path / "src" / "results"
+    _write_run(res / "offensive_s09" / "235", RUN_235)
+    _write_run(res / "offensive_s09" / "108", RUN_108)
+    _write_run(res / "buildup_s09" / "235", BUILDUP_235)
+    main = tmp_path / "main.tex"
+    main.write_text("\\begin{document}\n" + table + "\\end{document}\n")
+    return main, res
+
+
+def test_season_runs_unplanted_have_no_warn_on_team_rows(tmp_path):
+    main, res = _season_paper(tmp_path)
+    rep = _run(main, results_dir=res, metric_keys=RUN_KEYS, root=tmp_path)
+    assert not [(f.id, f.observed) for f in rep.findings if f.status == "WARN"]
+
+
+def test_other_entity_cites_the_tables_voted_source(tmp_path):
+    main, res = _season_paper(tmp_path, SEASON_TABLE.replace("Manchester City & 0.91 & 0.55",
+                                                             "Manchester City & 0.91 & 0.77"))
+    rep = _run(main, results_dir=res, metric_keys=RUN_KEYS, root=tmp_path)
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Manchester_City")
+    assert "src/results/offensive_s09/235/cc_results.json:teams.94.hm_precision (Brentford)" in f.observed, \
+        f.observed
+    assert "/108/" not in f.observed and "Leeds" not in f.observed and "buildup" not in f.observed, f.observed
+
+
+def test_other_method_evidence_cites_the_tables_voted_source(tmp_path):
+    main, res = _season_paper(tmp_path, SEASON_TABLE.replace("Manchester City & 0.91 & 0.55",
+                                                             "Manchester City & 0.91 & 0.12"))
+    rep = _run(main, results_dir=res, metric_keys=RUN_KEYS, root=tmp_path)
+    f = next(f for f in rep.findings if f.id == "consistency.table_cell_other_method.Manchester_City")
+    assert "src/results/offensive_s09/235/cc_results.json:teams.36.dfg_precision" in f.observed, f.observed
+    assert "src/results/offensive_s09/235/cc_results.json:teams.36.hm_precision" in f.observed, f.observed
+    assert "/108/" not in f.observed and "buildup" not in f.observed, f.observed
+
+
+def test_tied_sources_are_all_cited(tmp_path):
+    main, res = _season_paper(tmp_path, SEASON_TABLE.replace("Manchester City & 0.91 & 0.55",
+                                                             "Manchester City & 0.91 & 0.77"))
+    shutil.rmtree(res / "offensive_s09" / "108")
+    _write_run(res / "copy_s09" / "235", RUN_235)
+    (res / "copy_s09" / "235" / "metrics_table.csv").unlink()
+    rep = _run(main, results_dir=res, metric_keys=RUN_KEYS, root=tmp_path)
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Manchester_City")
+    assert "src/results/offensive_s09/235/" in f.observed and "src/results/copy_s09/235/" in f.observed, f.observed
+
+
+# ---------------------------------------------------------------- field fixes 4: pin placement
+
+FLOAT_HEAD = "\\begin{table}[t]\n\\centering\n\\caption{Conformance per team.}\n\\label{tab:traces}\n"
+
+
+def _pinned(tmp_path, before: str, inside: str = "", after: str = ""):
+    planted = TRACES_TABLE.replace("Manchester City & 0.91 & 0.55", "Manchester City & 0.91 & 0.12")
+    main, res = _traces_paper(tmp_path, table=before + FLOAT_HEAD + inside + planted + "\\end{table}\n" + after)
+    (res / "decoy").mkdir()
+    (res / "decoy" / "d.json").write_text(json.dumps({"teams": {"36": {"team_name": "Manchester City",
+                                                                       "hm_precision": 0.12}}}))
+    return main, res
+
+
+def test_pin_above_the_table_float_is_applied(tmp_path):
+    main, res = _pinned(tmp_path, "%% ploma-source: results/cc_results.json\n")
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert "consistency.table_cell_other_method.Manchester_City" in _ids(rep)
+    assert {c["source"] for c in rep.table_cells} == {"results/cc_results.json"}
+    assert not any(f.id.startswith("consistency.table_source_") for f in rep.findings)
+
+
+def test_pin_inside_the_float_is_applied(tmp_path):
+    main, res = _pinned(tmp_path, "", inside="%% ploma-source: results/cc_results.json\n")
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert {c["source"] for c in rep.table_cells} == {"results/cc_results.json"}
+
+
+def test_pin_applies_to_the_next_tabular_only(tmp_path):
+    main, res = _pinned(tmp_path, "%% ploma-source: results/cc_results.json\n",
+                        after=FLOAT_HEAD + TRACES_TABLE + "\\end{table}\n")
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    by_table = {c["table"]: c["source"] for c in rep.table_cells}
+    assert sorted(by_table.values()) == ["", "results/cc_results.json"], by_table
+
+
+def test_pin_before_an_earlier_table_end_is_not_applied_and_warns(tmp_path):
+    main, res = _pinned(tmp_path, FLOAT_HEAD + "\\begin{tabular}{ll}\na & b \\\\\n\\end{tabular}\n"
+                                  "%% ploma-source: results/cc_results.json\n\\end{table}\n")
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    assert {c["source"] for c in rep.table_cells} == {""}
+    assert "consistency.table_source_unused.main.tex:9" in _ids(rep), _ids(rep)
+
+
+def test_pin_to_a_missing_path_warns(tmp_path):
+    main, res = _pinned(tmp_path, "%% ploma-source: results/nope.json\n")
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    f = next(f for f in rep.findings if f.id == "consistency.table_source_missing.main.tex:2")
+    assert f.status == "WARN" and "results/nope.json" in f.summary
+    assert {"consistency.table_cell_not_in_results.0.91", "consistency.table_cell_not_in_results.0.85"}.isdisjoint(
+        _ids(rep))  # the table is checked as if unpinned
+
+
+def test_stray_pin_at_the_end_of_a_file_warns(tmp_path):
+    main, res = _pinned(tmp_path, "", after="%% ploma-source: results/cc_results.json\n")
+    rep = _run(main, results_dir=res, metric_keys=TRACES_KEYS, root=tmp_path)
+    f = next(f for f in rep.findings if f.id.startswith("consistency.table_source_unused."))
+    assert f.status == "WARN" and "results/cc_results.json" in f.summary
+    assert {c["source"] for c in rep.table_cells} == {""}
+
+
+def test_docs_describe_the_pin_placement(repo_root):
+    skill = (repo_root / "skills" / "audit-reproducibility" / "SKILL.md").read_text(encoding="utf-8")
+    assert "above its `\\begin{table}`" in skill and "next tabular only" in skill
+    assert "3 lines" not in skill

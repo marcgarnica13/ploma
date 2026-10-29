@@ -24,9 +24,14 @@ names or their words: a label "BERT-L" does not name "bert_large", so that row g
 check and a value copied from another entity is missed. A finding names the other entity by its
 record's name-like field (name, team, model, method, label, title) or else its key, cites results files
 relative to the repo root, keeps to the keys carrying the column header's word (Precision: *_precision)
-when any match, and to the row's own results file when it holds a match (Ruling R169). A comment
-"%% ploma-source: <repo-relative path>" within the 3 lines above a \\begin{tabular} restricts that
-table's cells to that results file.
+when any match (Ruling R169). Each table's source is voted: every results directory (a file and its
+siblings, such as cc_results.json and metrics_table.csv, count as one) scores the cells of the table
+that match a value under their row's own entity there; the top-scoring directories (all of them on a
+tie) are the table's source. A row whose entity the source holds is checked against the source only,
+and findings cite the source, falling back to other files only when the source has no match. A comment
+"%% ploma-source: <repo-relative path>" restricts the next tabular's cells to that results file; it may
+sit anywhere after the previous \\end{table}, \\end{table*} or \\end{tabular} (or the start of the
+file) and before the \\begin{tabular}, so above \\begin{table} or inside the float both work.
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -52,6 +57,9 @@ Rules (spec section 7.2):
   consistency.table_method_ambiguous.<file:line>   INFO  metric keys carry two or more method prefixes and
                                                          some rows of the table have no method context
   consistency.table_cell_not_in_results.<raw>      WARN  a table cell matches no results value
+  consistency.table_source_missing.<file:line>     WARN  a "%% ploma-source" pin names no file (the table is
+                                                         checked as if unpinned)
+  consistency.table_source_unused.<file:line>      WARN  a "%% ploma-source" pin that applies to no tabular
   consistency.table_check_uninformative            INFO  the pool covers over half of the values such a cell
                                                          can display (2-decimal cells in [0, 1]: distinct
                                                          rounded values / 101), so its match says little
@@ -504,25 +512,38 @@ def _row_label(cell: str) -> str:
     return re.sub(r"[^\w.+-]+", "_", text).strip("_.")
 
 
-_PIN_RE = re.compile(r"^\s*%+\s*ploma-source:\s*(\S+)", re.M)
+_PIN_RE = re.compile(r"^[ \t]*%+[ \t]*ploma-source:[ \t]*(\S+)", re.M)
 _MULTICOLUMN_RE = re.compile(r"\\multicolumn\s*\{\s*(\d+)\s*\}")
+_TABLE_END_RE = re.compile(r"\\end\s*\{(?:table\*?|" + "|".join(re.escape(e) for e in TABULAR_ENVS) + r")\}")
 
 
-def _source_pin(raw: str, begin: int) -> str:
-    """The path of a "%% ploma-source: <path>" comment within the 3 lines above a \\begin{tabular}."""
-    above = "\n".join(raw[:begin].split("\n")[-4:])  # the begin's own line and the 3 above it
-    pins = _PIN_RE.findall(above)
-    return pins[-1].removeprefix("./") if pins else ""
+def _source_pins(raw: str, stripped: str) -> tuple[dict[int, str], list[tuple[int, str, bool]]]:
+    """The "%% ploma-source: <path>" pins of one file: ({tabular begin offset: path}, [(offset, path, used)]).
+    A pin applies to the next tabular whose \\begin follows it with no \\end{table}, \\end{table*} or
+    \\end{tabular} in between (so above \\begin{table} or inside the float both work); each pin applies to
+    one tabular at most, and the last pin before a tabular wins. raw and stripped share offsets."""
+    pins = [(m.start(1), m.group(1).removeprefix("./")) for m in _PIN_RE.finditer(raw)]
+    ends = [m.end() for m in _TABLE_END_RE.finditer(stripped)]
+    used: set[int] = set()
+    applied: dict[int, str] = {}
+    for begin in sorted(b for b, _, _ in _texmask.env_spans(stripped, TABULAR_ENVS)):
+        start = max((e for e in ends if e <= begin), default=0)
+        cands = [k for k, (pos, _) in enumerate(pins) if start <= pos < begin and k not in used]
+        if cands:
+            used.add(cands[-1])
+            applied[begin] = pins[cands[-1]][1]
+    return applied, [(pos, path, k in used) for k, (pos, path) in enumerate(pins)]
 
 
-def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str, raw: str = "") -> list[dict]:
+def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str,
+                 pins: dict[int, str] | None = None) -> list[dict]:
     """Numeric cells with file, line, the row they sit in ("row": file:line of the row start), the row's
     label (its first cell's words, or "line<N>"), and the column header of the latest row above with
     several cells and no number ("header"; a "%" in it makes the column's numbers percents), with its words that no other header column has ("distinct":
     "HM precision" next to "DFG precision" gives ["hm"]). Each cell also carries its table ("table":
     file:line of the \\begin), the row's first cell as written ("label_text"), the text of the latest
     full-width \\multicolumn row above in the table ("section", reset by each such row) and the table's
-    "%% ploma-source:" path ("source", empty when none)."""
+    "%% ploma-source:" path ("source", empty when none; see _source_pins)."""
     cells = []
     for begin, content, end in _texmask.env_spans(stripped, TABULAR_ENVS):
         body = masked[content:end]
@@ -530,7 +551,7 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
         body = body[:end_tag] if end_tag >= 0 else body
         text_body = stripped[content:content + len(body)]
         table = f"{file}:{lines.line(begin)}"
-        source = _source_pin(raw, begin) if raw else ""
+        source = (pins or {}).get(begin, "")
         split = re.split(r"(\\\\)", body)
         width = max((len(re.split(r"(?<!\\)&", r)) for r in split if r != "\\\\"), default=1)
         offset = content
@@ -639,8 +660,9 @@ def _segments(main: Path, texts: dict[Path, str]) -> list[tuple[Path, int, int]]
     return out
 
 
-def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], list[str]]:
-    """(abstract, introduction, rest of body, table cells, source names) across main and its inputs.
+def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], list[str], list[dict]]:
+    """(abstract, introduction, rest of body, table cells, source names, source pins) across main and its
+    inputs; a source pin is {"file", "line", "path", "used"} (see _source_pins).
 
     The introduction runs from the first \\section to the next one, in document order (inputs expanded);
     a document with fewer than two \\section commands has no introduction to check.
@@ -652,6 +674,7 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], l
     body: list[dict] = []
     cells: list[dict] = []
     names: list[str] = []
+    pins: list[dict] = []
     sections: list[tuple[Path, int]] = []
     for src in bib_check.tex_sources(main):
         name = _rel(src, base)
@@ -668,7 +691,9 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], l
             n["_src"] = src
             inside = any(s <= n["pos"] < e for s, e in spans)
             (abstract if inside else body).append(n)
-        cells.extend(_table_cells(stripped, masked, lines, name, raw))
+        applied, found = _source_pins(raw, stripped)
+        pins += [{"file": name, "line": lines.line(pos), "path": path, "used": used} for pos, path, used in found]
+        cells.extend(_table_cells(stripped, masked, lines, name, applied))
         sections += [(src, m.start()) for m in _SECTION_START_RE.finditer(stripped)]
 
     segments = _segments(main, texts)
@@ -687,7 +712,7 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], l
         (intro if len(marks) >= 2 and marks[0] <= key < marks[1] else rest).append(n)
     for n in abstract + body:
         del n["_src"], n["pos"]
-    return abstract, intro, rest, cells, names
+    return abstract, intro, rest, cells, names, pins
 
 
 # ---------------------------------------------------------------- passport
@@ -971,6 +996,11 @@ def _cell_list(items: list[tuple[dict, str]]) -> str:
     return "; ".join(out)
 
 
+def _dir(file: str) -> str:
+    """The directory of a repo-relative results file: the unit the table-wide source vote counts."""
+    return file.rsplit("/", 1)[0] if "/" in file else ""
+
+
 def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], tolerances: dict) -> list[Finding]:
     """Table cells against the results (Ruling R164). With metric keys, a row whose label (first cell)
     names an entity in the results (see _entity) must have every numeric cell matched by a keyed
@@ -1011,6 +1041,36 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
         words = _tokens(_metric_key(loc, key_set))
         return words[0] if len(words) >= 2 and words[0] in prefixes else None
 
+    def table_of(c: dict) -> str:
+        return c.get("table") or c["file"]
+
+    def located_of(source: str) -> list[Located]:
+        return [loc for loc in all_located if loc.file == source] if source else all_located
+
+    def named_of(c: dict):
+        label, source = c.get("label") or "", c.get("source") or ""
+        located = located_of(source)
+        if label and not re.fullmatch(r"line\d+", label) and located and (label, source) not in entities:
+            entities[(label, source)] = _entity(label, located)
+        return entities.get((label, source))
+
+    # The table-wide source vote: each unpinned table's source is the results directory (a file and its
+    # siblings: cc_results.json and metrics_table.csv count as one) whose values under each row's own
+    # entity match the most cells of the table; tied directories are all its source.
+    votes: dict[str, dict[str, int]] = {}
+    for idxs in rows.values():
+        c0 = cells[idxs[0]]
+        named = named_of(c0)
+        if not named or c0.get("source"):
+            continue
+        ent = [loc for loc, m in zip(located_of(""), named[0]) if m]
+        score = votes.setdefault(table_of(c0), {})
+        for i in idxs:
+            if hits[i]:
+                for d in {_dir(loc.file) for loc in ent if _vkey(loc.value) in hits[i]}:
+                    score[d] = score.get(d, 0) + 1
+    table_dirs = {t: {d for d, n in score.items() if n == max(score.values())} for t, score in votes.items() if score}
+
     out: list[Finding] = []
     missed: dict[str, list[dict]] = {}
     unplaced: list[dict] = []
@@ -1021,10 +1081,8 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
         unplaced += [cells[i] for i in idxs if not hits[i]]
         label = cells[idxs[0]].get("label") or ""
         source = cells[idxs[0]].get("source") or ""
-        located = [loc for loc in all_located if loc.file == source] if source else all_located
-        if label and not re.fullmatch(r"line\d+", label) and located and (label, source) not in entities:
-            entities[(label, source)] = _entity(label, located)
-        named = entities.get((label, source))
+        located = located_of(source)
+        named = named_of(cells[idxs[0]])
         if not named:
             for i in idxs:
                 if not hits[i]:
@@ -1036,11 +1094,13 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
             continue
         own, levels = named
         ent = [loc for loc, m in zip(located, own) if m]
+        dirs = table_dirs.get(table_of(cells[idxs[0]]), set())
+        # When the table's source holds the row's entity, its cells must match there.
+        ent = [loc for loc in ent if _dir(loc.file) in dirs] or ent
         other_entity: list[tuple[dict, str]] = []
         other_column: list[tuple[dict, str]] = []
         other_method: list[tuple[dict, str]] = []
         found_by = {i: [loc for loc in ent if _vkey(loc.value) in hits[i]] for i in idxs if hits[i]}
-        row_files = {loc.file for found in found_by.values() for loc in found}  # where the row's own cells sit
         for i in idxs:
             c = cells[i]
             if not hits[i]:
@@ -1075,7 +1135,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
             owners = [_other_entity(loc, levels) for loc in elsewhere]
             if elsewhere and all(owners):
                 pairs = list(zip(elsewhere, owners))
-                pairs = [x for x in pairs if x[0].file in row_files] or pairs  # the row's own file first
+                pairs = [x for x in pairs if _dir(x[0].file) in dirs] or pairs  # the table's source first
                 other_entity.append((c, "matches only " + ", ".join(
                     f"{loc.where} ({_display_entity(loc, *o)})" for loc, o in pairs[:3])))
         for rule, items, summary, fix in (
@@ -1141,6 +1201,32 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     return out
 
 
+def _pin_findings(pins: list[dict], cells: list[dict], root: Path) -> list[Finding]:
+    """WARN table_source_unused for a pin no tabular takes, WARN table_source_missing for a pin naming no
+    file under root; the cells of a missing pin's table are checked as if unpinned."""
+    out: list[Finding] = []
+    for pin in pins:
+        at = f"{pin['file']}:{pin['line']}"
+        if not pin["used"]:
+            out.append(Finding(f"consistency.table_source_unused.{at}", WARN,
+                               f"source pin {pin['path']} at {at} applies to no tabular",
+                               observed="no \\begin{tabular} follows it before the next pin, a table's \\end or the "
+                                        "end of the file",
+                               remediation="Move the comment above the table's \\begin{table} or \\begin{tabular} "
+                                           "(after the previous table's \\end), or remove it.", group="tables"))
+        elif not (root / pin["path"]).is_file():
+            for c in cells:
+                if c["file"] == pin["file"] and c.get("source") == pin["path"]:
+                    c["source"] = ""
+            out.append(Finding(f"consistency.table_source_missing.{at}", WARN,
+                               f"source pin {pin['path']} at {at} names no file",
+                               observed=f"{root / pin['path']} does not exist; the table was checked against every "
+                                        f"results file",
+                               remediation="Give the results file's path relative to the repo root, or remove the "
+                                           "comment.", group="tables"))
+    return out
+
+
 def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] | None = None,
         tolerances: dict | None = None, passport: Path | None = None, root: Path | None = None) -> ConsistencyReport:
     """The consistency pass; findings cite results files relative to root (default: the main file's folder)."""
@@ -1149,10 +1235,10 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
         raise FileNotFoundError(f"cannot read main file {main}")
     tolerances = {**DEFAULT_TOLERANCES, **(tolerances or {})}
     metric_keys = list(metric_keys or [])
-    abstract, intro, rest, cells, names = _scan(main)
+    abstract, intro, rest, cells, names, pins = _scan(main)
     body = intro + rest
     results = load_results(results_dir, metric_keys, root or main.parent) if results_dir else Results()
-    findings: list[Finding] = []
+    findings = _pin_findings(pins, cells, Path(root or main.parent))
     for part, numbers, against, where_text in (
             ("abstract", abstract, body, "the body"),
             ("intro", intro, rest, "the rest of the body")):
