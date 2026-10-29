@@ -1481,3 +1481,13 @@ def test_respond_deletes_temp_files_with_the_script():
     assert cmd in body
     assert cmd in _respond_ref("ingestion")
     assert "rm -f" not in body and "rm -f" not in _respond_ref("ingestion")
+
+
+def test_review_round_without_prior_simulated_round_points_to_respond():
+    """--r<N> continues a simulated review; real referee reports go to /ploma:respond --audit."""
+    ref = (REPO / "skills" / "review" / "references" / "peer-pipeline.md").read_text(encoding="utf-8")
+    phase0 = ref.split("## Phase 0", 1)[1].split("## Phase 1", 1)[0]
+    assert "--r<N> continues a simulated review" in phase0
+    assert "/ploma:respond --audit" in phase0
+    help_lines = [ln for ln in _skill("help").splitlines() if "--r<N>" in ln and "/ploma:respond --audit" in ln]
+    assert len(help_lines) == 1 and "simulated" in help_lines[0]

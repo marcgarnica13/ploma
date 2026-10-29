@@ -26,7 +26,7 @@ Run in this order and stop at the first failure:
 
 1. The flag checks of the skill (mutually exclusive flags, round and variance caps).
 2. Venue resolution with `profiles.py` (in the skill). An unknown key stops here.
-3. Revise-and-resubmit round `--r<N>`: the prior round's files exist (`referee_domain.md` and `referee_methods.md` for N = 2, `referee_domain_r<N-1>.md` and `referee_methods_r<N-1>.md` after that, and `desk_review.md`). Missing: stop and say which file and which earlier command produces it.
+3. Revise-and-resubmit round `--r<N>`: the prior round's files exist (`referee_domain.md` and `referee_methods.md` for N = 2, `referee_domain_r<N-1>.md` and `referee_methods_r<N-1>.md` after that, and `desk_review.md`). Missing: stop and say which file and which earlier command produces it, and say: "--r<N> continues a simulated review (a previous /ploma:review --peer run). For referee reports you received, run /ploma:respond to draft the response, or /ploma:respond --audit <draft> to check a draft you wrote."
 4. Cross-artifact, when it applies (see the skill): `/ploma:audit-reproducibility --no-rerun` runs now, before the desk review. Its result goes into the Pre-Flight Report.
 5. Print the Pre-Flight Report before spawning any agent, in the format of `report-templates.md`. It names the manuscript, the resolved venue, the discipline, the round, the novelty-check state and the cross-artifact status. The user sees exactly what the pipeline will use.
 
