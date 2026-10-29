@@ -174,7 +174,14 @@ class _Parser:
             rest = content[c + 1:].strip()
             self.i += 1
             out[key] = _scalar(rest, no) if rest else self.child(indent, True)
+            if rest:
+                self._no_continuation(indent, rest)
         return out
+
+    def _no_continuation(self, indent: int, rest: str) -> None:
+        """A deeper line right after an inline plain scalar is a folded continuation, which this subset rejects."""
+        if self.i < len(self.lines) and self.lines[self.i][1] > indent and rest[0] not in "\"'[{":
+            raise YamlMiniError(self.lines[self.i][0], "multi-line plain scalars are not supported; quote the value")
 
     def seq(self, indent: int) -> list:
         out: list = []
@@ -195,6 +202,7 @@ class _Parser:
             else:
                 self.i += 1
                 out.append(_scalar(rest, no))
+                self._no_continuation(indent, rest)
         return out
 
 

@@ -51,3 +51,25 @@ def test_dump_round_trips_spec_example():
 def test_dump_round_trips_indicator_strings(value):
     data = {"k": value, "l": [value], "m": {value or "e": value}}
     assert _yamlmini.load(_yamlmini.dump(data)) == data
+
+
+def test_multi_line_plain_scalar_names_the_problem():
+    with pytest.raises(_yamlmini.YamlMiniError, match="multi-line plain scalars are not supported; quote the value"):
+        _yamlmini.load("document:\n  title: A long title that PyYAML\n    wrapped onto a second line\n  slug: x\n")
+    with pytest.raises(_yamlmini.YamlMiniError, match="multi-line plain scalars are not supported"):
+        _yamlmini.load("keys:\n- a long item\n  continued\n")
+
+
+def test_pyyaml_dump_of_a_long_title_loads_with_yamlmini():
+    """dump_yaml must not wrap long strings: _yamlmini cannot read PyYAML's folded plain scalars."""
+    yaml = pytest.importorskip("yaml")
+    import _yamlio
+    if _yamlio._yaml is None:
+        pytest.skip("PyYAML not active")
+    title = "Capturing Team Strategies in Large Organisations via Sequence Mining and Visual Analysis"
+    assert len(title) == 88
+    data = {"ploma": "0.1", "document": {"type": "paper", "main": "main.tex", "title": title, "slug": "main"},
+            "build": {"bib_files": ["refs.bib"], "command": "make"}, "note": "café " * 30}
+    text = _yamlio.dump_yaml(data)
+    assert _yamlmini.load(text) == data
+    assert "café" in text and list(_yamlmini.load(text)) == ["ploma", "document", "build", "note"]

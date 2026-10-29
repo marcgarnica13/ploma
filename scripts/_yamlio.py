@@ -48,5 +48,6 @@ def load_yaml(path: Path) -> Any:
 
 def dump_yaml(data: Any) -> str:
     if _yaml is not None:
-        return _yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+        # width: never fold long strings; _yamlmini cannot read multi-line plain scalars.
+        return _yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True, width=10**9)
     return _yamlmini.dump(data)
