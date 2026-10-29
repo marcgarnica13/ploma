@@ -156,3 +156,9 @@ def test_eval_case_yaml(case):
         assert resolved == REPO or REPO in resolved.parents, "add_dirs must stay inside the plugin"
     if ctx.get("scaffold_script"):
         assert (case / ctx["scaffold_script"]).is_file()
+
+
+def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
+    """A semantic run on a large bibliography outlives the default 2-minute Bash timeout."""
+    text = (REPO / "skills" / "validate-bib" / "SKILL.md").read_text(encoding="utf-8")
+    assert "600000 ms" in text and "480 s" in text

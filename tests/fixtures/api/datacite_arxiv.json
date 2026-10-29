@@ -1,0 +1,18 @@
+{
+  "data": {
+    "id": "10.48550/arxiv.1706.03762",
+    "type": "dois",
+    "attributes": {
+      "doi": "10.48550/arxiv.1706.03762",
+      "creators": [
+        {"name": "Vaswani, Ashish", "nameType": "Personal", "givenName": "Ashish", "familyName": "Vaswani"},
+        {"name": "Shazeer, Noam", "nameType": "Personal", "givenName": "Noam", "familyName": "Shazeer"},
+        {"name": "Google Brain", "nameType": "Organizational"}
+      ],
+      "titles": [{"title": "Attention Is All You Need"}],
+      "publisher": "arXiv",
+      "publicationYear": 2017,
+      "types": {"resourceTypeGeneral": "Preprint"}
+    }
+  }
+}

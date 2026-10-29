@@ -272,3 +272,59 @@ def test_cache_uses_plugin_data_when_set(sample_paper, cfg, tmp_path, monkeypatc
     validate_bib.run(sample_paper, cfg, semantic=True, fetch=verifying_fetch(sample_paper / "refs.bib"), delay_s=0)
     assert (tmp_path / "pdata" / "cache" / "cite_lookup.json").is_file()
     assert not (sample_paper / ".ploma").exists()
+
+
+# ---------------------------------------------------------------- final fix wave (R94, time budget)
+
+def _retype(root: Path, key: str, new_type: str) -> None:
+    p = root / "refs.bib"
+    text = p.read_text(encoding="utf-8")
+    old = re.search(r"@\w+\{" + re.escape(key) + ",", text).group(0)
+    p.write_text(text.replace(old, f"@{new_type}{{{key},"), encoding="utf-8")
+
+
+def test_misc_not_found_is_warn_not_indexed(sample_paper, cfg, cache):
+    _retype(sample_paper, "Elo1978", "misc")
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=missing_fetch, cache_path=cache, delay_s=0)
+    ids = _ids(rep)
+    assert ids["bib.lookup.not_indexed.Elo1978"] == "WARN"
+    assert "bib.lookup.missing.Elo1978" not in ids
+    f = next(f for f in rep.findings if f.id == "bib.lookup.not_indexed.Elo1978")
+    assert "not found in citation indexes (type misc)" in f.summary
+    assert "bib.lookup.not_indexed.Elo1978" in rep.report_path.read_text(encoding="utf-8")
+
+
+def test_article_not_found_all_sources_answering_is_fail(sample_paper, cfg, cache):
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=missing_fetch, cache_path=cache, delay_s=0)
+    assert _ids(rep)["bib.lookup.missing.Bradley1952"] == "FAIL" and rep.verdict == "FAIL"
+
+
+def test_article_not_found_with_one_source_429_is_warn(sample_paper, cfg, cache):
+    def s2_rate_limited(url, headers):
+        if "semanticscholar" in url:
+            return 429, ""
+        return missing_fetch(url, headers)
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=s2_rate_limited, cache_path=cache, delay_s=0)
+    ids = _ids(rep)
+    assert ids["bib.lookup.not_indexed.Bradley1952"] == "WARN"
+    assert not any(v == "FAIL" for k, v in ids.items() if k.startswith("bib.lookup."))
+    assert rep.verdict == "PASS"
+
+
+def test_time_budget_skips_and_report_counts_them(sample_paper, cfg, cache):
+    clock = {"t": 0.0}
+
+    def slow(url, headers):
+        clock["t"] += 200
+        return verifying_fetch(sample_paper / "refs.bib")(url, headers)
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=slow, cache_path=cache, delay_s=0,
+                           time_budget_s=150, clock=lambda: clock["t"])
+    skipped = [r for r in rep.lookups if r.status == "skipped"]
+    assert len(skipped) == len(rep.lookups) - 1 and skipped[0].evidence == "time budget reached"
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert f"{len(skipped)} cited entries skipped (time budget reached)" in text
+
+
+def test_validate_bib_default_time_budget_is_480():
+    import inspect
+    assert inspect.signature(validate_bib.run).parameters["time_budget_s"].default == 480

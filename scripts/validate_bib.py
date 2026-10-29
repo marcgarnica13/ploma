@@ -6,9 +6,9 @@ Usage: python3 scripts/validate_bib.py [--root R] [--semantic] [--skip-doi] [--m
 
 Structural: cite keys against entries in every resolved bib file, near misses, duplicates, unused
 entries, natbib/biblatex mixing (scripts/bib_check.py). Semantic adds a lookup of every cited entry
-(scripts/cite_lookup.py, at most limits.doi_lookups_per_run network lookups); --skip-doi leaves the
-lookups out. Writes <outputs.dir>/bib_audit_<structural|semantic>.md, records the "bib" gate entry
-and a state event. Only --semantic without --skip-doi uses the network. Lookup cache: the plugin
+(scripts/cite_lookup.py, at most limits.doi_lookups_per_run network lookups, and none after a time
+budget of 480 s so the run ends inside a 10-minute Bash timeout); --skip-doi leaves the lookups out.
+Writes <outputs.dir>/bib_audit_<structural|semantic>.md, records the "bib" gate entry and a state event. Only --semantic without --skip-doi uses the network. Lookup cache: the plugin
 data dir when CLAUDE_PLUGIN_DATA is set, else <root>/.ploma/cite_lookup.json.
 
 Exit codes: 0 verdict PASS, 1 verdict FAIL, 2 usage error, unreadable ploma.yaml or main file.
@@ -42,10 +42,13 @@ ROWS = [
     ("Style consistency", ("bib.cite_style_mix",)),
     ("Unused entries", ("bib.unused.",)),
 ]
-LOOKUP_STATUS = {"missing": FAIL, "mismatch": FAIL, "partial": WARN, "unreachable": WARN, "skipped": INFO}
+LOOKUP_STATUS = {"missing": FAIL, "mismatch": FAIL, "partial": WARN, "not_indexed": WARN, "unreachable": WARN,
+                 "skipped": INFO}
 LOOKUP_FIX = {
     "missing": "no source knows this work: check the title and DOI against the publisher page, then fix or remove the entry",
     "mismatch": "the DOI resolves to a different work: correct the DOI, or the title, authors and year",
+    "not_indexed": "no reachable index lists this work, which is common for reports, preprints, software and web "
+                   "pages: confirm it exists (URL, DOI or publisher page) before submitting",
     "partial": "the work exists but a field disagrees: compare title, first author, year and DOI with the record",
     "unreachable": "no source answered; nothing was concluded: run /ploma:validate-bib --semantic again later",
     "skipped": "not looked up in this run; it is checked on the next run (cached results are free)",
@@ -118,7 +121,10 @@ def _lookup_findings(results: list[cite_lookup.LookupResult], cited: dict[str, l
         observed = r.evidence or r.status
         if where:
             observed += f"; cited at {_rel(where[0][0], root)}:{where[0][1]}"
-        out.append(Finding(f"bib.lookup.{r.status}.{r.key}", status, f"{r.key}: lookup {r.status}",
+        summary = f"{r.key}: lookup {r.status}"
+        if r.status == "not_indexed":
+            summary = f"{r.key}: " + r.evidence.split(";", 1)[0]
+        out.append(Finding(f"bib.lookup.{r.status}.{r.key}", status, summary,
                            observed=observed, remediation=LOOKUP_FIX[r.status], group="bib"))
     return out
 
@@ -214,6 +220,13 @@ def _render(rep: BibReport, root: Path, main_rel: str, n_sources: int) -> str:
     else:
         verified = sum(r.status == "verified" for r in rep.lookups)
         out.append(f"- {verified} of {len(rep.lookups)} cited entries verified.")
+        timed_out = sum(r.status == "skipped" and r.evidence == "time budget reached" for r in rep.lookups)
+        if timed_out:
+            out.append(f"- {timed_out} cited entries skipped (time budget reached); run /ploma:validate-bib --semantic "
+                       f"again to check them (results already found are cached).")
+        capped = sum(r.status == "skipped" and r.evidence.startswith("over the lookup cap") for r in rep.lookups)
+        if capped:
+            out.append(f"- {capped} cited entries skipped (over the lookup cap); they are checked on the next run.")
         no_doi = pick(("bib.no_doi.",))
         if no_doi:
             keys = ", ".join(f"`{f.id[len('bib.no_doi.'):]}`" for f in no_doi)
@@ -245,7 +258,8 @@ def _render(rep: BibReport, root: Path, main_rel: str, n_sources: int) -> str:
 
 def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto: str = "",
         keys: dict | None = None, fetch: cite_lookup.Fetch | None = None, cache_path: Path | None = None,
-        delay_s: float = 0.5) -> BibReport:
+        delay_s: float = 0.5, time_budget_s: float = cite_lookup.TIME_BUDGET_S,
+        clock: Any = None) -> BibReport:
     root = Path(root).resolve()
     cap = lookup_cap(cfg)
     paths = ploma_config.resolve(cfg, root)["_paths"]
@@ -277,7 +291,9 @@ def run(root: Path, cfg: dict, *, semantic: bool, skip_doi: bool = False, mailto
         if not skip_doi:
             lookups = cite_lookup.run(targets, max_lookups=cap, delay_s=delay_s,
                                       cache_path=cache_path or default_cache(root),
-                                      mailto=mailto, keys=keys or {}, fetch=fetch)
+                                      mailto=mailto, keys=keys or {}, fetch=fetch,
+                                      time_budget_s=time_budget_s,
+                                      **({"clock": clock} if clock is not None else {}))
             findings.extend(_lookup_findings(lookups, cited, root))
 
     verdict = "FAIL" if any(f.status == FAIL for f in findings) else "PASS"

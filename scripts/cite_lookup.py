@@ -1,9 +1,13 @@
-"""Citation existence lookup: Crossref by DOI, else title search on Crossref, OpenAlex, Semantic Scholar.
+"""Citation existence lookup: Crossref by DOI (DataCite when Crossref does not know the DOI), else title
+search on Crossref, OpenAlex, Semantic Scholar.
 
 Usage: python3 scripts/cite_lookup.py <refs.bib> [--keys k1,k2] [--max 50] [--mailto x]
        [--openalex-key K] [--s2-key K] [--json]
-Statuses: verified, partial, mismatch, missing, unreachable, skipped.
-Results are cached for 90 days in ``default_cache_path()``.
+Statuses: verified, partial, mismatch, missing, not_indexed, unreachable, skipped.
+``missing`` needs all three title-search sources to answer and an entry type that citation indexes cover
+(STRICT_TYPES); otherwise a work no source knows is ``not_indexed`` (R94).
+Results are cached for 90 days in ``default_cache_path()``; run() saves the cache every
+SAVE_EVERY network lookups and skips the remaining network lookups once its time budget is spent.
 Exit codes: 0 no result is missing or mismatch, 1 at least one is, 2 usage error or unreadable bib file.
 This is the only ploma script that uses the network.
 """
@@ -30,7 +34,12 @@ from bib_check import Entry, _norm_doi, parse_bib
 
 Fetch = Callable[[str, dict], "tuple[int, str]"]
 
-STATUSES = ("verified", "partial", "mismatch", "missing", "unreachable", "skipped")
+STATUSES = ("verified", "partial", "mismatch", "missing", "not_indexed", "unreachable", "skipped")
+# Entry types that citation indexes are expected to cover; others (misc, techreport, online, software) may be absent.
+STRICT_TYPES = frozenset({"article", "inproceedings", "conference", "book", "incollection", "inbook",
+                          "phdthesis", "mastersthesis"})
+SAVE_EVERY = 5
+TIME_BUDGET_S = 480
 TITLE_MATCH = 0.90
 TITLE_MISMATCH = 0.6
 CACHE_MAX_AGE = timedelta(days=90)
@@ -176,6 +185,24 @@ def _crossref_work(data: dict) -> _Hit | None:
     return _crossref_item(message) if isinstance(message, dict) else None
 
 
+def _datacite_work(data: dict) -> _Hit | None:
+    """DataCite JSON:API record: data.attributes.titles[0].title, creators[].familyName or name, publicationYear."""
+    attrs = (data.get("data") or {}).get("attributes")
+    if not isinstance(attrs, dict):
+        return None
+    titles = attrs.get("titles") or []
+    title = (titles[0] or {}).get("title") or "" if titles else ""
+    authors = []
+    for c in attrs.get("creators") or []:
+        family = c.get("familyName") or ""
+        if family:
+            authors.append(" ".join(p for p in (c.get("givenName") or "", family) if p))
+        else:
+            authors.append(c.get("name") or "")
+    year = attrs.get("publicationYear")
+    return _Hit(title, authors, int(year) if year else None, _norm_doi(attrs.get("doi") or ""))
+
+
 # ---------------------------------------------------------------- matching
 
 def _judge(entry: Entry, hit: _Hit) -> tuple[float, list[str], str]:
@@ -229,6 +256,7 @@ class _Facts:
     """Raw API facts (hits or not-found or failed), fetched live and recorded, or replayed from a cache record.
 
     Record shape: {"doi": {"failed": bool, "hit": hit-dict | None},
+                   "datacite": {"failed": bool, "hit": hit-dict | None}   (only after a Crossref 404),
                    "search": {source: {"failed": bool, "hits": [hit-dict, ...]}}}."""
 
     def __init__(self, record: dict, *, fetch: Fetch | None = None, mailto: str = "", keys: dict | None = None):
@@ -255,6 +283,17 @@ class _Facts:
         url = _with("https://api.crossref.org/works/" + quote(doi, safe="/"), {"mailto": self.mailto})
         failed, hit = self._get(url, {}, _crossref_work)
         self.record["doi"] = {"failed": failed, "hit": asdict(hit) if hit else None}
+        return failed, hit
+
+    def datacite(self, doi: str) -> tuple[bool, _Hit | None]:
+        if self.fetch is None:
+            fact = self.record.get("datacite")
+            if not isinstance(fact, dict):
+                raise _Incomplete("datacite")
+            return bool(fact["failed"]), _Hit(**fact["hit"]) if fact.get("hit") else None
+        url = "https://api.datacite.org/dois/" + quote(doi, safe="/")
+        failed, hit = self._get(url, {}, _datacite_work)
+        self.record["datacite"] = {"failed": failed, "hit": asdict(hit) if hit else None}
         return failed, hit
 
     def search(self, name: str, title: str) -> tuple[bool, list[_Hit]]:
@@ -287,33 +326,57 @@ def _title_search(entry: Entry, facts: _Facts) -> LookupResult:
     if failures == len(SOURCES):
         return LookupResult(entry.key, "unreachable", "", "every source failed (network, rate limit or server error)")
     evidence = "no title match on any reachable source"
+    if failures:
+        evidence += f" ({failures} of {len(SOURCES)} sources did not answer)"
     if best:
         evidence += f"; closest {best[1]}: {best[2]}"
-    return LookupResult(entry.key, "missing", "", evidence)
+    return _not_found(entry, evidence, all_answered=not failures)
+
+
+def _not_found(entry: Entry, evidence: str, *, all_answered: bool) -> LookupResult:
+    """R94: missing only when every source answered and the entry type is one indexes cover; else not_indexed."""
+    if all_answered and entry.type.lower() in STRICT_TYPES:
+        return LookupResult(entry.key, "missing", "", evidence)
+    return LookupResult(entry.key, "not_indexed", "",
+                        f"not found in citation indexes (type {entry.type.lower()}); {evidence}")
+
+
+def _judge_doi(entry: Entry, doi: str, hit: _Hit, source: str) -> LookupResult:
+    if not entry.fields.get("title"):
+        return LookupResult(entry.key, "partial", source, f"DOI resolves to {hit.title!r}; entry has no title",
+                            hit.doi or doi)
+    if not norm_title(hit.title):
+        return LookupResult(entry.key, "partial", source, "DOI resolves but the record has no title", hit.doi or doi)
+    ratio, problems, evidence = _judge(entry, hit)
+    if ratio < TITLE_MISMATCH:
+        status = "mismatch"
+    elif ratio >= TITLE_MATCH and not problems:
+        status = "verified"
+    else:
+        status = "partial"
+    return LookupResult(entry.key, status, source, evidence, hit.doi or doi)
 
 
 def _doi_lookup(entry: Entry, doi: str, facts: _Facts) -> LookupResult:
     failed, hit = facts.doi(doi)
     if not failed and hit is not None:
-        if not entry.fields.get("title"):
-            return LookupResult(entry.key, "partial", "crossref", f"DOI resolves to {hit.title!r}; entry has no title",
-                                hit.doi or doi)
-        if not norm_title(hit.title):
-            return LookupResult(entry.key, "partial", "crossref", "DOI resolves but the record has no title",
-                                hit.doi or doi)
-        ratio, problems, evidence = _judge(entry, hit)
-        if ratio < TITLE_MISMATCH:
-            status = "mismatch"
-        elif ratio >= TITLE_MATCH and not problems:
-            status = "verified"
-        else:
-            status = "partial"
-        return LookupResult(entry.key, status, "crossref", evidence, hit.doi or doi)
-    # DOI not found or Crossref unavailable: fall back to a title search.
-    reason = "Crossref unreachable for DOI" if failed else "DOI not found on Crossref"
+        return _judge_doi(entry, doi, hit, "crossref")
+    reason = "Crossref unreachable for DOI"
+    if not failed:
+        # Crossref 404: DataCite registers arXiv, Zenodo and many dataset DOIs (R93).
+        dc_failed, dc_hit = facts.datacite(doi)
+        if not dc_failed and dc_hit is not None:
+            return _judge_doi(entry, doi, dc_hit, "datacite")
+        failed = dc_failed
+        reason = "DOI not found on Crossref; DataCite unreachable for DOI" if dc_failed \
+            else "DOI not found on Crossref or DataCite"
+    # DOI not found or unavailable: fall back to a title search.
     if not entry.fields.get("title"):
-        status = "unreachable" if failed else "missing"
-        return LookupResult(entry.key, status, "", f"{reason}; entry has no title", doi)
+        if failed:
+            return LookupResult(entry.key, "unreachable", "", f"{reason}; entry has no title", doi)
+        res = _not_found(entry, f"{reason}; entry has no title", all_answered=False)
+        res.doi = doi
+        return res
     res = _title_search(entry, facts)
     if res.status == "verified" and not failed:
         res.status = "partial"  # the work exists, but the DOI in the entry does not resolve
@@ -429,7 +492,8 @@ def lookup(entry: Entry, *, fetch: Fetch, mailto: str = "", keys: dict | None = 
         return hit
     record: dict = {}
     res = _resolve(entry, _Facts(record, fetch=fetch, mailto=mailto, keys=keys))
-    if res.status not in NOT_CACHED:
+    source_failed = any(isinstance(f, dict) and f.get("failed") for f in (record.get("search") or {}).values())
+    if res.status not in NOT_CACHED and not (res.status == "not_indexed" and source_failed):
         record["checked_at"] = _now().isoformat()
         cache[ckey] = record
     return res
@@ -447,8 +511,11 @@ def _throttled(fetch: Fetch, delay_s: float) -> Fetch:
 
 
 def run(entries: list[Entry], *, max_lookups: int, delay_s: float = 0.5, cache_path: Path, mailto: str = "",
-        keys: dict | None = None, fetch: Fetch | None = None) -> list[LookupResult]:
-    """Look up every entry. Cache hits are free; at most ``max_lookups`` entries go to the network, the rest are skipped."""
+        keys: dict | None = None, fetch: Fetch | None = None, time_budget_s: float = TIME_BUDGET_S,
+        clock: Callable[[], float] = time.monotonic) -> list[LookupResult]:
+    """Look up every entry. Cache hits are free; at most ``max_lookups`` entries go to the network, the rest are
+    skipped. Once ``time_budget_s`` seconds (measured by ``clock``) have passed, entries that would need the network
+    are skipped with "time budget reached". The cache is saved every SAVE_EVERY network lookups and at the end."""
     keys = keys or {}
     if fetch is None:
         ua = user_agent(mailto)
@@ -458,17 +525,24 @@ def run(entries: list[Entry], *, max_lookups: int, delay_s: float = 0.5, cache_p
             return default_fetch(url, {"User-Agent": ua, **headers})
     net = _throttled(fetch, delay_s)
     cache = load_cache(cache_path)
-    results, used = [], 0
+    results, used, saved_at = [], 0, 0
+    started = clock()
     for entry in entries:
         if cache_key(entry) and _cached(entry, cache) is None:
             if used >= max_lookups:
                 results.append(LookupResult(entry.key, "skipped", "", f"over the lookup cap of {max_lookups} per run"))
+                continue
+            if clock() - started >= time_budget_s:
+                results.append(LookupResult(entry.key, "skipped", "", "time budget reached"))
                 continue
             used += 1
         try:
             results.append(lookup(entry, fetch=net, mailto=mailto, keys=keys, cache=cache))
         except Exception as exc:  # one bad entry must not abort the run or lose the cache
             results.append(LookupResult(entry.key, "unreachable", "", f"lookup error: {exc!r}"))
+        if used - saved_at >= SAVE_EVERY:
+            save_cache(cache_path, cache)
+            saved_at = used
     save_cache(cache_path, cache)
     return results
 

@@ -111,10 +111,13 @@ def test_all_unreachable():
         assert len(calls) == 3        # each source tried once, no retries
 
 
-def test_one_source_unreachable_rest_miss_is_missing():
+def test_one_source_unreachable_rest_miss_is_not_indexed():
+    """R94: missing needs every source to answer; one source down gives not_indexed (WARN)."""
     fetch = fake_fetch({"api.crossref.org": (503, ""), "api.openalex.org": (200, OPENALEX_EMPTY),
                         "api.semanticscholar.org": (200, S2_EMPTY)})
-    assert lookup(ENTRY_NO_DOI, fetch=fetch, cache={}).status == "missing"
+    r = lookup(ENTRY_NO_DOI, fetch=fetch, cache={})
+    assert r.status == "not_indexed"
+    assert "not found in citation indexes (type inproceedings)" in r.evidence
 
 
 def test_cache_hit_skips_fetch():
@@ -322,7 +325,7 @@ def test_unexpected_shapes_count_as_source_failure():
     empty = {"api.openalex.org": (200, OPENALEX_EMPTY), "api.semanticscholar.org": (200, S2_EMPTY)}
     r = lookup(ENTRY_NO_DOI, fetch=fake_fetch({"api.crossref.org": (200, json.dumps({"message": {"items": ["x"]}})),
                                                **empty}), cache={})
-    assert r.status == "missing"
+    assert r.status == "not_indexed"                    # R94: Crossref counts as not answering
     r = lookup(_doi_entry("Sequence Models for Event Logs"),
                fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=[None]))}), cache={})
     assert r.status == "partial"                        # parsed as an empty title, no TypeError
@@ -379,3 +382,164 @@ def test_title_search_with_different_subtitles_is_partial():
     fetch = fake_fetch({"api.crossref.org": (200, CROSSREF_MISS), "api.openalex.org": (200, body)})
     r = lookup(e, fetch=fetch, cache={})
     assert (r.status, r.source) == ("partial", "openalex") and "subtitle differs" in r.evidence
+
+
+# ---------------------------------------------------------------- final fix wave
+
+DATACITE_ARXIV = (API / "datacite_arxiv.json").read_text(encoding="utf-8")
+ALL_MISS = {"api.crossref.org/works?": (200, CROSSREF_MISS), "api.openalex.org": (200, OPENALEX_EMPTY),
+            "api.semanticscholar.org": (200, S2_EMPTY)}
+
+
+def _typed(entry_type: str, key: str = "K") -> object:
+    return parse_bib(f"@{entry_type}{{{key}, author = {{Dana Lindqvist}}, title = {{An Unindexed Work}}, year = 2019}}")[0]
+
+
+def test_misc_not_found_is_not_indexed():
+    """R94: @misc is legitimately absent from citation indexes."""
+    r = lookup(_typed("misc"), fetch=fake_fetch(ALL_MISS), cache={})
+    assert r.status == "not_indexed"
+    assert "not found in citation indexes (type misc)" in r.evidence
+
+
+def test_article_not_found_with_all_sources_answering_is_missing():
+    r = lookup(_typed("article"), fetch=fake_fetch(ALL_MISS), cache={})
+    assert r.status == "missing"
+
+
+def test_article_not_found_with_one_source_rate_limited_is_not_indexed():
+    routes = dict(ALL_MISS, **{"api.semanticscholar.org": (429, "")})
+    cache: dict = {}
+    r = lookup(_typed("article"), fetch=fake_fetch(routes), cache=cache)
+    assert r.status == "not_indexed" and "type article" in r.evidence
+    assert cache == {}, "a verdict limited by a failed source is not cached"
+
+
+def test_every_strict_type_can_be_missing():
+    for t in ("article", "inproceedings", "conference", "book", "incollection", "inbook", "phdthesis",
+              "mastersthesis"):
+        assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "missing", t
+    for t in ("techreport", "online", "software", "unpublished"):
+        assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "not_indexed", t
+
+
+def test_cli_not_indexed_does_not_fail(tmp_path, monkeypatch, capsys):
+    bib = tmp_path / "r.bib"
+    bib.write_text("@misc{M, title = {An Unindexed Work}}\n", encoding="utf-8")
+    monkeypatch.setattr(cite_lookup, "default_fetch", fake_fetch(ALL_MISS))
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "data"))
+    assert cite_lookup.main([str(bib), "--json"]) == 0
+
+
+ARXIV_ENTRY = parse_bib(r"""@misc{Vaswani2017,
+  author = {Vaswani, Ashish and Shazeer, Noam},
+  title = {Attention Is All You Need},
+  year = {2017},
+  doi = {10.48550/arXiv.1706.03762}
+}""")[0]
+
+
+def test_crossref_404_checks_datacite_and_verifies_arxiv_doi():
+    """R93: arXiv DOIs are registered with DataCite, not Crossref."""
+    calls = []
+    fetch = fake_fetch({"api.crossref.org/works/10.48550": (404, "Resource not found."),
+                        "api.datacite.org/dois/10.48550/arxiv.1706.03762": (200, DATACITE_ARXIV)}, calls)
+    r = lookup(ARXIV_ENTRY, fetch=fetch, cache={})
+    assert (r.status, r.source) == ("verified", "datacite"), r.evidence
+    assert r.doi == "10.48550/arxiv.1706.03762"
+    assert [host(c) for c in calls] == ["api.crossref.org", "api.datacite.org"]
+
+
+def test_datacite_record_with_other_title_is_mismatch():
+    e = parse_bib(r"@misc{K, author = {Vaswani, Ashish}, title = {Protein Folding in Yeast}, year = 2017,"
+                  r" doi = {10.48550/arXiv.1706.03762}}")[0]
+    fetch = fake_fetch({"api.crossref.org/works/10.48550": (404, ""), "api.datacite.org": (200, DATACITE_ARXIV)})
+    r = lookup(e, fetch=fetch, cache={})
+    assert (r.status, r.source) == ("mismatch", "datacite")
+
+
+def test_datacite_creator_name_without_family_name_is_used():
+    body = json.loads(DATACITE_ARXIV)
+    body["data"]["attributes"]["creators"] = [{"name": "Vaswani, Ashish"}]
+    fetch = fake_fetch({"api.crossref.org/works/10.48550": (404, ""), "api.datacite.org": (200, json.dumps(body))})
+    assert lookup(ARXIV_ENTRY, fetch=fetch, cache={}).status == "verified"
+
+
+def test_datacite_404_falls_back_to_title_search():
+    calls = []
+    fetch = fake_fetch(dict(ALL_MISS, **{"api.crossref.org/works/10.48550": (404, ""),
+                                         "api.datacite.org": (404, "")}), calls)
+    r = lookup(ARXIV_ENTRY, fetch=fetch, cache={})
+    assert [host(c) for c in calls] == ["api.crossref.org", "api.datacite.org", "api.crossref.org",
+                                        "api.openalex.org", "api.semanticscholar.org"]
+    assert "DOI not found on Crossref or DataCite" in r.evidence
+
+
+def test_crossref_unreachable_does_not_query_datacite():
+    calls = []
+    fetch = fake_fetch({"api.crossref.org": (503, ""), "api.openalex.org": (200, OPENALEX_EMPTY),
+                        "api.semanticscholar.org": (200, S2_EMPTY)}, calls)
+    lookup(ARXIV_ENTRY, fetch=fetch, cache={})
+    assert "api.datacite.org" not in [host(c) for c in calls]
+
+
+def test_datacite_verdict_is_cached_and_replayed():
+    cache: dict = {}
+    fetch = fake_fetch({"api.crossref.org/works/10.48550": (404, ""), "api.datacite.org": (200, DATACITE_ARXIV)})
+    first = lookup(ARXIV_ENTRY, fetch=fetch, cache=cache)
+    calls = []
+    second = lookup(ARXIV_ENTRY, fetch=recording_fetch(calls), cache=cache)
+    assert calls == [] and second == first
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.t = 1000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_time_budget_skips_remaining_entries(tmp_path):
+    clock = FakeClock()
+    inner = recording_fetch([], miss_all=True)
+
+    def slow_fetch(url, headers):
+        clock.t += 100            # every network call takes 100 s on the fake clock
+        return inner(url, headers)
+    entries = parse_bib(r"""@article{A, title = {Graph Methods for Process Discovery}}
+@article{B, title = {Second Title Here}}
+@article{C, title = {Third Title Here}}""")
+    out = run(entries, max_lookups=50, delay_s=0, cache_path=tmp_path / "c.json", mailto="", keys={},
+              fetch=slow_fetch, time_budget_s=480, clock=clock)
+    assert [r.status for r in out] == ["missing", "missing", "skipped"]
+    assert out[2].evidence == "time budget reached"
+    assert json.loads((tmp_path / "c.json").read_text()), "results found before the budget ran out are cached"
+
+
+def test_time_budget_still_serves_cache_hits(tmp_path):
+    path = tmp_path / "c.json"
+    run([ENTRY_WITH_DOI], max_lookups=5, delay_s=0, cache_path=path, mailto="", keys={},
+        fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, CROSSREF_HIT)}))
+    clock = FakeClock()
+    out = run([ENTRY_NO_DOI, ENTRY_WITH_DOI], max_lookups=5, delay_s=0, cache_path=path, mailto="", keys={},
+              fetch=recording_fetch([], miss_all=True), time_budget_s=0, clock=clock)
+    assert [r.status for r in out] == ["skipped", "verified"]
+
+
+def test_default_time_budget_is_480_seconds():
+    import inspect
+    assert inspect.signature(run).parameters["time_budget_s"].default == 480
+
+
+def test_cache_saved_every_five_network_lookups(tmp_path, monkeypatch):
+    saves = []
+    real = cite_lookup.save_cache
+    monkeypatch.setattr(cite_lookup, "save_cache", lambda path, cache: (saves.append(len(cache)), real(path, cache)))
+    entries = [_doi_entry("Sequence Models for Event Logs", doi=f"10.1/x{i}") for i in range(12)]
+    for i, e in enumerate(entries):
+        e.key = f"K{i}"
+    body = {f"api.crossref.org/works/10.1/x{i}": (200, _work(title=["Sequence Models for Event Logs"]))
+            for i in range(12)}
+    run(entries, max_lookups=50, delay_s=0, cache_path=tmp_path / "c.json", mailto="", keys={}, fetch=fake_fetch(body))
+    assert saves == [5, 10, 12]
