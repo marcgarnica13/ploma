@@ -1451,3 +1451,10 @@ def test_outputs_readme_lists_checkpoints():
     text = (REPO / "templates" / "quality_reports" / "README.md").read_text(encoding="utf-8")
     row = next(ln for ln in text.splitlines() if ln.startswith("| `checkpoints/`"))
     assert row.rstrip().endswith("| yes |")
+
+
+def test_audit_reproducibility_audits_unkeyed_placements():
+    """R157: numbers placed only by a value outside pipeline.metric_keys are audited in Phase 2."""
+    text = _skill("audit-reproducibility")
+    phase2 = text[text.index("## Phase 2"):text.index("## Phase 3")]
+    assert "placed_by_unkeyed_value" in phase2

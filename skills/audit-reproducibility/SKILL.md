@@ -58,7 +58,7 @@ Never set or print environment values, and never change the pipeline code while 
 Collect the numeric claims of results, each as id, location (`file:line`, plus table, row and column for a cell), kind (`count`, `metric`, `aggregate` or `percentage`), the reported value and the verbatim sentence or row:
 
 1. Every claim already in the passport (`<outputs.dir>/passports/<slug>.yaml`, if it exists).
-2. Numbers the consistency pass could not place: `table_cell_not_in_results`, `abstract_number_only_in_results`, `intro_number_only_in_results` and `metric_key_missing` findings.
+2. Numbers the consistency pass could not place: `table_cell_not_in_results`, `abstract_number_only_in_results`, `intro_number_only_in_results` and `metric_key_missing` findings. Also every `placed_by_unkeyed_value` INFO: with `pipeline.metric_keys` set, the script matches numbers only against values under those keys, and these numbers matched only a value under another key (a per-seed history, an intermediate). Audit each one: find the value it really reports, or record it as UNMATCHED.
 3. Reported results the script does not check: metric values, counts and percentages stated in the body prose and captions of the results and evaluation sections.
 
 Skip years, section and equation numbers, citation numbers, and settings the paper states as inputs rather than results.

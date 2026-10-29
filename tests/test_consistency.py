@@ -243,7 +243,7 @@ def test_abstract_number_only_in_results_warns(tmp_path):
 
 def test_sample_paper_is_clean(sample_paper):
     rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results",
-               metric_keys=["avg_fitness", "n_teams"])
+               metric_keys=KEYS)
     assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
     assert sorted(c["raw"] for c in rep.table_cells) == ["0.72", "0.76", "0.81", "12", "12", "12"]
 
@@ -413,3 +413,71 @@ def test_thousands_decimal_table_cell(tmp_path):
     main = tmp_path / "m.tex"
     main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & 1,234.5 \\\\\n\\end{tabular}\n\\end{document}\n")
     assert [(c["raw"], c["kind"]) for c in _run(main).table_cells] == [("1,234.5", "decimal")]
+
+
+# ---------------------------------------------------------------- R157: metric_keys narrow the pool
+
+def _seed_history(results: Path) -> None:
+    """5 seeds x 50 per-generation floats (0.8599 rounds to 0.86) next to the keyed metrics."""
+    import random
+    rng = random.Random(7)
+    data = json.loads((results / "metrics.json").read_text())
+    data["per_run"] = {f"seed{s}": {"history": [round(rng.random(), 4) for _ in range(50)]} for s in range(5)}
+    data["per_run"]["seed0"]["history"][41] = 0.8599
+    data["per_run"]["seed3"]["history"][7] = 0.9134
+    (results / "metrics.json").write_text(json.dumps(data))
+
+
+KEYS = ["avg_fitness", "n_teams", "baseline_win_ratio", "baseline_rating_update"]
+
+
+def test_wrong_cell_is_not_hidden_by_history_values(sample_paper):
+    _seed_history(sample_paper / "results")
+    res = sample_paper / "sections" / "results.tex"
+    res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.86"))
+    rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=KEYS)
+    f = next(f for f in rep.findings if f.id == "consistency.table_cell_not_in_results.0.86")
+    assert f.status == "WARN" and rep.verdict == "WARN"
+    info = next(f for f in rep.findings if f.id == "consistency.placed_by_unkeyed_value.0.86")
+    assert info.status == "INFO"
+
+
+def test_correct_cells_match_keyed_values(sample_paper):
+    _seed_history(sample_paper / "results")
+    rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=KEYS)
+    assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+    assert not any(f.id.startswith("consistency.placed_by_unkeyed_value") for f in rep.findings)
+
+
+def test_abstract_number_matched_only_by_unkeyed_value(sample_paper):
+    _seed_history(sample_paper / "results")
+    main = sample_paper / "main.tex"
+    main.write_text(main.read_text().replace("\\end{abstract}", "We also reach 0.9134.\n\\end{abstract}", 1))
+    rep = _run(main, results_dir=sample_paper / "results", metric_keys=KEYS)
+    ids = _ids(rep)
+    assert "consistency.abstract_number_not_in_body.0.9134" in ids
+    assert "consistency.abstract_number_only_in_results.0.9134" not in ids
+    assert "consistency.placed_by_unkeyed_value.0.9134" in ids
+
+
+def test_keyed_values_any_depth_and_csv_columns(tmp_path):
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "a.json").write_text(json.dumps({"runs": [{"m": {"score": 0.4981}}], "other": 0.333}))
+    (res / "t.csv").write_text("name,share\nb,0.4523\n")
+    r = consistency.load_results(res, ["score", "share"])
+    assert r.keyed_values == [0.4523, 0.4981]
+    assert 0.333 in r.values and 0.333 not in r.keyed_values
+
+
+def test_without_metric_keys_every_value_counts(sample_paper):
+    _seed_history(sample_paper / "results")
+    res = sample_paper / "sections" / "results.tex"
+    res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.86"))
+    rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=[])
+    assert not any(f.id.startswith(("consistency.table_cell", "consistency.placed_by")) for f in rep.findings)
+
+
+@pytest.mark.parametrize("text,raws", [("1,234,5", ["1,234", "5"]), ("1,234.5,6", ["1,234.5", "6"])])
+def test_thousands_then_comma_list_split(text, raws):
+    assert [n["raw"] for n in extract_numbers(text)] == raws

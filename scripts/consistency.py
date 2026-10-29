@@ -12,7 +12,9 @@ pipeline.enabled), pipeline.metric_keys, pipeline.tolerances and the passport at
 
 Manuscript numbers are compared with each other by kind (percent, count, decimal) and display
 rounding only; tolerances apply to comparisons with results files, where a percent may also match a
-fraction times 100. siunitx \\num, \\qty and \\SI are read as numbers.
+fraction times 100. With pipeline.metric_keys set, table cells and abstract and introduction numbers
+match only results values whose key path (any depth) ends in a metric key, or .csv columns named by
+one; without metric keys every numeric results value counts (Ruling R157). siunitx \\num, \\qty and \\SI are read as numbers.
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -21,6 +23,10 @@ Rules (spec section 7.2):
                                                          next) absent from the rest of the body
   consistency.intro_number_only_in_results.<raw>   WARN  absent from the rest of the body, in results
   consistency.table_cell_not_in_results.<raw>      WARN  table cell matches no results value
+  consistency.placed_by_unkeyed_value.<raw>        INFO  with metric_keys set, a cell or abstract or
+                                                         introduction number that only a value under
+                                                         another key matches (audit-reproducibility
+                                                         Phase 2 checks these)
   consistency.metric_key_missing.<key>             WARN  a metric key appears in no results file
   consistency.results_unreadable.<file>            WARN  a results file could not be parsed
   consistency.passport.<id>                        FAIL  passport claim with status FAIL or STALE
@@ -236,17 +242,20 @@ def matches(num: dict, value: float, tolerances: dict) -> bool:
 
 # ---------------------------------------------------------------- results
 
-def _walk_json(data: Any, keys: set[str], values: list[float], found: set[str]) -> None:
+def _walk_json(data: Any, keys: set[str], res: "Results", key: str | None = None) -> None:
+    """Collect every finite number; a number whose nearest enclosing key is in keys is also keyed."""
     if isinstance(data, dict):
         for k, v in data.items():
             if k in keys and (_is_number(v) or isinstance(v, (list, dict))):
-                found.add(k)
-            _walk_json(v, keys, values, found)
+                res.keys_found.add(k)
+            _walk_json(v, keys, res, k)
     elif isinstance(data, list):
         for v in data:
-            _walk_json(v, keys, values, found)
+            _walk_json(v, keys, res, key)
     elif _is_number(data):
-        values.append(float(data))
+        res.values.append(float(data))
+        if key in keys:
+            res.keyed_values.append(float(data))
 
 
 def _is_number(v: Any) -> bool:
@@ -257,12 +266,15 @@ def _is_number(v: Any) -> bool:
 class Results:
     files: list[Path] = field(default_factory=list)
     values: list[float] = field(default_factory=list)
+    keyed_values: list[float] = field(default_factory=list)  # values whose key path ends in a metric key
     keys_found: set[str] = field(default_factory=set)
     unreadable: list[tuple[Path, str]] = field(default_factory=list)
 
 
 def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
-    """Every numeric value at any depth of every .json, and every numeric .csv cell, under results_dir."""
+    """Every numeric value at any depth of every .json, and every numeric .csv cell, under results_dir;
+    keyed_values holds those whose key path (any depth) ends in one of metric_keys, or whose .csv
+    column header is one."""
     res = Results()
     if results_dir is None or not Path(results_dir).is_dir():
         return res
@@ -273,7 +285,7 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
         try:
             text = path.read_text(encoding="utf-8")
             if path.suffix.lower() == ".json":
-                _walk_json(json.loads(text), keys, res.values, res.keys_found)
+                _walk_json(json.loads(text), keys, res)
             else:
                 rows = list(csv.reader(text.splitlines()))
                 header = rows[0] if rows else []
@@ -286,6 +298,8 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
                             res.values.append(number)
                             if i < len(header) and header[i].strip() in keys:
                                 res.keys_found.add(header[i].strip())
+                                if row is not header:
+                                    res.keyed_values.append(number)
                         except ValueError:
                             pass
         except (OSError, UnicodeDecodeError, ValueError, csv.Error) as exc:
@@ -293,7 +307,27 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
             continue
         res.files.append(path)
     res.values = sorted(set(res.values))
+    res.keyed_values = sorted(set(res.keyed_values))
     return res
+
+
+def _pool(results: Results, metric_keys: list[str]) -> list[float]:
+    """The values manuscript numbers are matched against: keyed values only when metric keys are set."""
+    return results.keyed_values if metric_keys else results.values
+
+
+def _unkeyed(num: dict, results: Results, metric_keys: list[str], tolerances: dict) -> bool:
+    """With metric keys set: no keyed value matches num, but some other results value does."""
+    return bool(metric_keys) and not any(matches(num, v, tolerances) for v in results.keyed_values) \
+        and any(matches(num, v, tolerances) for v in results.values)
+
+
+def _unkeyed_finding(num: dict, where: str) -> Finding:
+    return Finding(f"consistency.placed_by_unkeyed_value.{num['raw']}", INFO,
+                   f"{num['raw']} matches a results value outside pipeline.metric_keys only",
+                   observed=f"{where}; matched a value under another key (for example a per-seed history)",
+                   remediation="Check where the number comes from (/ploma:audit-reproducibility Phase 2); add its "
+                               "key to pipeline.metric_keys if it is a reported metric.", group="tables")
 
 
 # ---------------------------------------------------------------- manuscript
@@ -510,9 +544,12 @@ def _verdict(findings: list[Finding]) -> str:
 
 
 def _check_numbers(part: str, numbers: list[dict], against: list[dict], where_text: str, results: Results,
-                   tolerances: dict) -> list[Finding]:
+                   tolerances: dict, metric_keys: list[str] | None = None) -> list[Finding]:
     """FAIL for each number absent from against (same kind, display rounding); WARN instead when a
-    results value matches it within tolerance."""
+    results value matches it within tolerance (only values under metric_keys when those are set, with
+    an INFO placed_by_unkeyed_value when only another key's value matches)."""
+    metric_keys = list(metric_keys or [])
+    pool = _pool(results, metric_keys)
     label = {"abstract": "abstract", "intro": "introduction"}[part]
     group = "abstract" if part == "abstract" else "intro"
     out: list[Finding] = []
@@ -521,7 +558,9 @@ def _check_numbers(part: str, numbers: list[dict], against: list[dict], where_te
         if a["raw"] in seen or any(same_number(a, b) for b in against):
             continue
         seen.add(a["raw"])
-        if any(matches(a, v, tolerances) for v in results.values):
+        if _unkeyed(a, results, metric_keys, tolerances):
+            out.append(_unkeyed_finding(a, _where(a)))
+        if any(matches(a, v, tolerances) for v in pool):
             out.append(Finding(f"consistency.{part}_number_only_in_results.{a['raw']}", WARN,
                                f"{label} number {a['raw']} appears in a results file but not in {where_text}",
                                observed=f"{_where(a)}; looked in {where_text} ({len(against)} numbers) and results",
@@ -550,13 +589,14 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
     for part, numbers, against, where_text in (
             ("abstract", abstract, body, "the body"),
             ("intro", intro, rest, "the rest of the body")):
-        findings += _check_numbers(part, numbers, against, where_text, results, tolerances)
+        findings += _check_numbers(part, numbers, against, where_text, results, tolerances, metric_keys)
 
     tables_checked = bool(results.files) and bool(results.values)
     if tables_checked:
+        pool = _pool(results, metric_keys)
         missed: dict[str, list[dict]] = {}
         for c in cells:
-            if not any(matches(c, v, tolerances) for v in results.values):
+            if not any(matches(c, v, tolerances) for v in pool):
                 missed.setdefault(c["raw"], []).append(c)
         for raw, where in missed.items():
             findings.append(Finding(f"consistency.table_cell_not_in_results.{raw}", WARN,
@@ -565,6 +605,9 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
                                     + f"; looked in {len(results.files)} results file(s)",
                                     remediation="Check the cell against the pipeline outputs; re-run the pipeline "
                                                 "or correct the table.", group="tables"))
+            if _unkeyed(where[0], results, metric_keys, tolerances) and not any(
+                    f.id == f"consistency.placed_by_unkeyed_value.{raw}" for f in findings):
+                findings.append(_unkeyed_finding(where[0], ", ".join(_where(c) for c in where)))
     if results.files:
         for key in metric_keys:
             if key not in results.keys_found:

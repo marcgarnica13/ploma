@@ -30,5 +30,5 @@ pipeline:
   language: python
   run_from: "."
   outputs_dir: results
-  metric_keys: [avg_fitness, n_teams]
+  metric_keys: [avg_fitness, n_teams, baseline_win_ratio, baseline_rating_update]
   tolerances: {counts: exact, metrics: 0.01, aggregates: 0.02, percentages_pp: 0.1}

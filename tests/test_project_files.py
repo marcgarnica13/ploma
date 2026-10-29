@@ -110,7 +110,7 @@ def test_rules_have_paths_frontmatter_and_no_domain_words(sample_paper, cfg):
     assert "Facts live in ploma.yaml, do not restate them here" in text
     pglobs, pbody = _frontmatter_paths(specs[PIPELINE])
     assert pglobs == ["**"] and pbody[0] == GENERATED_LINE
-    assert "avg_fitness, n_teams" in specs[PIPELINE] and "metrics 0.01" in specs[PIPELINE]
+    assert "avg_fitness, n_teams, baseline_win_ratio, baseline_rating_update" in specs[PIPELINE] and "metrics 0.01" in specs[PIPELINE]
     for path in (MANUSCRIPT, PIPELINE):
         assert not BANNED_RE.search(specs[path]), path
         assert not LLNCS_RE.search(specs[path]), path
@@ -676,7 +676,7 @@ def test_pipeline_skill_carries_the_configured_values(sample_paper, cfg):
     text = {s.path: s.content for s in project_files.render_all(cfg, sample_paper)}[PIPELINE_SKILL]
     for s in ("- Seeds are fixed, keep them", "- Import the loader after DATA_DIR is set", "- DATA_DIR", "- RUN_SEED",
               "Stage chain: load -> clean -> fit -> evaluate", "Run from: code", "Rerun command: `make results`",
-              "Results directory: results", "Metric keys reported in the paper: avg_fitness, n_teams",
+              "Results directory: results", "Metric keys reported in the paper: avg_fitness, n_teams, baseline_win_ratio, baseline_rating_update",
               "Language: python", "## Pre-flight report", "ploma:code-reviewer", "Monitor", "run_in_background"):
         assert s in text, s
     fm = _yamlio.loads_yaml(text.split("\n---\n", 1)[0].removeprefix("---\n"))
