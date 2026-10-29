@@ -74,7 +74,7 @@ def test_llncs_fixture_maps_to_llncs_conference(tmp_path):
     assert g["venue.profile"]["recommended"] == "llncs-conference" and "springer-ml" in g["venue.profile"]["options"]
     assert g["venue.profile"]["options"][0] == "llncs-conference"
     assert {"generic-journal", "generic-conference"} <= set(g["venue.profile"]["options"])
-    assert g["venue.page_budget"]["recommended"] is None
+    assert g["venue.page_budget"]["recommended"] == 12
     assert inv["title"] == "A Method for Ranking Things"
 
 

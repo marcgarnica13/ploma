@@ -540,8 +540,12 @@ def gaps(inv: dict, proposal: dict) -> list[dict]:
     out.append({"key": "venue.profile",
                 "question": f"Which venue profile fits this paper (document class {inv.get('doc_class') or 'unknown'})?",
                 "recommended": opts[0], "options": opts})
+    try:
+        budget = profiles.load_venue(opts[0], _inv_root(inv)).get("page_budget")
+    except profiles.ProfileError:
+        budget = None
     out.append({"key": "venue.page_budget", "question": "What is the page budget for this venue (null for none)?",
-                "recommended": None, "options": []})
+                "recommended": budget, "options": []})
     if inv.get("code"):
         out.append({"key": "pipeline.enabled",
                     "question": f"Is the code tree in {inv['code']['dir']} the pipeline that produces this paper's numbers?",

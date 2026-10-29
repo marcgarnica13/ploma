@@ -16,7 +16,7 @@ import argparse
 import hashlib
 import json
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -52,16 +52,17 @@ def plugin_version() -> str:
     return version if isinstance(version, str) and version else DEFAULT_VERSION
 
 
-def _rel(root: Path, p: str) -> str:
-    candidate = Path(p)
-    if candidate.is_absolute():
-        try:
-            candidate = candidate.resolve().relative_to(Path(root).resolve())
-        except ValueError:
-            raise ValueError(f"receipt path {p!r} is outside the repo root {root}") from None
-    rel = candidate.as_posix()
-    if rel in ("", ".") or rel.startswith("../"):
-        raise ValueError(f"receipt path {p!r} is not a file inside the repo root")
+def _norm_path(p: str, where: str) -> str:
+    """Repo-relative posix form of p; absolute paths and any '..' part raise ValueError."""
+    raw = p.replace("\\", "/")
+    pure = PurePosixPath(raw)
+    if pure.is_absolute() or PureWindowsPath(p).drive or PureWindowsPath(p).root:
+        raise ValueError(f"{where}: receipt path {p!r} must be relative to the repo root")
+    if ".." in pure.parts:
+        raise ValueError(f"{where}: receipt path {p!r} must not contain '..'")
+    rel = pure.as_posix()
+    if rel in ("", "."):
+        raise ValueError(f"{where}: receipt path {p!r} does not name a file")
     return rel
 
 
@@ -80,7 +81,7 @@ def write(root: Path, cfg: dict, files: list[dict]) -> Path:
     entries = []
     for f in files:
         _check_entry(f, "receipt.write")
-        entries.append({"path": _rel(root, f["path"]), "mode": f["mode"], "sha256": f["sha256"]})
+        entries.append({"path": _norm_path(f["path"], "receipt.write"), "mode": f["mode"], "sha256": f["sha256"]})
     data = {"ploma_version": plugin_version(), "at": _now(), "files": entries}
     out = path(root, cfg)
     _atomic_write(out, json.dumps(data, indent=2) + "\n")
@@ -103,6 +104,7 @@ def load(root: Path, cfg: dict) -> dict | None:
             raise ValueError(f"{p}: receipt lacks a string {key!r}")
     for entry in data["files"]:
         _check_entry(entry, str(p))
+        _norm_path(entry["path"], str(p))
     return data
 
 
@@ -114,7 +116,7 @@ def compare(root: Path, cfg: dict) -> list[dict]:
     base = Path(root)
     out = []
     for entry in data["files"]:
-        target = base / entry["path"]
+        target = base / _norm_path(entry["path"], str(path(root, cfg)))
         if not target.is_file():
             state = "missing"
         else:
@@ -157,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         rows = compare(root, cfg)
     except ValueError as exc:
         return _error(str(exc), args.json)
+    except OSError as exc:
+        return _error(f"cannot hash {exc.filename or 'a receipt file'}: {exc.strerror or exc}", args.json)
     if args.json:
         print(json.dumps(rows, indent=2))
     else:

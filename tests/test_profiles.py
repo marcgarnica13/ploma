@@ -170,3 +170,9 @@ def test_inventory_offers_project_venue(tmp_path, repo_root):
     opts = {g["key"]: g for g in inventory.gaps(inv, inventory.propose_config(inv))}["venue.profile"]["options"]
     assert opts == ["ieee-conference", "my-ieee", "generic-conference", "generic-journal"]
     assert profiles.venues_for_class("IEEEtran", tmp_path) == ["ieee-conference", "my-ieee", "generic-conference"]
+
+
+def test_llncs_re_spares_venue_key():
+    from _banned import LLNCS_RE
+    assert LLNCS_RE.search("documentclass{llncs}") and LLNCS_RE.search("LLNCS")
+    assert not LLNCS_RE.search("venue: llncs-conference")

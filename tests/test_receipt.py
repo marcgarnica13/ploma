@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -19,13 +20,14 @@ def test_load_on_fresh_repo_is_none(sample_paper, cfg):
     assert receipt.load(sample_paper, cfg) is None
 
 
-def test_write_then_compare_unchanged(sample_paper, cfg):
+def test_write_then_compare_unchanged(sample_paper, cfg, repo_root):
     files = [_apply(sample_paper, ".claude/rules/a.md", "rule\n"),
              _apply(sample_paper, "CLAUDE.md", "hello\n", mode="merged")]
     out = receipt.write(sample_paper, cfg, files)
     assert out == sample_paper / "quality_reports" / "ploma-receipt.json"
     data = json.loads(out.read_text())
-    assert data["ploma_version"] == "0.1.0" and data["at"].endswith("Z")
+    manifest = json.loads((repo_root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert data["ploma_version"] == manifest["version"] and data["at"].endswith("Z")
     assert [f["path"] for f in data["files"]] == [".claude/rules/a.md", "CLAUDE.md"]
     assert receipt.load(sample_paper, cfg) == data
     assert receipt.compare(sample_paper, cfg) == [
@@ -53,11 +55,39 @@ def test_unknown_mode_rejected(sample_paper, cfg):
         receipt.write(sample_paper, cfg, [f])
 
 
-def test_absolute_path_inside_root_stored_relative(sample_paper, cfg):
+def test_paths_normalised_and_unsafe_paths_rejected(sample_paper, cfg):
     f = _apply(sample_paper, "sub/a.md", "x\n")
-    f["path"] = str(sample_paper / "sub" / "a.md")
-    receipt.write(sample_paper, cfg, [f])
+    receipt.write(sample_paper, cfg, [dict(f, path="./sub//a.md")])
     assert receipt.load(sample_paper, cfg)["files"][0]["path"] == "sub/a.md"
+    for bad in (str(sample_paper / "sub" / "a.md"), "../x", "sub/../../x", "/etc/passwd"):
+        with pytest.raises(ValueError, match="receipt path"):
+            receipt.write(sample_paper, cfg, [dict(f, path=bad)])
+
+
+def test_hand_edited_receipt_with_parent_path_rejected(sample_paper, cfg):
+    receipt.write(sample_paper, cfg, [_apply(sample_paper, "a.md", "x\n")])
+    p = sample_paper / "quality_reports" / "ploma-receipt.json"
+    data = json.loads(p.read_text())
+    data["files"][0]["path"] = "../x"
+    p.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"ploma-receipt\.json.*\.\./x"):
+        receipt.load(sample_paper, cfg)
+    with pytest.raises(ValueError, match="ploma-receipt.json"):
+        receipt.compare(sample_paper, cfg)
+    assert receipt.main(["--root", str(sample_paper), "compare"]) == 2
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root can read mode 000 files")
+def test_unreadable_target_exits_2(sample_paper, cfg, capsys):
+    receipt.write(sample_paper, cfg, [_apply(sample_paper, "a.md", "x\n")])
+    target = sample_paper / "a.md"
+    target.chmod(0)
+    try:
+        assert receipt.main(["--root", str(sample_paper), "compare"]) == 2
+        err = capsys.readouterr().err.strip()
+        assert "a.md" in err and len(err.splitlines()) == 1
+    finally:
+        target.chmod(0o644)
 
 
 def test_malformed_receipt_names_file(sample_paper, cfg):
