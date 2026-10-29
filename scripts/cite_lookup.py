@@ -98,17 +98,32 @@ def _year(text: str) -> int | None:
     return int(m.group(0)) if m else None
 
 
-def _main_title(title: str) -> str:
-    """Part of a title before the first colon or " - " (the whole title when there is neither)."""
-    return re.split(r":| - ", title, maxsplit=1)[0]
+_SUBTITLE_RE = re.compile(r":| - ")
+
+
+def _split_title(title: str) -> tuple[str, bool]:
+    """(part before the first colon or " - ", whether a subtitle follows)."""
+    parts = _SUBTITLE_RE.split(title, maxsplit=1)
+    return parts[0], len(parts) > 1 and bool(norm_title(parts[1]))
+
+
+def _compare_titles(a: str, b: str) -> tuple[float, str]:
+    """(similarity, problem). The similarity is the max of the full-title ratio and the ratio of the parts before
+    the first colon. The main-title ratio may verify only when at most one side has a subtitle; when both have
+    subtitles that differ (full ratio < 0.90), a matching main title is reported with a "subtitle differs" problem."""
+    full = difflib.SequenceMatcher(None, norm_title(a), norm_title(b)).ratio()
+    (ma, sa), (mb, sb) = _split_title(a), _split_title(b)
+    ma, mb = norm_title(ma), norm_title(mb)
+    main = difflib.SequenceMatcher(None, ma, mb).ratio() if ma and mb else 0.0
+    if main <= full:
+        return full, ""
+    if sa and sb and full < TITLE_MATCH:
+        return main, "subtitle differs"
+    return main, ""
 
 
 def _ratio(a: str, b: str) -> float:
-    """Max of the full-title similarity and the similarity of the parts before the first colon (subtitles)."""
-    full = difflib.SequenceMatcher(None, norm_title(a), norm_title(b)).ratio()
-    ma, mb = norm_title(_main_title(a)), norm_title(_main_title(b))
-    main = difflib.SequenceMatcher(None, ma, mb).ratio() if ma and mb else 0.0
-    return max(full, main)
+    return _compare_titles(a, b)[0]
 
 
 # ---------------------------------------------------------------- response parsing
@@ -167,8 +182,8 @@ def _judge(entry: Entry, hit: _Hit) -> tuple[float, list[str], str]:
     """Title ratio, list of author/year problems, and an evidence string.
 
     Author and year are checked only when both the entry and the hit carry them."""
-    ratio = _ratio(entry.fields.get("title", ""), hit.title)
-    problems = []
+    ratio, title_problem = _compare_titles(entry.fields.get("title", ""), hit.title)
+    problems = [title_problem] if title_problem else []
     fam = first_family(entry.fields.get("author", ""))
     if fam and hit.authors and f" {fam} " not in f" {_plain(' '.join(hit.authors))} ":
         problems.append(f"author {fam!r} not in {', '.join(hit.authors[:3])}")
@@ -282,6 +297,9 @@ def _doi_lookup(entry: Entry, doi: str, facts: _Facts) -> LookupResult:
     if not failed and hit is not None:
         if not entry.fields.get("title"):
             return LookupResult(entry.key, "partial", "crossref", f"DOI resolves to {hit.title!r}; entry has no title",
+                                hit.doi or doi)
+        if not norm_title(hit.title):
+            return LookupResult(entry.key, "partial", "crossref", "DOI resolves but the record has no title",
                                 hit.doi or doi)
         ratio, problems, evidence = _judge(entry, hit)
         if ratio < TITLE_MISMATCH:

@@ -325,7 +325,7 @@ def test_unexpected_shapes_count_as_source_failure():
     assert r.status == "missing"
     r = lookup(_doi_entry("Sequence Models for Event Logs"),
                fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=[None]))}), cache={})
-    assert r.status == "mismatch"                       # parsed as an empty title, no TypeError
+    assert r.status == "partial"                        # parsed as an empty title, no TypeError
     for body in (_work(title=["Sequence Models for Event Logs"], author=["x"]), "not json", "[1, 2]"):
         r = lookup(_doi_entry("Sequence Models for Event Logs"),
                    fetch=fake_fetch({"api.crossref.org/works/10.1/x": (200, body), "api.crossref.org/works?": (503, ""),
@@ -349,3 +349,33 @@ def test_html_tags_are_stripped_from_titles():
     assert cite_lookup.norm_title("<i>In vivo</i> imaging of H<sub>2</sub>O") == "in vivo imaging of h2o"
     fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=["<i>Sequence Models</i>"]))})
     assert lookup(_doi_entry("Sequence Models"), fetch=fetch, cache={}).status == "verified"
+
+
+# ---------------------------------------------------------------- fix round 2
+
+def test_doi_record_without_title_is_partial():
+    for title in ([None], []):
+        fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, _work(title=title))})
+        r = lookup(_doi_entry("Sequence Models for Event Logs"), fetch=fetch, cache={})
+        assert (r.status, r.evidence) == ("partial", "DOI resolves but the record has no title"), title
+
+
+def test_both_sides_with_different_subtitles_is_partial():
+    e = _doi_entry("Process Mining: Data Science in Action", author="van der Aalst, Wil", year="2011", doi="10.2/pm")
+    r = lookup(e, fetch=fake_fetch({"api.crossref.org/works/10.2/pm": (200, CROSSREF_SUBTITLE)}), cache={})
+    assert r.status == "partial" and "subtitle differs" in r.evidence, r.evidence
+
+
+def test_record_with_subtitle_against_bare_bib_title_is_verified():
+    e = _doi_entry("Process Mining", author="van der Aalst, Wil", year="2011", doi="10.2/pm")
+    r = lookup(e, fetch=fake_fetch({"api.crossref.org/works/10.2/pm": (200, CROSSREF_SUBTITLE)}), cache={})
+    assert r.status == "verified", r.evidence
+
+
+def test_title_search_with_different_subtitles_is_partial():
+    body = json.dumps({"results": [{"title": "Graph Methods: A Primer", "publication_year": 2019,
+                                    "authorships": [{"author": {"display_name": "Dana Lindqvist"}}]}]})
+    e = parse_bib("@article{K, author = {Dana Lindqvist}, title = {Graph Methods: Theory and Practice}, year = 2019}")[0]
+    fetch = fake_fetch({"api.crossref.org": (200, CROSSREF_MISS), "api.openalex.org": (200, body)})
+    r = lookup(e, fetch=fetch, cache={})
+    assert (r.status, r.source) == ("partial", "openalex") and "subtitle differs" in r.evidence
