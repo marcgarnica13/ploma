@@ -13,8 +13,8 @@ pipeline.enabled), pipeline.metric_keys, pipeline.tolerances and the passport at
 Manuscript numbers are compared with each other by kind (percent, count, decimal) and display
 rounding only; tolerances apply to comparisons with results files, where a percent may also match a
 fraction times 100. With pipeline.metric_keys set, table cells and abstract and introduction numbers
-match only results values whose key path (any depth) ends in a metric key, or .csv columns named by
-one; without metric keys every numeric results value counts (Ruling R157). siunitx \\num, \\qty and \\SI are read as numbers.
+match only results values with a metric key anywhere in their key path, or .csv columns named by
+one (Ruling R159); without metric keys every numeric results value counts (Ruling R157). siunitx \\num, \\qty and \\SI are read as numbers.
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -242,19 +242,20 @@ def matches(num: dict, value: float, tolerances: dict) -> bool:
 
 # ---------------------------------------------------------------- results
 
-def _walk_json(data: Any, keys: set[str], res: "Results", key: str | None = None) -> None:
-    """Collect every finite number; a number whose nearest enclosing key is in keys is also keyed."""
+def _walk_json(data: Any, keys: set[str], res: "Results", keyed: bool = False) -> None:
+    """Collect every finite number; a number with any component of its key path in keys is also keyed
+    (Ruling R159: {"avg_fitness": {"mean": x}} and teams.<id>.avg_fitness both count)."""
     if isinstance(data, dict):
         for k, v in data.items():
             if k in keys and (_is_number(v) or isinstance(v, (list, dict))):
                 res.keys_found.add(k)
-            _walk_json(v, keys, res, k)
+            _walk_json(v, keys, res, keyed or k in keys)
     elif isinstance(data, list):
         for v in data:
-            _walk_json(v, keys, res, key)
+            _walk_json(v, keys, res, keyed)
     elif _is_number(data):
         res.values.append(float(data))
-        if key in keys:
+        if keyed:
             res.keyed_values.append(float(data))
 
 
@@ -266,14 +267,14 @@ def _is_number(v: Any) -> bool:
 class Results:
     files: list[Path] = field(default_factory=list)
     values: list[float] = field(default_factory=list)
-    keyed_values: list[float] = field(default_factory=list)  # values whose key path ends in a metric key
+    keyed_values: list[float] = field(default_factory=list)  # values with a metric key in their key path
     keys_found: set[str] = field(default_factory=set)
     unreadable: list[tuple[Path, str]] = field(default_factory=list)
 
 
 def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
     """Every numeric value at any depth of every .json, and every numeric .csv cell, under results_dir;
-    keyed_values holds those whose key path (any depth) ends in one of metric_keys, or whose .csv
+    keyed_values holds those with any component of their key path in metric_keys, or whose .csv
     column header is one."""
     res = Results()
     if results_dir is None or not Path(results_dir).is_dir():

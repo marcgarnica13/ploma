@@ -481,3 +481,25 @@ def test_without_metric_keys_every_value_counts(sample_paper):
 @pytest.mark.parametrize("text,raws", [("1,234,5", ["1,234", "5"]), ("1,234.5,6", ["1,234.5", "6"])])
 def test_thousands_then_comma_list_split(text, raws):
     assert [n["raw"] for n in extract_numbers(text)] == raws
+
+
+# ---------------------------------------------------------------- R159: any key path component counts
+
+def test_keyed_value_when_any_path_component_is_a_metric_key(tmp_path):
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "a.json").write_text(json.dumps({"avg_fitness": {"mean": 0.81, "std": 0.02},
+                                            "teams": {"t1": {"avg_fitness": 0.77}},
+                                            "history": [0.5]}))
+    r = consistency.load_results(res, ["avg_fitness"])
+    assert r.keyed_values == [0.02, 0.77, 0.81]
+    assert 0.5 in r.values and 0.5 not in r.keyed_values
+    assert "avg_fitness" in r.keys_found
+
+
+def test_cell_matching_a_nested_metric_mean_is_not_flagged(sample_paper):
+    (sample_paper / "results" / "metrics.json").write_text(json.dumps(
+        {"avg_fitness": {"mean": 0.81, "std": 0.01}, "n_teams": 12,
+         "baseline_win_ratio": 0.72, "baseline_rating_update": 0.76}))
+    rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=KEYS)
+    assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
