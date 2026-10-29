@@ -133,3 +133,36 @@ def test_two_hits_on_one_line_have_distinct_ids():
     f = run(f"A{EM}b and c{EM}d.", forbid_em_dash=True, extra_phrases=[], file="sec/a.tex")
     assert _ids(f) == ["style.em_dash.sec/a.tex:1:2", "style.em_dash.sec/a.tex:1:10"]
     assert "delve" in run("We delve.", forbid_em_dash=True, extra_phrases=[])[0].summary
+
+
+# ---------------------------------------------------------------- final review minors
+
+def _run(text):
+    return run(text, forbid_em_dash=True, extra_phrases=["robust"])
+
+
+def test_doi_path_nolinkurl_arguments_are_masked():
+    text = ("See \\doi{10.1000/a---b-leverage} and \\path{/data/robust/landscape---x} and "
+            "\\nolinkurl{https://x.org/crucial---y}.\n")
+    assert _run(text) == []
+
+
+def test_verbatim_environments_are_masked():
+    for env in ("verbatim", "lstlisting", "Verbatim", "minted"):
+        arg = "{python}" if env == "minted" else ""
+        text = f"Text.\n\\begin{{{env}}}{arg}\nx = leverage --- robust landscape\n\\end{{{env}}}\nMore.\n"
+        assert _run(text) == [], env
+
+
+def test_landscape_environment_name_is_not_slop():
+    text = "\\begin{landscape}\nA wide table follows.\n\\end{landscape}\n"
+    assert _run(text) == []
+    assert [f.id for f in _run("The landscape of methods.\n")] == ["style.slop.stdin:1:5"]
+
+
+def test_abbreviations_do_not_end_a_sentence():
+    head = " ".join(["word"] * 12)
+    text = f"{head} e.g. {head} i.e. {head} et al. more words here.\n"
+    f = _run(text)
+    assert [x.id for x in f] == ["style.long_sentence.stdin:1:1"]
+    assert "over 30" in f[0].summary

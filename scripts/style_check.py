@@ -8,8 +8,10 @@ Usage:
 With files, checks each file; with --root and no files, checks document.main and every file it
 reaches through \\input or \\include, using style.forbid_em_dash and style.forbid_phrases from
 ploma.yaml; with neither, reads stdin. LaTeX comments, the arguments of \\cite, \\ref, \\label,
-\\url, \\href (first argument), \\includegraphics, \\eqref, \\input and \\include, inline math and
-display math environments are blanked before matching, and so are tables and the preamble.
+\\url, \\href (first argument), \\doi, \\path, \\nolinkurl, \\includegraphics, \\eqref, \\input and
+\\include, inline math and display math environments are blanked before matching, and so are tables,
+verbatim environments (verbatim, Verbatim, lstlisting, minted, comment), environment names in
+\\begin and \\end, and the preamble. The periods of "e.g.", "i.e." and "et al." do not end a sentence.
 
 Rules:
   style.em_dash.<file>:<line>:<col>        WARN  U+2014, the LaTeX --- ligature, or a spaced U+2013, in prose
@@ -42,12 +44,16 @@ MAX_SENTENCE_WORDS = 30
 
 MASKED_ARGS: dict[str, int | None] = {
     **{name: None for name in ("ref", "eqref", "autoref", "cref", "Cref", "pageref", "nameref", "label",
-                               "url", "includegraphics", "input", "include")},
+                               "url", "includegraphics", "input", "include", "doi", "path", "nolinkurl")},
     "href": 1,
 }
 _EM_RE = re.compile("\u2014|(?<!-)---(?!-)|(?<=\\s)\u2013|\u2013(?=\\s)")
 _BREAK_RE = re.compile(r"[.!?](?=[\s}]|$)|\n[ \t]*\n|\\(?:part|chapter|section|subsection|subsubsection|paragraph|"
                        r"item|begin|end|caption|footnote|maketitle)\b|\\\\")
+VERBATIM_ENVS = ("verbatim", "verbatim*", "Verbatim", "BVerbatim", "lstlisting", "minted", "comment")
+_ENV_NAME_RE = re.compile(r"(\\(?:begin|end)\s*\{)([^{}]*)(\})")
+# Periods of these abbreviations do not end a sentence.
+_ABBREV_RE = re.compile(r"(?<![A-Za-z])(?:e\.g|i\.e|et\s+al)\.")
 _WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9'\u2019-]*")
 _CMD_NAME_RE = re.compile(r"\\[A-Za-z]+\*?")
 
@@ -65,9 +71,11 @@ def prose(text: str) -> str:
     out = _texmask.mask_before_document(out)
     out = _texmask.mask_command_args(out, MASKED_ARGS)
     out = _texmask.mask_math(out)
-    for start, _, end in _texmask.env_spans(out, ("tabular", "tabular*", "tabularx", "tabulary", "longtable")):
+    for start, _, end in _texmask.env_spans(out, ("tabular", "tabular*", "tabularx", "tabulary", "longtable")
+                                            + VERBATIM_ENVS):
         out = _texmask.blank_span(out, start, end)
-    return out
+    # Environment names (\begin{landscape}) are markup, not prose; \begin and \end stay for sentence breaks.
+    return _ENV_NAME_RE.sub(lambda m: m.group(1) + " " * len(m.group(2)) + m.group(3), out)
 
 
 def run(text: str, *, forbid_em_dash: bool, extra_phrases: list[str], max_sentence_words: int = MAX_SENTENCE_WORDS,
@@ -99,8 +107,9 @@ def run(text: str, *, forbid_em_dash: bool, extra_phrases: list[str], max_senten
                                             f"slop phrase \"{phrase}\"", observed=obs,
                                             remediation="Say it plainly, or cut it.", group="style")))
     words_only = _CMD_NAME_RE.sub(lambda m: " " * len(m.group()), masked)
+    breakable = _ABBREV_RE.sub(lambda m: m.group()[:-1] + " ", masked)
     start = 0
-    for b in list(_BREAK_RE.finditer(masked)) + [None]:
+    for b in list(_BREAK_RE.finditer(breakable)) + [None]:
         end = b.start() if b else len(masked)
         words = list(_WORD_RE.finditer(words_only, start, end))
         if len(words) > max_sentence_words:
