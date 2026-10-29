@@ -1,0 +1,31 @@
+# Venue profile schema adapted from Hugo Sant'Anna's clo-author
+# (github.com/hugosantanna/clo-author), used with permission.
+key: generic-journal
+name: "Generic journal"
+kind: journal
+doc_classes: [article, amsart, revtex4-2, elsarticle, sn-jnl, svjour3]
+cite_style: numeric
+page_budget: null
+anonymized: false
+bib_style_hint: null
+focus: "A peer-reviewed journal with no specific profile shipped. Complete research articles judged on contribution, soundness of method, quality of evidence and clarity."
+bar: "A clear contribution over prior work, a sound method described fully, evidence that supports every headline claim, and limitations stated plainly."
+referee_pool: {EVALUATION: 0.20, METHODOLOGY: 0.25, REPRODUCIBILITY: 0.15, NOVELTY: 0.20, SKEPTIC: 0.10, CLARITY: 0.10}
+domain_adjustments: {}
+methods_adjustments: {}
+typical_concerns:
+  - "What is the contribution over the closest prior work, stated in one or two sentences?"
+  - "Does the evidence support each headline claim, and is the evaluation appropriate for the claim?"
+  - "Is the method described completely enough to be reproduced?"
+  - "Are the limitations and threats to validity discussed honestly?"
+  - "Is the related work complete and fairly represented?"
+peeves:
+  critical:
+    - "A headline claim with no evidence in the body of the paper."
+    - "Key terms used before they are defined, or defined inconsistently."
+  constructive:
+    - "Rewards a clear statement of what the paper does not show."
+    - "Appreciates tables and figures that read standalone."
+format_rules:
+  - "Check the target journal's guide for authors for citation style, length and required statements."
+submission_checks: [placeholders, undefined_refs]

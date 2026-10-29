@@ -1,0 +1,35 @@
+# Venue profile schema adapted from Hugo Sant'Anna's clo-author
+# (github.com/hugosantanna/clo-author), used with permission.
+key: elsevier
+name: "Elsevier journal (elsarticle)"
+kind: journal
+doc_classes: [elsarticle]
+cite_style: numeric
+page_budget: null
+anonymized: false
+bib_style_hint: elsarticle-num
+focus: "An Elsevier journal using the elsarticle class. Complete, well-positioned research articles with a thorough evaluation and an explicit statement of contribution."
+bar: "A substantive contribution relative to the journal's recent literature, a sound and fully described method, and an evaluation and discussion thorough enough to stand as an archival record."
+referee_pool: {EVALUATION: 0.20, METHODOLOGY: 0.25, REPRODUCIBILITY: 0.10, NOVELTY: 0.20, SKEPTIC: 0.10, CLARITY: 0.15}
+domain_adjustments:
+  literature: [25, 30]
+  fit: [10, 15]
+methods_adjustments:
+  method_soundness: [25, 30]
+typical_concerns:
+  - "Is the paper positioned against the recent literature in this journal?"
+  - "Is the method described completely enough to be reimplemented?"
+  - "Do the results support the conclusions, and are limitations discussed?"
+  - "Are the highlights and abstract an accurate summary of what the paper shows?"
+peeves:
+  critical:
+    - "Highlights or abstract that overstate the results."
+    - "No citations to recent work published in the target journal."
+  constructive:
+    - "Rewards an explicit list of contributions at the end of the introduction."
+    - "Appreciates a data availability statement."
+format_rules:
+  - "Check the guide for authors: some Elsevier journals want author-year citations (elsarticle-harv) instead of numeric."
+  - "Prepare highlights (3 to 5 bullets, each at most 85 characters) and a graphical abstract if the journal asks."
+  - "Include a data availability statement and a declaration of competing interests."
+submission_checks: [placeholders, undefined_refs]

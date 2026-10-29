@@ -1,0 +1,33 @@
+# Venue profile schema adapted from Hugo Sant'Anna's clo-author
+# (github.com/hugosantanna/clo-author), used with permission.
+key: generic-conference
+name: "Generic conference"
+kind: conference
+doc_classes: [article, llncs, IEEEtran, acmart]
+cite_style: numeric
+page_budget: null
+anonymized: false
+bib_style_hint: null
+focus: "A peer-reviewed conference with no specific profile shipped. Shorter papers judged mainly on novelty, a credible evaluation and clear presentation within a page limit."
+bar: "A crisp, novel contribution with an evaluation strong enough to believe the main claim, presented clearly within the page limit."
+referee_pool: {EVALUATION: 0.20, METHODOLOGY: 0.15, REPRODUCIBILITY: 0.05, NOVELTY: 0.30, SKEPTIC: 0.10, CLARITY: 0.20}
+domain_adjustments:
+  contribution: [30, 35]
+  external_validity: [15, 10]
+methods_adjustments: {}
+typical_concerns:
+  - "What is the single new idea here, in one sentence?"
+  - "Is there at least one baseline or point of comparison?"
+  - "Is the contribution clear by the end of the introduction?"
+  - "Is the evaluation enough to believe the claim, even if not exhaustive?"
+peeves:
+  critical:
+    - "The contribution only becomes clear in the conclusion."
+    - "Material that does not earn its space under a page limit."
+  constructive:
+    - "Rewards disciplined scope: narrow and crisp over broad and fuzzy."
+    - "Appreciates a figure that conveys the core idea at a glance."
+format_rules:
+  - "Set venue.page_budget in ploma.yaml from the call for papers; this profile has none."
+  - "Check whether reviewing is double-blind and anonymize accordingly."
+submission_checks: [placeholders, undefined_refs, page_budget, anonymization]

@@ -1,0 +1,105 @@
+# Adapted from Hugo Sant'Anna's clo-author (github.com/hugosantanna/clo-author),
+# used with permission. Paper-type branching, dimension weight tables and the
+# mandatory sanity checks credit: Hugo Sant'Anna.
+key: social-science
+name: "Economics and political science"
+paper_types:
+  - key: reduced-form
+    name: "Reduced-form"
+    weights:
+      identification: 35
+      estimation: 25
+      inference: 20
+      robustness: 15
+      replication: 5
+    sanity_checks:
+      - "Sign check: the headline coefficient has the sign the author's theory expects."
+      - "Magnitude check: the coefficient is in a plausible range."
+      - "Dynamics check: for difference-in-differences or event studies pre-trends look flat; for IV the first-stage F-statistic exceeds 10."
+      - "Clustering check: standard errors are clustered at the level of the treatment unit."
+      - "Sample check: the analysis sample is constructed and reported clearly."
+  - key: structural
+    name: "Structural"
+    weights:
+      model_specification: 20
+      parameter_identification: 30
+      estimation: 20
+      fit_validation: 15
+      counterfactuals: 15
+    sanity_checks:
+      - "Parameter plausibility: estimated parameters fall in ranges consistent with prior literature."
+      - "Fit: the model fits moments it was not calibrated to."
+      - "Counterfactual within support: policy counterfactuals stay inside the covariate support of the data."
+      - "Identification argument: identification is argued formally, not asserted."
+  - key: theory-empirics
+    name: "Theory and empirics"
+    weights:
+      model: 20
+      prediction_sharpness: 25
+      test_design: 25
+      honesty: 15
+      execution: 15
+    sanity_checks:
+      - "Prediction sharpness: the theory predicts a specific sign or magnitude, not just some effect."
+      - "Test power: the empirical test is powered to reject the null the theory predicts."
+      - "Honest reporting: non-confirming predictions are reported too."
+  - key: descriptive
+    name: "Descriptive"
+    weights:
+      construct_validity: 30
+      construction: 25
+      validation: 25
+      analysis: 15
+      replication: 5
+    sanity_checks:
+      - "Construct validity: the measure captures what it claims to, benchmarked against existing measures where possible."
+      - "Construction transparency: the data cleaning and coding pipeline is reproducible from the replication package."
+      - "Validation: the measure correlates with related measures in the expected way."
+  - key: formal-theory
+    name: "Formal theory"
+    weights:
+      originality: 30
+      comparative_statics: 25
+      proof_rigour: 20
+      robustness: 15
+      applicability: 10
+    sanity_checks:
+      - "Equilibrium existence: existence is proven or rigorously argued, not assumed."
+      - "Comparative-static direction: the signs of comparative statics are derived and stated explicitly."
+      - "Assumption tractability: functional forms, information structure and action space are reasonable rather than doing the heavy lifting."
+      - "Robustness to assumption relaxation: the headline result survives at least one substantive relaxation."
+      - "Notation discipline: notation is defined before use and objects are named consistently."
+  - key: survey-experiment
+    name: "Survey experiment"
+    weights:
+      design: 25
+      sample: 25
+      measurement: 20
+      attrition_balance: 20
+      preregistration: 10
+    sanity_checks:
+      - "Balance check: pre-treatment covariates are balanced across arms, or imbalance is addressed in the analysis."
+      - "Manipulation-check pass rate: reported, and not differentially low in one arm."
+      - "Attrition asymmetry: attrition is similar across arms, or the difference is reported and addressed."
+      - "Sampling-frame validity: the respondent platform suits the population the study speaks about, with quality screens reported."
+      - "Preregistration adherence: analyses match the pre-analysis plan, with deviations noted."
+default_paper_type: reduced-form
+reproducibility_norms:
+  - "A replication package with data (or access instructions), code and a README that reproduces every table and figure."
+  - "Pre-analysis plans for experiments, with deviations reported."
+method_conventions:
+  - "Report standard errors clustered at the level of treatment assignment."
+  - "State the identification strategy and its key assumption in one sentence near the top."
+  - "Report the analysis sample size in every table."
+challenge_examples:
+  - "What would the pre-trends look like if the parallel-trends assumption failed here?"
+  - "Is the instrument plausibly excludable, or does it affect the outcome through another channel?"
+  - "Does the counterfactual require extrapolating outside the observed data?"
+  - "Would differential attrition alone produce the observed treatment effect?"
+peeves:
+  critical:
+    - "Standard errors clustered at a level finer than treatment assignment."
+    - "An identification assumption asserted rather than defended."
+  constructive:
+    - "Values clever natural experiments over technical machinery."
+    - "Gives credit for explicit pre-registration when relevant."

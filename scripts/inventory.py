@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _yamlio  # noqa: E402
 from bib_check import resolve_bib_files, strip_comment, tex_sources  # noqa: E402
 from pdf_pages import page_count  # noqa: E402
+import profiles  # noqa: E402
 
 CLASS_TO_VENUE: dict[str, str] = {
     "llncs": "llncs-conference", "sn-jnl": "springer-ml", "svjour3": "springer-ml",
@@ -466,13 +467,14 @@ def inventory(root: Path, home: Path | None = None, main: str | None = None) -> 
     return inv
 
 
-def _venue_options(doc_class: str | None) -> list[str]:
-    """Venue profile keys offered for a class, recommended first (Ruling R7 local fallback)."""
-    recommended = CLASS_TO_VENUE.get(doc_class or "", "generic-journal")
-    opts = [recommended] + [v for k, v in CLASS_TO_VENUE.items() if k == doc_class]
-    if doc_class == "llncs":
-        opts.append("springer-ml")
-    opts += ["generic-journal", "generic-conference"]
+def _inv_root(inv: dict) -> Path | None:
+    """The inventoried repo root, so its ploma.d/venues profiles are offered too."""
+    return Path(inv["_root"]) if inv.get("_root") else None
+
+
+def _venue_options(doc_class: str | None, root: Path | None = None) -> list[str]:
+    """Venue profile keys offered for a class, recommended first, generics always offered (Ruling R7)."""
+    opts = profiles.venues_for_class(doc_class, root) + ["generic-journal", "generic-conference"]
     return list(dict.fromkeys(opts))
 
 
@@ -504,7 +506,7 @@ def propose_config(inv: dict) -> dict:
         build["pdf"] = posixpath.normpath(posixpath.join(cwd, stem + ".pdf"))
         build["log"] = posixpath.normpath(posixpath.join(cwd, stem + ".log"))
 
-    venue: dict[str, Any] = {"profile": _venue_options(inv.get("doc_class"))[0]}
+    venue: dict[str, Any] = {"profile": _venue_options(inv.get("doc_class"), _inv_root(inv))[0]}
     if inv.get("doc_class"):
         venue["doc_class"] = inv["doc_class"]
     venue["page_budget"] = None
@@ -534,7 +536,7 @@ def gaps(inv: dict, proposal: dict) -> list[dict]:
         ranked = sorted(cands, key=lambda c: -_input_count(root, c))
         out.append({"key": "document.main", "question": "Which .tex file is the main manuscript?",
                     "recommended": ranked[0] if ranked else None, "options": cands})
-    opts = _venue_options(inv.get("doc_class"))
+    opts = _venue_options(inv.get("doc_class"), _inv_root(inv))
     out.append({"key": "venue.profile",
                 "question": f"Which venue profile fits this paper (document class {inv.get('doc_class') or 'unknown'})?",
                 "recommended": opts[0], "options": opts})

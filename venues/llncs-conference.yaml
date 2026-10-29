@@ -1,0 +1,37 @@
+# Adapted from Hugo Sant'Anna's clo-author (github.com/hugosantanna/clo-author),
+# used with permission. Journal-calibration schema credit: Hugo Sant'Anna.
+key: llncs-conference
+name: "Springer LNCS conference or workshop"
+kind: conference
+doc_classes: [llncs]
+cite_style: numeric
+page_budget: 12
+anonymized: true
+bib_style_hint: splncs04
+focus: "A selective conference or workshop published in Springer Lecture Notes. Shorter format and faster turnaround than a journal; reviewing weights novelty and presentation more heavily. Useful for stress-testing a paper against lighter, novelty-first reviewing."
+bar: "A crisp, novel idea with a credible, if not exhaustive, evaluation. Reviewers reward a clear contribution and a clean demonstration over comprehensive ablations, and are less forgiving of unclear writing inside a tight page budget."
+referee_pool: {EVALUATION: 0.20, METHODOLOGY: 0.15, REPRODUCIBILITY: 0.05, NOVELTY: 0.30, SKEPTIC: 0.10, CLARITY: 0.20}
+domain_adjustments:
+  contribution: [30, 35]
+  external_validity: [15, 10]
+methods_adjustments:
+  evaluation: [30, 30]
+  baselines: [20, 25]
+  reproducibility: [10, 5]
+typical_concerns:
+  - "What is the single new idea here, in one sentence?"
+  - "Is there at least one baseline, and does the method beat it?"
+  - "Is the paper readable within the page budget, and is the contribution clear by the end of the introduction?"
+  - "Is the evaluation enough to believe the claim, even if not exhaustive?"
+peeves:
+  critical:
+    - "The contribution is not stated in one sentence by the end of the introduction."
+    - "Tables and figures that do not earn their space in a tight page budget."
+  constructive:
+    - "Rewards disciplined scope: narrow and crisp over broad and fuzzy."
+    - "Appreciates a clean worked example early in the paper."
+format_rules:
+  - "Check the call for papers; LNCS limits vary (full papers are usually 12 to 16 pages, references may or may not count)."
+  - "Keep the llncs class layout unchanged; no margin or font tweaks."
+  - "Remove author names, affiliations and self-identifying acknowledgements for double-blind review."
+submission_checks: [placeholders, undefined_refs, page_budget, anonymization]

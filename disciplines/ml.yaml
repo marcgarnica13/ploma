@@ -1,0 +1,64 @@
+# Adapted from Hugo Sant'Anna's clo-author (github.com/hugosantanna/clo-author),
+# used with permission. Paper-type branching, dimension weight tables and the
+# mandatory sanity checks credit: Hugo Sant'Anna.
+key: ml
+name: "Applied machine learning and data mining"
+paper_types:
+  - key: empirical-ml
+    name: "Empirical ML or computational pipeline"
+    weights:
+      method_soundness: 25
+      evaluation: 30
+      baselines: 20
+      generalization: 15
+      reproducibility: 10
+    sanity_checks:
+      - "Held-out evaluation: the headline metric is reported on data the model was not fitted, tuned or discovered from. In-sample numbers alone fail any generalization claim."
+      - "Leakage: units that share structure (same subject, session, source or time window) are not split across training and evaluation when the claim is generalization, and no input feature encodes the outcome."
+      - "Baseline: at least one baseline (random, majority or frequency, a simpler model, or a published alternative) gives the headline metric a point of comparison."
+      - "Hyperparameter honesty: hyperparameters and thresholds are selected on data separate from the evaluation set, and the search procedure and range are reported, not only the winning value."
+      - "Reproducibility: dependencies are pinned, the exact data slice and access path are stated, the run command and required environment are documented, and any data access restriction is acknowledged as a caveat."
+      - "Determinism: every stochastic step (sampling, initialization, splits, search) is seeded, or the pipeline is stated to be deterministic."
+default_paper_type: empirical-ml
+reproducibility_norms:
+  - "Code and data release expected: a repository with pinned dependencies, run instructions and the exact data slice; many venues encourage an artifact or reproducibility badge."
+  - "Held-out evaluation is the norm (train and test split or cross-validation); reporting only fit-on-training metrics is a red flag."
+  - "Baselines and ablations are expected to contextualize and isolate the contribution."
+  - "Restricted or proprietary data must be documented as a reproducibility limitation, with what a reader can and cannot re-run."
+method_conventions:
+  - "No significance stars; report metric definitions and N in table notes."
+  - "Report variability (across folds, seeds or resamples), not a single point number."
+  - "Fix seeds, or state determinism, for any stochastic training, sampling or hyperparameter sweep."
+  - "Pin library versions; state the language and framework versions used."
+  - "Figures are self-contained: axes, legend, encoding and sample size explained in the caption."
+challenge_examples:
+  - "The reported score was computed on the same data used to select the model; what is the score on untouched held-out data?"
+  - "Would a majority-class or nearest-neighbour baseline already reach most of this performance?"
+  - "Which single design choice drives the gain? Show the ablation that removes it."
+  - "Does the result survive a different random seed, data split or time period?"
+  - "Could a feature available only after the outcome be leaking the label into training?"
+  - "The threshold sweep picks the best value on the evaluation set; how much of the gain is selection bias?"
+peeves:
+  critical:
+    - "Suspicious of too-clean results: a single hyperparameter sweep that conveniently maximizes the headline metric, reported to three decimals with no variance."
+    - "Wants ablations: which design choices (representation, preprocessing, thresholds) actually drive the result?"
+    - "Insists on a baseline comparison, at minimum a naive, random or frequency baseline, ideally a published alternative."
+    - "Requires that the model be evaluated on held-out data, not only on the data it was fitted or discovered from."
+    - "Train and test hygiene must be explicit: no units sharing structure split across fitting and evaluation when the claim is generalization."
+    - "Reproducibility: pinned dependencies, the exact data slice and the run command must be stated so a reader can re-run."
+    - "Dataset construction must be documented end to end, from raw data to the final modelling table."
+    - "Dropped or filtered cases must be quantified, not footnoted."
+    - "Metric choice must be justified: why this metric, and what does a given value actually mean here?"
+    - "Preprocessing and feature choices must be motivated, not arbitrary."
+    - "Hyperparameters must be reported with the search procedure, not just the winning value."
+    - "Generalization claim: would this hold for a different dataset, time period, population or data source?"
+    - "Variability of the headline metric across folds, seeds or resamples, not a single point number."
+    - "Effect-size interpretation: what does the reported score mean in practice, and compared to what?"
+    - "Subgroup analyses must be pre-specified or clearly labelled exploratory; no cherry-picking the subgroup that looks best."
+    - "Seed and nondeterminism: any stochastic step without a fixed seed, or a statement that the procedure is deterministic."
+    - "Data-source conflation: results that pool sources with different schemas without showing they were standardized to the same space and vocabulary."
+  constructive:
+    - "Appreciates open code and data before submission."
+    - "Values raw-data figures before any model, to build intuition."
+    - "Appreciates when robustness checks are motivated by specific threats such as leakage or distribution shift."
+    - "Rewards a one-sentence takeaway that a reader outside the application area can use."

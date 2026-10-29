@@ -1,0 +1,40 @@
+# Adapted from Hugo Sant'Anna's clo-author (github.com/hugosantanna/clo-author),
+# used with permission. Journal-calibration schema credit: Hugo Sant'Anna.
+key: springer-ml
+name: "Springer Machine Learning journal"
+kind: journal
+doc_classes: [llncs, sn-jnl, svjour3]
+cite_style: numeric
+page_budget: null
+anonymized: false
+bib_style_hint: splncs04
+focus: "Original research on machine-learning methods and their applications: learning algorithms, empirical and systems papers, data-mining methods, and well-evaluated applications to a real domain. Values a sound method, honest and generalizable evaluation, and reproducibility over a single benchmark number. Application papers are welcome when the method or the empirical finding is of general machine-learning interest."
+bar: "A clear methodological or empirical contribution that a machine-learning reader outside the application area would learn from. The evaluation must be honest about generalization, and the work should be reproducible (released code and data, pinned dependencies) or state the limits to reproducibility plainly. Pure application reporting with no general takeaway tends to be redirected to an application venue."
+referee_pool: {EVALUATION: 0.25, METHODOLOGY: 0.20, REPRODUCIBILITY: 0.20, NOVELTY: 0.15, SKEPTIC: 0.10, CLARITY: 0.10}
+domain_adjustments:
+  contribution: [30, 35]
+  literature: [25, 30]
+  fit: [10, 5]
+methods_adjustments:
+  evaluation: [30, 35]
+  reproducibility: [10, 15]
+  baselines: [20, 20]
+typical_concerns:
+  - "Is the method sound, and are the modelling choices (representation, preprocessing, model family, key thresholds) justified rather than arbitrary?"
+  - "Is the headline metric evaluated on held-out data, or only on the data the model was fitted or discovered from? Where is the baseline?"
+  - "Does this generalize beyond this one dataset, for example to other time periods, populations or data sources?"
+  - "Is the related work complete across both the method literature and the application literature, and is the contribution over any previous conference version clear?"
+  - "Can a reader reproduce this from the code, data access, pinned dependencies and run instructions?"
+  - "What does the machine-learning community learn here that transfers beyond this application?"
+peeves:
+  critical:
+    - "The delta over a previous conference version of the work is not stated explicitly."
+    - "A generalization claim rests on in-sample numbers only."
+    - "Hyperparameters are reported as winning values without the search procedure."
+  constructive:
+    - "Rewards a short paragraph on what the result means outside the application area."
+    - "Appreciates released code and data at submission time."
+format_rules:
+  - "No significance stars required; report metric definitions and N in table notes."
+  - "Figures must be self-contained: axes, legend, orientation and sample size stated in the caption."
+submission_checks: [placeholders, undefined_refs]

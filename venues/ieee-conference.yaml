@@ -1,0 +1,36 @@
+# Venue profile schema adapted from Hugo Sant'Anna's clo-author
+# (github.com/hugosantanna/clo-author), used with permission.
+key: ieee-conference
+name: "IEEE conference (IEEEtran)"
+kind: conference
+doc_classes: [IEEEtran]
+cite_style: numeric
+page_budget: 8
+anonymized: true
+bib_style_hint: IEEEtran
+focus: "A selective IEEE conference using the two-column IEEEtran conference format. Technical contributions with a concrete evaluation, presented compactly."
+bar: "A clear technical contribution, a sound method and an evaluation that supports the main claim against at least one reasonable baseline, all within a strict page limit."
+referee_pool: {EVALUATION: 0.25, METHODOLOGY: 0.20, REPRODUCIBILITY: 0.05, NOVELTY: 0.25, SKEPTIC: 0.10, CLARITY: 0.15}
+domain_adjustments:
+  contribution: [30, 35]
+  external_validity: [15, 10]
+methods_adjustments:
+  baselines: [20, 25]
+  reproducibility: [10, 5]
+typical_concerns:
+  - "What is new compared with the closest prior work, and is that comparison made explicitly?"
+  - "Does the evaluation setup match the claim, with a fair baseline and stated metrics?"
+  - "Are the assumptions and limitations of the method stated?"
+  - "Is the paper complete and readable within the page limit?"
+peeves:
+  critical:
+    - "Figures unreadable at two-column width."
+    - "Claims of superiority without a comparison under the same conditions."
+  constructive:
+    - "Rewards a compact system or method overview figure."
+    - "Appreciates a clearly stated threat-to-validity paragraph."
+format_rules:
+  - "Check the call for papers for the exact page limit and whether references count; 8 pages is a common default."
+  - "Keep the IEEEtran conference layout unchanged; no margin or font tweaks."
+  - "Remove author names and self-identifying text if the conference is double-blind."
+submission_checks: [placeholders, undefined_refs, page_budget, anonymization]

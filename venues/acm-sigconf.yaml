@@ -1,0 +1,35 @@
+# Venue profile schema adapted from Hugo Sant'Anna's clo-author
+# (github.com/hugosantanna/clo-author), used with permission.
+key: acm-sigconf
+name: "ACM conference (acmart sigconf)"
+kind: conference
+doc_classes: [acmart]
+cite_style: numeric
+page_budget: 10
+anonymized: true
+bib_style_hint: ACM-Reference-Format
+focus: "An ACM conference using the acmart sigconf format. Research contributions with an evaluation proportionate to the claim; many ACM venues also run artifact evaluation."
+bar: "A novel, well-motivated contribution with a convincing evaluation and clear positioning against prior work. Artifact availability is increasingly expected."
+referee_pool: {EVALUATION: 0.20, METHODOLOGY: 0.15, REPRODUCIBILITY: 0.15, NOVELTY: 0.25, SKEPTIC: 0.10, CLARITY: 0.15}
+domain_adjustments:
+  contribution: [30, 35]
+  literature: [25, 25]
+methods_adjustments:
+  reproducibility: [10, 15]
+typical_concerns:
+  - "What is the contribution, and how does it differ from the closest prior work?"
+  - "Is the evaluation convincing for the stated claim, and are its limits discussed?"
+  - "Are the artifacts (code, data, configurations) available for evaluation?"
+  - "Is the motivation for the problem clear to a reader outside the immediate subarea?"
+peeves:
+  critical:
+    - "Missing CCS concepts, keywords or other required acmart metadata."
+    - "An evaluation that cannot be repeated from the information in the paper."
+  constructive:
+    - "Appreciates an artifact statement describing what is released and how to run it."
+    - "Rewards a motivating example in the introduction."
+format_rules:
+  - "Check the call for papers for the page limit and whether references count; 10 pages is a common default."
+  - "Use the anonymous and review options of acmart for double-blind submission."
+  - "Include CCS concepts and keywords as acmart requires."
+submission_checks: [placeholders, undefined_refs, page_budget, anonymization]

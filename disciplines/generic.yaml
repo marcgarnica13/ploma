@@ -1,0 +1,36 @@
+# Discipline card schema adapted from Hugo Sant'Anna's clo-author
+# (github.com/hugosantanna/clo-author), used with permission.
+key: generic
+name: "Generic empirical research"
+paper_types:
+  - key: empirical
+    name: "Empirical study"
+    weights:
+      design: 30
+      evidence: 30
+      robustness: 20
+      reproducibility: 20
+    sanity_checks:
+      - "Claim and evidence match: every headline claim points to a specific result in the paper."
+      - "Comparison: results are shown against a baseline, control or prior result, not in isolation."
+      - "Sample: the data or sample is described, including what was excluded and why."
+      - "Variability: uncertainty or variation is reported alongside point estimates."
+      - "Reproducibility: the data source, procedure and software needed to repeat the analysis are stated."
+default_paper_type: empirical
+reproducibility_norms:
+  - "State the data source, the analysis procedure and the software versions used."
+  - "Release code and data where possible, or state why they cannot be released."
+method_conventions:
+  - "Define key terms and notation before first use and keep them consistent."
+  - "Tables and figures read standalone: caption, labels, units and sample size."
+challenge_examples:
+  - "What result would have contradicted the main claim, and was it looked for?"
+  - "Is there a simpler explanation for the main result that the paper does not rule out?"
+  - "How sensitive is the conclusion to the choices made in preparing the data?"
+peeves:
+  critical:
+    - "A headline claim that no result in the paper directly supports."
+    - "Excluded data or cases that are not counted or explained."
+  constructive:
+    - "Rewards an honest limitations section."
+    - "Appreciates a clear statement of the research question in the first page."

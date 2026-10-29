@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "discipline card",
+  "description": "disciplines/<key>.yaml or ploma.d/disciplines/<key>.yaml (spec section 12). scripts/profiles.py validates it and also checks that each paper type's weights sum to 100 and default_paper_type names a paper type.",
+  "type": "object",
+  "required": [
+    "key",
+    "name",
+    "paper_types",
+    "default_paper_type",
+    "reproducibility_norms",
+    "method_conventions",
+    "challenge_examples",
+    "peeves"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "paper_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "weights",
+          "sanity_checks"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "weights": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "sanity_checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        }
+      }
+    },
+    "default_paper_type": {
+      "type": "string"
+    },
+    "reproducibility_norms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "method_conventions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "challenge_examples": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "peeves": {
+      "type": "object",
+      "required": [
+        "critical",
+        "constructive"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "constructive": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

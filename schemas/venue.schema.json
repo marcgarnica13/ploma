@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "venue profile",
+  "description": "venues/<key>.yaml or ploma.d/venues/<key>.yaml (spec section 12). scripts/profiles.py validates it and also checks that referee_pool sums to 1.0 within 0.001.",
+  "type": "object",
+  "required": [
+    "key",
+    "name",
+    "kind",
+    "doc_classes",
+    "cite_style",
+    "page_budget",
+    "anonymized",
+    "bib_style_hint",
+    "focus",
+    "bar",
+    "referee_pool",
+    "domain_adjustments",
+    "methods_adjustments",
+    "typical_concerns",
+    "peeves",
+    "format_rules",
+    "submission_checks"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "journal",
+        "conference",
+        "workshop",
+        "preprint"
+      ]
+    },
+    "doc_classes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "cite_style": {
+      "type": "string",
+      "enum": [
+        "numeric",
+        "author-year"
+      ]
+    },
+    "page_budget": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "anonymized": {
+      "type": "boolean"
+    },
+    "bib_style_hint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "focus": {
+      "type": "string"
+    },
+    "bar": {
+      "type": "string"
+    },
+    "referee_pool": {
+      "type": "object",
+      "required": [
+        "EVALUATION",
+        "METHODOLOGY",
+        "REPRODUCIBILITY",
+        "NOVELTY",
+        "SKEPTIC",
+        "CLARITY"
+      ],
+      "additionalProperties": false,
+      "description": "Disposition weights; must sum to 1.0.",
+      "properties": {
+        "EVALUATION": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "METHODOLOGY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "REPRODUCIBILITY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "NOVELTY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "SKEPTIC": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "CLARITY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "domain_adjustments": {
+      "type": "object",
+      "description": "Dimension -> [from, to] integer weights (percent).",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "methods_adjustments": {
+      "type": "object",
+      "description": "Dimension -> [from, to] integer weights (percent).",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "typical_concerns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "peeves": {
+      "type": "object",
+      "required": [
+        "critical",
+        "constructive"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "constructive": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "format_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "submission_checks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
