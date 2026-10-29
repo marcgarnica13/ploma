@@ -215,7 +215,7 @@ events:
 }
 ```
 
-Each producing skill updates its own entry through `scripts/gate.py record`. `scripts/gate.py check` reports: FRESH or STALE (sha mismatch) per check, required checks missing, and the verdict. Required for commit: `compile`, `bib`, `consistency`. Recommended: `claims`, `proofread` (WARN when missing or stale). Any FAIL in a required check halts `/ploma:commit`.
+Each producing skill updates its own entry through `scripts/gate.py record`. `scripts/gate.py check` reports: FRESH or STALE (sha mismatch) per check, required checks missing, and the verdict. Required for commit: `compile`, `bib`. Recommended: `consistency`, `claims`, `proofread` (WARN when missing or stale). Consistency runs on every `/ploma:commit` and warns, never blocks, in v0.1; it becomes required in 0.1.1 once it has run clean on the traces paper (Marc's decision 2026-10-29, recorded in CHANGELOG). Any FAIL in a required check halts `/ploma:commit`.
 
 Who produces each entry: `compile` by `/ploma:compile`; `bib` by `/ploma:validate-bib`; `consistency` by `scripts/consistency.py`, which `/ploma:commit` runs itself when the entry is missing or stale (it is deterministic and needs no pipeline; with `pipeline.enabled` it also checks results files); `claims` by `/ploma:verify-claims`; `proofread` by `/ploma:proofread`. The passport under `<outputs.dir>/passports/` is populated and updated by `/ploma:audit-reproducibility` (BRIEF §8) and read by the consistency pass; it is never required for the gate.
 
