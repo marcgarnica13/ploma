@@ -100,7 +100,8 @@ def _message(pct: float, cache: dict) -> tuple[str, str] | None:
                     "auto-compaction: run /ploma:checkpoint.",
                     f"Context usage is about {pct:.0f}% (coarse proxy). If decisions or a reusable finding "
                     "emerged this session, write them to the active plan or session log now so they reach disk "
-                    "before auto-compaction; /ploma:checkpoint saves them in one step, /ploma:compress-session distils the session.")
+                    "before auto-compaction, or suggest the user run /ploma:checkpoint (saves them in one step) or "
+                    "/ploma:compress-session (distils the session); both are user-invoked.")
     if pct >= THRESHOLD_CRITICAL and not cache.get("shown_warn_90"):
         cache["shown_warn_90"] = True
         return (f"Context about {pct:.0f}% (approximate). Auto-compaction is near; finish the current task at full quality.",

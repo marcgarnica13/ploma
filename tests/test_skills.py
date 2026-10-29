@@ -1411,3 +1411,32 @@ def test_compress_session_eval_writes_the_note():
     g = _session_graders("compress-session")
     assert "compression_figure-review" in g["note_written"][0]["input_match"]
     assert g["no_tex_write"][0]["max"] == 0
+
+
+# ---------------------------------------------------------------- Task 12 fix round 1 (R148)
+
+def test_deep_audit_rules_paths_covers_every_project_rule():
+    checks = (REPO / "skills" / "deep-audit" / "references" / "checks.md").read_text(encoding="utf-8")
+    row = next(ln for ln in checks.splitlines() if ln.startswith("| `rules.paths`"))
+    assert "every `.claude/rules/*.md`" in row and "hand-written" in row and "CLAUDE.md" in row
+    _, body = split_frontmatter(_skill("deep-audit"))
+    agent2 = next(ln for ln in body.splitlines() if ln.startswith("| 2 | Rules and CLAUDE.md"))
+    assert "`.claude/rules/*.md`" in agent2 and "ploma-*" not in agent2
+
+
+def test_learn_promote_handles_a_failed_record():
+    _, body = split_frontmatter(_skill("learn"))
+    assert "Exit 2: show the error line, leave the written rule in place" in body
+    assert "The receipt was not updated" in body
+
+
+def test_compress_session_asks_once_before_appending():
+    fm, body = split_frontmatter(_skill("compress-session"))
+    assert "AskUserQuestion" in fm["allowed-tools"]
+    assert "ask once with AskUserQuestion" in body and "append nothing" in body
+
+
+def test_outputs_readme_lists_checkpoints():
+    text = (REPO / "templates" / "quality_reports" / "README.md").read_text(encoding="utf-8")
+    row = next(ln for ln in text.splitlines() if ln.startswith("| `checkpoints/`"))
+    assert row.rstrip().endswith("| yes |")

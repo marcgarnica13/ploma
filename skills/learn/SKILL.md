@@ -70,6 +70,8 @@ The learnings rule is written only here. `/ploma:onboard` never renders, plans o
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --json record .claude/rules/ploma-learnings.md
    ```
 
+   Exit 2: show the error line, leave the written rule in place (do not delete or revert it), and tell the user "The receipt was not updated; the doctor will not count this file until a later promote records it." Then continue with step 7.
+
 7. Mark each promoted ledger line by appending ` (promoted <YYYY-MM-DD>)` to it with Edit; change nothing else in the line.
 8. Record and reply with the lines written, the entries marked, and the entries skipped with reasons:
 

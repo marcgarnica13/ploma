@@ -15,7 +15,7 @@ Usage:
 plan shows what apply would do; apply writes create, overwrite and merge actions, deletes a
 generated pipeline rule left over after pipeline.enabled turned false (action remove), and records the
 receipt; settings prints the proposed .claude/settings.json additions (never written); record adds an
-existing file another skill created (the learnings rule written by /ploma:learn --promote) to the
+existing learnings rule (written by /ploma:learn --promote; the only path record accepts) to the
 receipt as created-once.
 
 The learnings rule (.claude/rules/ploma-learnings.md) is never rendered, planned or written here
@@ -397,9 +397,10 @@ def apply(root: Path, cfg: dict, plan: list[dict]) -> list[dict]:
 
 
 def _recorded_elsewhere(root: Path, cfg: dict, rendered: set[str]) -> list[dict]:
-    """Created-once receipt entries another skill recorded (not rendered here) whose file still exists.
+    """The learnings rule's receipt entry, when /ploma:learn --promote recorded it and the file still exists.
 
-    Their recorded sha is kept, so a later hand edit still shows as hand_edited."""
+    Only LEARNINGS_RULE is carried forward (Ruling R148); its recorded sha is kept, so a later hand edit
+    still shows as hand_edited."""
     try:
         data = receipt.load(root, cfg)
     except ValueError:
@@ -407,17 +408,20 @@ def _recorded_elsewhere(root: Path, cfg: dict, rendered: set[str]) -> list[dict]
     if data is None:
         return []
     return [dict(e) for e in data["files"]
-            if e["mode"] == "created-once" and e["path"] not in rendered and (Path(root) / e["path"]).is_file()]
+            if e["path"] == LEARNINGS_RULE and e["path"] not in rendered and e["mode"] == "created-once"
+            and (Path(root) / e["path"]).is_file()]
 
 
 def record_created_once(root: Path, cfg: dict, path: str) -> dict:
     """Add (or refresh) path in the receipt as a created-once file another skill wrote.
 
-    path is repo-relative, must exist, and must not be a file onboard renders (those are recorded by
-    apply). Onboard's entries are kept; an earlier entry for path is replaced. Returns the entry."""
+    Only LEARNINGS_RULE is accepted (an allowlist, Ruling R148); it must exist. Onboard's entries are
+    kept; an earlier entry for path is replaced. Returns the entry."""
     root = Path(root)
     rel = receipt._norm_path(path, "record")
     rel = posixpath.normpath(rel)
+    if rel != LEARNINGS_RULE:
+        raise ValueError(f"record accepts only {LEARNINGS_RULE} (written by /ploma:learn --promote), not {rel}")
     rendered = {s.path for s in render_all(cfg, root)} | {PIPELINE_RULE}
     if rel in rendered:
         raise ValueError(f"{rel} is written by /ploma:onboard; it is recorded when onboard applies")

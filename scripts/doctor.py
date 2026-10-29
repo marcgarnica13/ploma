@@ -389,8 +389,12 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
                       remediation="Run /ploma:onboard to write the project files and receipt."))
         return out
     rows = receipt.compare(root, cfg)
-    gone = [r["path"] for r in rows if r["state"] == "missing"]
+    gone = [r["path"] for r in rows if r["state"] == "missing" and r["path"] != project_files.LEARNINGS_RULE]
     edited = [r["path"] for r in rows if r["state"] == "hand_edited"]
+    if any(r["state"] == "missing" and r["path"] == project_files.LEARNINGS_RULE for r in rows):
+        out.append(_f(g, "receipt_learnings_removed", INFO,
+                      "learnings rule removed (demoted); the receipt entry drops at the next onboard",
+                      observed=f"missing: {project_files.LEARNINGS_RULE}"))
     if gone:
         out.append(_f(g, "receipt_missing", WARN, f"{len(gone)} files written by onboard are gone",
                       observed=_listed(gone), remediation="Re-run /ploma:onboard to restore them."))
@@ -398,7 +402,8 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
         out.append(_f(g, "receipt_edited", INFO, f"{len(edited)} files written by onboard were edited by hand",
                       observed=_listed(edited)))
     if not gone and not edited:
-        out.append(_f(g, "receipt", PASS, f"onboard receipt present; {len(rows)} files unchanged"))
+        same = sum(r["state"] == "unchanged" for r in rows)
+        out.append(_f(g, "receipt", PASS, f"onboard receipt present; {same} files unchanged"))
     return out
 
 

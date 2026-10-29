@@ -19,7 +19,7 @@ input, tool error) is reported as not run, never as clean.
 
 | Check | What | Severity |
 |---|---|---|
-| `rules.paths` | every repo path named in `.claude/rules/ploma-*.md` (backticked paths, `paths:` frontmatter globs) and in the CLAUDE.md span between the ploma markers exists; a glob must match at least one file. Placeholders such as `<outputs.dir>` are resolved from the config first. | MAJOR |
+| `rules.paths` | every repo path named in every `.claude/rules/*.md`, generated `ploma-*` rules and hand-written project rules alike (backticked paths, `paths:` frontmatter globs), and in the CLAUDE.md span between the ploma markers exists; a glob must match at least one file. Placeholders such as `<outputs.dir>` are resolved from the config first. | MAJOR |
 | `rules.restated_fact` | a project rule that ploma did not generate (no generated-by line after its frontmatter), `.claude/rules/ploma-learnings.md` included, states a value `ploma.yaml` holds: the build engine, the bibliography tool, the venue or document class, the page budget, the main file. Quote the line; the fix deletes it or replaces it with "see ploma.yaml". Also the CLAUDE.md text outside the markers. | MAJOR |
 | `rules.contradiction` | two rules, or a rule and `ploma.yaml`, disagree (a different engine, a different main file, a different outputs directory) | CRITICAL |
 | `rules.commands` | every `/ploma:<name>` named in a project rule or CLAUDE.md is a skill the plugin ships (Glob `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md`) and every flag named appears in that skill's `argument-hint` | MINOR |

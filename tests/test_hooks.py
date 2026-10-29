@@ -197,6 +197,8 @@ def test_context_monitor_nudges_at_threshold(sample_paper, tmp_path, capsys, mon
     assert "/ploma:checkpoint" in out["systemMessage"]
     assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
     assert "/ploma:checkpoint" in out["hookSpecificOutput"]["additionalContext"]
+    # R148: /ploma:checkpoint is disable-model-invocation; the model suggests it rather than runs it.
+    assert "suggest the user run /ploma:checkpoint" in out["hookSpecificOutput"]["additionalContext"]
     assert "opus" not in json.dumps(out).lower() and "sonnet" not in json.dumps(out).lower()
     cache = json.loads((sample_paper / ".ploma" / "context-monitor-cache.json").read_text())
     assert cache["shown_checkpoint"] == [40]

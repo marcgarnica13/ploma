@@ -1,6 +1,6 @@
 ---
 name: deep-audit
-description: Audit this project's ploma installation and cross-document consistency. Runs the doctor (drift between ploma.yaml and the generated rules, receipt, legacy harness), checks that every path named in .claude/rules/ploma-*.md and the CLAUDE.md ploma section exists, that no project rule restates a ploma.yaml fact, that reports under <outputs.dir>/ cite files that still exist, and runs the deterministic consistency pass on the manuscript. Four parallel agents, one per area, then triage; fixes only after approval, looping up to the configured cap. Never edits the manuscript. Use when the user says deep audit, audit the setup, find inconsistencies, check everything, or after broad changes and before a release or submission.
+description: Audit this project's ploma installation and cross-document consistency. Runs the doctor (drift between ploma.yaml and the generated rules, receipt, legacy harness), checks that every path named in .claude/rules/*.md and the CLAUDE.md ploma section exists, that no project rule restates a ploma.yaml fact, that reports under <outputs.dir>/ cite files that still exist, and runs the deterministic consistency pass on the manuscript. Four parallel agents, one per area, then triage; fixes only after approval, looping up to the configured cap. Never edits the manuscript. Use when the user says deep audit, audit the setup, find inconsistencies, check everything, or after broad changes and before a release or submission.
 argument-hint: "[--report-only]"
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Write, Edit, Agent, AskUserQuestion, Bash(python3 *), Bash(mkdir *), Bash(ls *), Bash(git status *)
@@ -47,7 +47,7 @@ Spawn four agents in one message (Agent tool, `subagent_type: general-purpose`),
 | Agent | Area | Main checks |
 |---|---|---|
 | 1 | Config and project files | doctor findings in config, project-files, state, legacy-harness (drift, missing rules, receipt, gitignore, legacy conflicts); gate freshness |
-| 2 | Rules and CLAUDE.md | every path named in `.claude/rules/ploma-*.md` and the CLAUDE.md ploma section exists; no project rule restates a `ploma.yaml` fact; every `/ploma:` command named is an installed skill |
+| 2 | Rules and CLAUDE.md | every path named in any `.claude/rules/*.md` (generated or hand-written) and the CLAUDE.md ploma section exists; no project rule restates a `ploma.yaml` fact; every `/ploma:` command named is an installed skill |
 | 3 | Outputs and reports | files cited by reports, plans, checkpoints and specs under `<outputs.dir>/` still exist; ledger lines follow the ledger format; state and gate artifacts exist |
 | 4 | Manuscript consistency | consistency findings with their manuscript location; numbers or names that disagree between the spec, the passport and the manuscript |
 

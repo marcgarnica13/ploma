@@ -614,3 +614,43 @@ def test_doctor_counts_the_recorded_learnings_rule_as_unchanged(sample_paper, cf
     project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
     f = _ids(_doctor(sample_paper))
     assert f["project-files.receipt"].status == PASS
+
+
+def test_record_accepts_only_the_learnings_rule(sample_paper, cfg):
+    """R148: record is an allowlist; other files cannot be slipped into the receipt."""
+    _apply(sample_paper, cfg)
+    other = sample_paper / ".claude" / "rules" / "project-notes.md"
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text("# notes\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        project_files.record_created_once(sample_paper, cfg, ".claude/rules/project-notes.md")
+    assert project_files.main(["--root", str(sample_paper), "record", ".claude/rules/project-notes.md"]) == 2
+
+
+def test_reapply_keeps_only_the_learnings_rule_from_foreign_entries(sample_paper, cfg):
+    """R148: apply carries forward the recorded learnings rule only, never other unrendered entries."""
+    _apply(sample_paper, cfg)
+    _write_learnings_rule(sample_paper)
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    other = sample_paper / "notes.md"
+    other.write_text("x\n", encoding="utf-8")
+    data = receipt.load(sample_paper, cfg)
+    files = data["files"] + [{"path": "notes.md", "mode": "created-once", "sha256": receipt.sha256_file(other)}]
+    receipt.write(sample_paper, cfg, files)
+    _apply(sample_paper, cfg)
+    paths = {e["path"] for e in receipt.load(sample_paper, cfg)["files"]}
+    assert LEARNINGS_RULE in paths and "notes.md" not in paths
+
+
+def test_doctor_reports_a_removed_learnings_rule_as_demoted(sample_paper, cfg):
+    """R148: a recorded learnings rule deleted by hand is a demotion (INFO), not a missing onboard file."""
+    _apply(sample_paper, cfg)
+    _write_learnings_rule(sample_paper)
+    project_files.record_created_once(sample_paper, cfg, LEARNINGS_RULE)
+    (sample_paper / LEARNINGS_RULE).unlink()
+    f = _ids(_doctor(sample_paper))
+    assert "project-files.receipt_missing" not in f
+    demoted = f["project-files.receipt_learnings_removed"]
+    assert demoted.status == INFO
+    assert demoted.summary == "learnings rule removed (demoted); the receipt entry drops at the next onboard"
+    assert f["project-files.receipt"].status == PASS

@@ -3,7 +3,7 @@ name: compress-session
 description: Distil the current conversation into a structured note (active state, decisions with reasons, files touched with path:line, open questions, next one to three actions, what was discarded as noise, proposed learnings) and save it to <outputs.dir>/session_logs/<date>_compression_<topic>.md before auto-compaction. Differs from /ploma:checkpoint (an explicit stop-point snapshot) and from auto-compaction (which truncates rather than distils). Use when context is near the auto-compact threshold, a long run has piled up decisions and dead ends, or the user says compress, distil this session, or structured handoff before context resets.
 argument-hint: "[optional-topic-slug]"
 disable-model-invocation: true
-allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), Bash(mkdir *), Bash(git status *), Bash(git log *), Bash(git branch *), Bash(ls *)
+allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Bash(python3 *), Bash(mkdir *), Bash(git status *), Bash(git log *), Bash(git branch *), Bash(ls *)
 ---
 
 # ploma compress-session: distil, do not truncate
@@ -78,7 +78,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record compress-session INFO --
 
 ## Step 4: Summarise
 
-Reply with the saved path; the counts of decisions, files touched, open questions and next actions; and the proposed learnings. Learnings reach the ledger only through `/ploma:learn` or the user's explicit yes in this turn (then append the accepted lines to `<outputs.dir>/learnings.md`). Nothing is merged automatically.
+Reply with the saved path; the counts of decisions, files touched, open questions and next actions; and the proposed learnings. When there are proposed learnings, ask once with AskUserQuestion which to append to the ledger (all, none, or a choice of them; none first when any looks doubtful). Append only the accepted lines to the end of `<outputs.dir>/learnings.md`. No answer, or AskUserQuestion is unavailable: append nothing and say the user can add them later with `/ploma:learn`. Nothing is merged automatically.
 
 ## Anti-patterns
 
