@@ -14,7 +14,8 @@ Manuscript numbers are compared with each other by kind (percent, count, decimal
 rounding only; tolerances apply to comparisons with results files, where a percent may also match a
 fraction times 100. With pipeline.metric_keys set, table cells and abstract and introduction numbers
 match only results values with a metric key anywhere in their key path, or .csv columns named by
-one (Ruling R159); without metric keys every numeric results value counts (Ruling R157). siunitx \\num, \\qty and \\SI are read as numbers.
+one (Ruling R159); without metric keys every numeric results value counts (Ruling R157). A count
+matches only integer values and a decimal never matches an integer written as such (a count). siunitx \\num, \\qty and \\SI are read as numbers.
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -22,7 +23,14 @@ Rules (spec section 7.2):
   consistency.intro_number_not_in_body.<raw>       FAIL  introduction number (first \\section to the
                                                          next) absent from the rest of the body
   consistency.intro_number_only_in_results.<raw>   WARN  absent from the rest of the body, in results
-  consistency.table_cell_not_in_results.<raw>      WARN  table cell matches no results value
+  consistency.table_row_not_in_one_record.<label>  WARN  a table row with two or more numeric cells that
+                                                         no single results record (a JSON object at any
+                                                         depth, or one .csv row) matches jointly; names the
+                                                         cells that failed
+  consistency.table_cell_not_in_results.<raw>      WARN  a single-number row's cell matches no results value
+  consistency.table_check_uninformative            INFO  the pool covers over half of the values such a cell
+                                                         can display (2-decimal cells in [0, 1]: distinct
+                                                         rounded values / 101), so its match says little
   consistency.placed_by_unkeyed_value.<raw>        INFO  with metric_keys set, a cell or abstract or
                                                          introduction number that only a value under
                                                          another key matches (audit-reproducibility
@@ -223,10 +231,14 @@ def same_number(a: dict, b: dict) -> bool:
 def matches(num: dict, value: float, tolerances: dict) -> bool:
     """Whether a manuscript number agrees with value: counts exactly (or within tolerances.counts),
     decimals within tolerances.metrics, percentages within tolerances.percentages_pp (value as is or
-    times 100). value is first rounded half up to the decimals the manuscript shows."""
+    times 100). value is first rounded half up to the decimals the manuscript shows. A count only
+    matches an integer value, and a decimal never matches an int (a count in the results file)."""
     kind = num["kind"]
     if kind == "count":
-        return abs(num["value"] - value) <= _tol(tolerances, "counts") + _EPS
+        # a count only matches an integer value (10 or 10.0, never 10.4)
+        return float(value).is_integer() and abs(num["value"] - value) <= _tol(tolerances, "counts") + _EPS
+    if kind == "decimal" and isinstance(value, int):
+        return False  # a decimal cell never matches an integer-typed count (9.99 is not 10 teams)
     exact = Decimal(repr(float(value)))  # the shortest decimal that round-trips, as the results file shows it
     if kind == "percent":
         candidates, tol = (exact, exact * 100), _tol(tolerances, "percentages_pp")
@@ -254,9 +266,9 @@ def _walk_json(data: Any, keys: set[str], res: "Results", keyed: bool = False) -
         for v in data:
             _walk_json(v, keys, res, keyed)
     elif _is_number(data):
-        res.values.append(float(data))
+        res.values.append(data)
         if keyed:
-            res.keyed_values.append(float(data))
+            res.keyed_values.append(data)
 
 
 def _is_number(v: Any) -> bool:
@@ -264,12 +276,66 @@ def _is_number(v: Any) -> bool:
 
 
 @dataclass
+class Record:
+    """One results record: a JSON object (its own numbers, plus those under a child named by a metric
+    key) or one .csv row. values are the keyed ones when metric keys are set, else every number."""
+    where: str
+    values: list[float]
+
+
+@dataclass
 class Results:
     files: list[Path] = field(default_factory=list)
-    values: list[float] = field(default_factory=list)
+    values: list[float] = field(default_factory=list)  # int when the file writes an integer (a count)
     keyed_values: list[float] = field(default_factory=list)  # values with a metric key in their key path
     keys_found: set[str] = field(default_factory=set)
     unreadable: list[tuple[Path, str]] = field(default_factory=list)
+    records: list[Record] = field(default_factory=list)
+
+
+def _uniq(values: list) -> list:
+    """Distinct values, sorted; an int and the equal float are kept apart (10 is a count, 10.0 is not)."""
+    return sorted({(isinstance(v, int), v): v for v in values}.values())
+
+
+def _subtree_numbers(data: Any) -> list:
+    if isinstance(data, dict):
+        return [n for v in data.values() for n in _subtree_numbers(v)]
+    if isinstance(data, list):
+        return [n for v in data for n in _subtree_numbers(v)]
+    return [data] if _is_number(data) else []
+
+
+def _json_records(data: Any, keys: set[str], where: str, keyed: bool, out: list[Record]) -> None:
+    """Every JSON object with numbers of its own is a record. A child dict or list named by a metric key
+    is folded into its parent ({"avg_fitness": {"mean": x}} belongs to the parent's record)."""
+    if isinstance(data, dict):
+        own: list = []
+        for k, v in data.items():
+            k_keyed = keyed or k in keys
+            if _is_number(v):
+                if k_keyed or not keys:
+                    own.append(v)
+            elif isinstance(v, (dict, list)) and k in keys:
+                own += _subtree_numbers(v)
+            elif isinstance(v, list) and all(_is_number(x) for x in v):
+                if k_keyed or not keys:
+                    own += v
+            if isinstance(v, (dict, list)):
+                _json_records(v, keys, f"{where}.{k}" if where else str(k), k_keyed, out)
+        if own:
+            out.append(Record(where or "(top level)", _uniq(own)))
+    elif isinstance(data, list):
+        for i, v in enumerate(data):
+            _json_records(v, keys, f"{where}[{i}]", keyed, out)
+
+
+def _csv_number(cell: str):
+    text = cell.strip()
+    if re.fullmatch(r"[-+]?\d+", text):
+        return int(text)
+    number = float(text)
+    return number if math.isfinite(number) else None
 
 
 def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
@@ -286,29 +352,39 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
         try:
             text = path.read_text(encoding="utf-8")
             if path.suffix.lower() == ".json":
-                _walk_json(json.loads(text), keys, res)
+                data = json.loads(text)
+                _walk_json(data, keys, res)
+                found: list[Record] = []
+                _json_records(data, keys, "", False, found)
+                res.records += [Record(f"{path.name}:{r.where}", r.values) for r in found]
             else:
                 rows = list(csv.reader(text.splitlines()))
                 header = rows[0] if rows else []
-                for row in rows:
+                for r, row in enumerate(rows):
+                    record: list = []
                     for i, cell in enumerate(row):
                         try:
-                            number = float(cell.strip())
-                            if not math.isfinite(number):
-                                continue
-                            res.values.append(number)
-                            if i < len(header) and header[i].strip() in keys:
-                                res.keys_found.add(header[i].strip())
-                                if row is not header:
-                                    res.keyed_values.append(number)
+                            number = _csv_number(cell)
                         except ValueError:
-                            pass
+                            continue
+                        if number is None:
+                            continue
+                        res.values.append(number)
+                        if i < len(header) and header[i].strip() in keys:
+                            res.keys_found.add(header[i].strip())
+                            if row is not header:
+                                res.keyed_values.append(number)
+                                record.append(number)
+                        elif not keys and row is not header:
+                            record.append(number)
+                    if record:
+                        res.records.append(Record(f"{path.name} row {r + 1}", _uniq(record)))
         except (OSError, UnicodeDecodeError, ValueError, csv.Error) as exc:
             res.unreadable.append((path, str(exc).splitlines()[0] if str(exc) else type(exc).__name__))
             continue
         res.files.append(path)
-    res.values = sorted(set(res.values))
-    res.keyed_values = sorted(set(res.keyed_values))
+    res.values = _uniq(res.values)
+    res.keyed_values = _uniq(res.keyed_values)
     return res
 
 
@@ -354,7 +430,16 @@ def _cell_number(cell: str) -> dict | None:
     return _number(m) if m else None
 
 
+def _row_label(cell: str) -> str:
+    """An id-safe label from a row's first cell: its words joined by _ (empty when it has none)."""
+    text = _CELL_NOISE_RE.sub("", cell)
+    text = re.sub(r"\\[A-Za-z]+\*?|[{}$~]", " ", text)
+    return re.sub(r"[^\w.+-]+", "_", text).strip("_.")
+
+
 def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str) -> list[dict]:
+    """Numeric cells with file, line, the row they sit in ("row": file:line of the row start) and the
+    row's label (its first cell's words, or "line<N>")."""
     cells = []
     for _, content, end in _texmask.env_spans(stripped, TABULAR_ENVS):
         body = masked[content:end]
@@ -365,13 +450,19 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
             if row != "\\\\":
                 pos = offset
                 column = 0
-                for cell in re.split(r"(?<!\\)(&)", row):
+                parts = re.split(r"(?<!\\)(&)", row)
+                row_line = lines.line(offset + len(row) - len(row.lstrip()))
+                label = _row_label(parts[0]) if parts else ""
+                if not label or _cell_number(parts[0]) is not None:
+                    label = f"line{row_line}"
+                for cell in parts:
                     if cell == "&":
                         column += 1
                     else:
                         n = _cell_number(cell)
                         if n is not None and not (column == 0 and n["kind"] == "count"):
-                            n.update(line=lines.line(pos + len(cell) - len(cell.lstrip())), file=file)
+                            n.update(line=lines.line(pos + len(cell) - len(cell.lstrip())), file=file,
+                                     row=f"{file}:{row_line}", label=label)
                             cells.append(n)
                     pos += len(cell)
             offset += len(row)
@@ -576,6 +667,116 @@ def _check_numbers(part: str, numbers: list[dict], against: list[dict], where_te
     return out
 
 
+def _vkey(v) -> tuple:
+    return (isinstance(v, int), v)
+
+
+def _coverage(cell: dict, pool: list, cache: dict) -> tuple[float, str] | None:
+    """Share of the displayed values at the cell's precision, in the unit interval holding it, that some
+    pool value rounds to (for a 2-decimal cell in [0, 1]: distinct rounded values / 101), with a short
+    description of that space; None for counts and integer-shown cells."""
+    kind, places = cell["kind"], _decimals(cell["raw"])
+    if kind == "count" or places == 0:
+        return None
+    lo = math.floor(abs(cell["value"]))
+    key = (kind, places, lo)
+    if key not in cache:
+        shown: set[Decimal] = set()
+        for v in pool:
+            if kind == "decimal" and isinstance(v, int):
+                continue
+            exact = Decimal(repr(float(v)))
+            for c in ((exact, exact * 100) if kind == "percent" else (exact,)):
+                r = _half_up(abs(c), places)
+                if lo <= r <= lo + 1:
+                    shown.add(r)
+        size = 10 ** places + 1
+        cache[key] = (len(shown) / size, f"{size} {places}-decimal {'percent ' if kind == 'percent' else ''}"
+                                         f"values in [{lo}, {lo + 1}]")
+    return cache[key]
+
+
+def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], tolerances: dict) -> list[Finding]:
+    """Rows with two or more numeric cells must match one results record jointly (WARN
+    table_row_not_in_one_record naming the cells that failed); a single-cell row is matched against the
+    whole pool (WARN table_cell_not_in_results), with an INFO table_check_uninformative when that pool
+    covers more than half of the displayed values at the cell's precision."""
+    pool = _pool(results, metric_keys)
+    by_raw: dict[tuple[str, str], set] = {}
+    for c in cells:
+        if (c["kind"], c["raw"]) not in by_raw:
+            by_raw[(c["kind"], c["raw"])] = {_vkey(v) for v in pool if matches(c, v, tolerances)}
+    hits = [by_raw[(c["kind"], c["raw"])] for c in cells]
+    rows: dict[str, list[int]] = {}
+    for i, c in enumerate(cells):
+        rows.setdefault(c.get("row", f"{c['file']}:{c['line']}"), []).append(i)
+    out: list[Finding] = []
+    missed: dict[str, list[dict]] = {}
+    unplaced: list[dict] = []
+    dense: list[tuple[float, str, dict]] = []
+    cache: dict = {}
+    labels: set[str] = set()
+    records = [{_vkey(v) for v in r.values} for r in results.records]
+    for idxs in rows.values():
+        unplaced += [cells[i] for i in idxs if not hits[i]]
+        if len(idxs) < 2 or not records:
+            for i in idxs:
+                if not hits[i]:
+                    missed.setdefault(cells[i]["raw"], []).append(cells[i])
+                else:
+                    cov = _coverage(cells[i], pool, cache)
+                    if cov and cov[0] > 0.5:
+                        dense.append((cov[0], cov[1], cells[i]))
+            continue
+        best, best_n = None, -1
+        for r, rvals in enumerate(records):
+            n = sum(1 for i in idxs if hits[i] & rvals)
+            if n > best_n:
+                best, best_n = r, n
+            if n == len(idxs):
+                break
+        if best_n == len(idxs):
+            continue
+        rvals = records[best]
+        failed = [i for i in idxs if not hits[i] & rvals]
+        first = cells[idxs[0]]
+        label = first.get("label") or f"line{first['line']}"
+        if label in labels:
+            label = f"{label}_line{first['line']}"
+        labels.add(label)
+        parts = [f"{cells[i]['raw']} ({_where(cells[i])}"
+                 + ("; matches no results value)" if not hits[i] else "; only in another record)") for i in failed]
+        out.append(Finding(
+            f"consistency.table_row_not_in_one_record.{label}", WARN,
+            f"table row {label}: no single results record holds all {len(idxs)} numeric cells",
+            observed="failed cells: " + ", ".join(parts)
+                     + f"; closest record {results.records[best].where} matched {best_n} of {len(idxs)}",
+            remediation="Check the row against the pipeline outputs: each cell should come from the same run, "
+                        "team or configuration. Re-run the pipeline or correct the table.", group="tables"))
+    for raw, where in missed.items():
+        out.append(Finding(f"consistency.table_cell_not_in_results.{raw}", WARN,
+                           f"table cell {raw} matches no value in the results files",
+                           observed=", ".join(_where(c) for c in where)
+                           + f"; looked in {len(results.files)} results file(s)",
+                           remediation="Check the cell against the pipeline outputs; re-run the pipeline "
+                                       "or correct the table.", group="tables"))
+    seen: set[str] = set()
+    for c in unplaced:
+        if c["raw"] not in seen and _unkeyed(c, results, metric_keys, tolerances):
+            seen.add(c["raw"])
+            out.append(_unkeyed_finding(c, ", ".join(_where(x) for x in unplaced if x["raw"] == c["raw"])))
+    if dense:
+        top = max(d[0] for d in dense)
+        out.append(Finding(
+            "consistency.table_check_uninformative", INFO,
+            f"the per-cell table check is uninformative: the results values cover up to {top * 100:.0f}% of "
+            f"the values a cell can display, so almost any cell would match",
+            observed="; ".join(f"{c['raw']} ({_where(c)}): {cov * 100:.0f}% of the {space}" for cov, space, c in dense),
+            remediation="Narrow pipeline.metric_keys to the reported metrics, or check these cells by hand "
+                        "(/ploma:audit-reproducibility Phase 2).", group="tables"))
+    return out
+
+
 def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] | None = None,
         tolerances: dict | None = None, passport: Path | None = None) -> ConsistencyReport:
     main = Path(main).resolve()
@@ -594,21 +795,7 @@ def run(main: Path, *, results_dir: Path | None = None, metric_keys: list[str] |
 
     tables_checked = bool(results.files) and bool(results.values)
     if tables_checked:
-        pool = _pool(results, metric_keys)
-        missed: dict[str, list[dict]] = {}
-        for c in cells:
-            if not any(matches(c, v, tolerances) for v in pool):
-                missed.setdefault(c["raw"], []).append(c)
-        for raw, where in missed.items():
-            findings.append(Finding(f"consistency.table_cell_not_in_results.{raw}", WARN,
-                                    f"table cell {raw} matches no value in the results files",
-                                    observed=", ".join(_where(c) for c in where)
-                                    + f"; looked in {len(results.files)} results file(s)",
-                                    remediation="Check the cell against the pipeline outputs; re-run the pipeline "
-                                                "or correct the table.", group="tables"))
-            if _unkeyed(where[0], results, metric_keys, tolerances) and not any(
-                    f.id == f"consistency.placed_by_unkeyed_value.{raw}" for f in findings):
-                findings.append(_unkeyed_finding(where[0], ", ".join(_where(c) for c in where)))
+        findings += _check_tables(cells, results, metric_keys, tolerances)
     if results.files:
         for key in metric_keys:
             if key not in results.keys_found:

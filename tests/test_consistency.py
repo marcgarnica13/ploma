@@ -252,8 +252,8 @@ def test_table_cell_vs_results(sample_paper):
     res = sample_paper / "sections" / "results.tex"
     res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.85"))
     rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=["avg_fitness"])
-    f = next(f for f in rep.findings if f.id == "consistency.table_cell_not_in_results.0.85")
-    assert f.status == "WARN" and "results.tex:" in f.observed
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.Ours")
+    assert f.status == "WARN" and "0.85 (sections/results.tex:" in f.observed and "no results value" in f.observed
     assert rep.verdict == "WARN"
 
 
@@ -266,8 +266,9 @@ def test_table_cells_unchecked_without_results(sample_paper):
 
 def test_table_cell_matches_nested_json_and_csv(tmp_path):
     main = tmp_path / "m.tex"
-    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\nA & \\textbf{0.5} & 1{,}000 \\\\\n"
-                    "B & $0.333$ & 45.2\\% \\\\\n\\end{tabular}\n\\end{document}\n")
+    # one numeric cell per row: per-cell matching (rows of two cells must match one record, see D9 tests)
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & \\textbf{0.5} \\\\\nB & 1{,}000 \\\\\n"
+                    "C & $0.333$ \\\\\nD & 45.2\\% \\\\\n\\end{tabular}\n\\end{document}\n")
     res = tmp_path / "res"
     (res / "deep").mkdir(parents=True)
     (res / "deep" / "x.json").write_text(json.dumps({"runs": [{"m": {"score": 0.4981}}]}))
@@ -436,8 +437,8 @@ def test_wrong_cell_is_not_hidden_by_history_values(sample_paper):
     res = sample_paper / "sections" / "results.tex"
     res.write_text(res.read_text().replace("Ours & 12 & 0.81", "Ours & 12 & 0.86"))
     rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=KEYS)
-    f = next(f for f in rep.findings if f.id == "consistency.table_cell_not_in_results.0.86")
-    assert f.status == "WARN" and rep.verdict == "WARN"
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.Ours")
+    assert f.status == "WARN" and "0.86" in f.observed and rep.verdict == "WARN"
     info = next(f for f in rep.findings if f.id == "consistency.placed_by_unkeyed_value.0.86")
     assert info.status == "INFO"
 
@@ -503,3 +504,96 @@ def test_cell_matching_a_nested_metric_mean_is_not_flagged(sample_paper):
          "baseline_win_ratio": 0.72, "baseline_rating_update": 0.76}))
     rep = _run(sample_paper / "main.tex", results_dir=sample_paper / "results", metric_keys=KEYS)
     assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+
+
+# ---------------------------------------------------------------- D9: row-joint matching, kinds, density
+
+TEAM_KEYS = ["avg_fitness", "generalization", "dependency"]
+TEAM_TABLE = ("\\begin{document}\n\\begin{tabular}{lrrr}\nTeam & Fitness & Gen. & Dep. \\\\\n"
+              "A & {a_fit} & {a_gen} & 0.22 \\\\\nB & 0.79 & 0.71 & 0.31 \\\\\nC & 0.66 & 0.60 & 0.18 \\\\\n"
+              "\\end{tabular}\n\\end{document}\n")
+
+
+def _team_paper(tmp_path, a_fit="0.81", a_gen="0.74"):
+    main = tmp_path / "m.tex"
+    main.write_text(TEAM_TABLE.replace("{a_fit}", a_fit).replace("{a_gen}", a_gen))
+    res = tmp_path / "res"
+    res.mkdir()
+    shutil.copyfile(FIX / "results" / "team_metrics.json", res / "team_metrics.json")
+    return main, res
+
+
+def test_team_table_matches_one_record_per_row(tmp_path):
+    main, res = _team_paper(tmp_path)
+    rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
+    assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+
+
+def test_cell_from_another_record_warns_row_not_in_one_record(tmp_path):
+    main, res = _team_paper(tmp_path, a_gen="0.71")  # 0.71 is team B's generalization
+    rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.A")
+    assert f.status == "WARN" and "0.71" in f.observed and "0.81" not in f.summary + f.observed.split(";")[0]
+    assert rep.verdict == "WARN"
+    assert not any(f.id.endswith((".B", ".C")) for f in rep.findings)
+
+
+def test_row_cell_matching_nothing_is_named_in_the_row_finding(tmp_path):
+    main, res = _team_paper(tmp_path, a_gen="0.55")
+    rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_not_in_one_record.A")
+    assert "0.55" in f.observed and "no results value" in f.observed
+
+
+def test_csv_row_is_one_record(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lrr}\nA & 0.81 & 0.71 \\\\\n\\end{tabular}\n"
+                    "\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "t.csv").write_text("team,fit,gen\nA,0.81,0.74\nB,0.79,0.71\n")
+    rep = _run(main, results_dir=res, metric_keys=["fit", "gen"])
+    assert "consistency.table_row_not_in_one_record.A" in _ids(rep)
+    (res / "t.csv").write_text("team,fit,gen\nA,0.81,0.71\nB,0.79,0.74\n")
+    assert _run(main, results_dir=res, metric_keys=["fit", "gen"]).verdict == "PASS"
+
+
+def test_decimal_cell_never_matches_an_integer_count(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & 9.99 \\\\\n\\end{tabular}\n\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "r.json").write_text(json.dumps({"score": 10}))
+    rep = _run(main, results_dir=res, metric_keys=["score"])
+    assert "consistency.table_cell_not_in_results.9.99" in _ids(rep)
+
+
+def test_count_cell_only_matches_integer_values(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & 10 \\\\\n\\end{tabular}\n\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "r.json").write_text(json.dumps({"score": 10.4}))
+    rep = _run(main, results_dir=res, metric_keys=["score"], tolerances={**TOL, "counts": 1})
+    assert "consistency.table_cell_not_in_results.10" in _ids(rep)
+
+
+def test_dense_pool_makes_per_cell_check_uninformative(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & 0.42 \\\\\n\\end{tabular}\n\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "r.json").write_text(json.dumps({"score": [round(i / 100 + 0.001, 3) for i in range(80)]}))
+    rep = _run(main, results_dir=res, metric_keys=["score"])
+    f = next(f for f in rep.findings if f.id == "consistency.table_check_uninformative")
+    assert f.status == "INFO" and "79%" in f.summary + f.observed
+    text = consistency.render_report(rep, "m.tex")
+    assert "numeric table cells match a results value" not in text
+    assert "uninformative" in text
+
+
+def test_sparse_pool_reports_all_cells_match(tmp_path):
+    main, res = _team_paper(tmp_path)
+    rep = _run(main, results_dir=res, metric_keys=TEAM_KEYS)
+    assert "consistency.table_check_uninformative" not in _ids(rep)
+    assert "All 9 numeric table cells match a results value" in consistency.render_report(rep, "m.tex")
