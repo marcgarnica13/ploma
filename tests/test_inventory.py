@@ -60,7 +60,7 @@ def test_proposal_validates_on_sample(sample_paper):
     assert prop["build"]["command"] == "make" and prop["build"]["bib_files"] == ["refs.bib"]
     assert prop["build"]["pdf"] == "main.pdf" and prop["build"]["log"] == "main.log"
     assert prop["venue"] == {"profile": "generic-journal", "doc_class": "article", "page_budget": None,
-                             "cite_style": "numeric"}
+                             "page_budget_includes_refs": False, "cite_style": "numeric"}
     assert prop["reviews"] == {"glob": "review/*"} and prop["outputs"] == {"dir": "quality_reports"}
     assert "pipeline" not in prop  # no code tree in the sample
     fails = [f for f in ploma_config.validate(prop, sample_paper) if f.status == "FAIL"]
@@ -405,3 +405,21 @@ def test_latexmkrc_in_main_dir_naming_another_main_is_not_used(tmp_path):
     shutil.copy(FIX_TEX / "two_mains_a.tex", tmp_path / "paper.tex")
     (tmp_path / ".latexmkrc").write_text("@default_files = ('other.tex');\n")
     assert inventory.inventory(tmp_path)["build"]["kind"] is None
+
+
+def test_page_budget_question_folds_in_whether_references_count(tmp_path):
+    shutil.copy(FIX_TEX / "llncs_main.tex", tmp_path / "paper.tex")
+    g = _gaps(inventory.inventory(tmp_path))
+    pb = g["venue.page_budget"]
+    assert "references" in pb["question"]
+    refs = pb["includes_refs"]
+    assert refs["key"] == "venue.page_budget_includes_refs" and refs["recommended"] is False
+    assert refs["options"][0] == {"value": False, "label": "references do not count toward the limit"}
+    assert {"value": True, "label": "references count toward the limit"} in refs["options"]
+    assert "venue.page_budget_includes_refs" not in g, "folded into the page-budget question, not asked separately"
+
+
+def test_proposed_slug_matches_the_schema_pattern(tmp_path):
+    shutil.copy(FIX_TEX / "llncs_main.tex", tmp_path / "my paper (v2).tex")
+    prop = inventory.propose_config(inventory.inventory(tmp_path))
+    assert prop["document"]["slug"] == "my-paper-v2"

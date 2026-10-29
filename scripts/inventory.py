@@ -489,7 +489,8 @@ def propose_config(inv: dict) -> dict:
     if inv.get("title"):
         document["title"] = inv["title"]
     if main:
-        document["slug"] = Path(main).stem
+        # document.slug must match ^[A-Za-z0-9._-]+$ (it names report files).
+        document["slug"] = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(main).stem).strip("-") or "paper"
     document["anonymized"] = bool(inv.get("anonymized"))
 
     b = inv.get("build") or {}
@@ -511,6 +512,7 @@ def propose_config(inv: dict) -> dict:
     if inv.get("doc_class"):
         venue["doc_class"] = inv["doc_class"]
     venue["page_budget"] = None
+    venue["page_budget_includes_refs"] = False
     venue["cite_style"] = "author-year" if inv.get("uses_author_year") else "numeric"
 
     proposal: dict[str, Any] = {"ploma": "0.1", "document": document, "build": build, "venue": venue}
@@ -545,8 +547,12 @@ def gaps(inv: dict, proposal: dict) -> list[dict]:
         budget = profiles.load_venue(opts[0], _inv_root(inv)).get("page_budget")
     except profiles.ProfileError:
         budget = None
-    out.append({"key": "venue.page_budget", "question": "What is the page budget for this venue (null for none)?",
-                "recommended": budget, "options": []})
+    out.append({"key": "venue.page_budget",
+                "question": "What is the page budget for this venue (null for none), and do references count toward it?",
+                "recommended": budget, "options": [],
+                "includes_refs": {"key": "venue.page_budget_includes_refs", "recommended": False,
+                                  "options": [{"value": False, "label": "references do not count toward the limit"},
+                                              {"value": True, "label": "references count toward the limit"}]}})
     if inv.get("code"):
         out.append({"key": "pipeline.enabled",
                     "question": f"Is the code tree in {inv['code']['dir']} the pipeline that produces this paper's numbers?",
