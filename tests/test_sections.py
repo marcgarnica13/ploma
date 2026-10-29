@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -259,3 +260,27 @@ def test_last_section_stops_before_credits_and_ack_environments(tmp_path, env):
             f"\\end{{{env}}}\n%\n\\bibliographystyle{{splncs04}}\n\\bibliography{{refs}}\n")
     sec = _last_section(tmp_path, tail)
     assert (sec.start, sec.end) == (4, 6)
+
+
+# ---------------------------------------------------------------- write merge: delete the sibling by script
+
+def test_delete_sibling_removes_only_the_suggestion_file(sample_paper, capsys):
+    sec = sections.resolve(sample_paper, sample_paper / "main.tex", "Introduction", sample_paper)
+    sib = sections.sibling_path(sec)
+    sib.write_text("% draft\n", encoding="utf-8")
+    assert sections.main(["--root", str(sample_paper), "--json", "delete-sibling", "Introduction"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["deleted"] is True and out["sibling"].endswith("_suggestion.tex")
+    assert not sib.exists() and sec.file.is_file()
+    assert sections.main(["--root", str(sample_paper), "--json", "delete-sibling", "Introduction"]) == 0
+    assert json.loads(capsys.readouterr().out)["deleted"] is False
+
+
+def test_write_skill_merges_with_edit_and_deletes_by_script(repo_root):
+    text = (repo_root / "skills" / "write" / "SKILL.md").read_text(encoding="utf-8")
+    head, body = text.split("\n---\n", 1)
+    tools = [t.strip() for t in head.split("allowed-tools:", 1)[1].splitlines()[0].split(",")]
+    assert "Edit" in tools
+    ref = (repo_root / "skills" / "write" / "references" / "sibling-file.md").read_text(encoding="utf-8")
+    for t in (body, ref):
+        assert not re.search(r"`rm\b", t) and 'sections.py" --json delete-sibling' in t

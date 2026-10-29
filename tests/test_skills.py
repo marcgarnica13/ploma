@@ -514,7 +514,7 @@ def test_write_contract():
     text = _skill("write")
     fm, _ = split_frontmatter(text)
     assert fm["argument-hint"] == "<section title | sec:label | path> [--from-spec] [--merge]"
-    assert "Edit" not in _tools(fm)  # the merge edit always prompts
+    assert "Edit" in _tools(fm)  # the merge edit runs after the user's explicit yes in a --merge run
     assert "AskUserQuestion" in _tools(fm)
     assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sections.py" --json resolve "<query>"' in text
     assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sections.py" --json check "<query>" "<sibling>"' in text
@@ -532,7 +532,7 @@ def test_write_contract():
     ref = (REPO / "skills" / "write" / "references" / "sibling-file.md").read_text(encoding="utf-8")
     for field in ("% Source:", "% Source sha:", "% Spec items served:", "% Date:", "% Merge:"):
         assert field in ref, field
-    assert "<stem>_suggestion.tex" in ref and "rm <sibling>" in ref
+    assert "<stem>_suggestion.tex" in ref and 'sections.py" --json delete-sibling "<query>"' in ref
 
 
 def test_write_eval_guards_the_manuscript():

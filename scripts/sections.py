@@ -5,6 +5,7 @@ Usage:
   python3 scripts/sections.py [--root R] [--json] list
   python3 scripts/sections.py [--root R] [--json] resolve <query>
   python3 scripts/sections.py [--root R] [--json] check <query> <draft.tex>
+  python3 scripts/sections.py [--root R] [--json] delete-sibling <query>
 
 A query is a \\section title (case-insensitive), a \\label (for example sec:intro), or a .tex path
 under document.root. A section runs from its \\section line to the line before the next \\section,
@@ -23,6 +24,9 @@ appear nowhere else in the manuscript or the results files, new \\includegraphic
 preceding "% ploma:source" line (when pipeline.enabled), whether the section changed since the draft
 header's "Source sha", and a unified diff of the current section against the draft body. The real
 manuscript files are only read.
+
+delete-sibling deletes the section's <stem>_suggestion.tex draft (after a /ploma:write merge); only a
+*_suggestion.tex file is ever deleted.
 
 Exit codes: 0 ok, 2 usage error, unknown or ambiguous section, unreadable config or draft.
 """
@@ -62,6 +66,7 @@ _TABLE_RE = re.compile(r"\\begin\s*\{table\*?\}")
 _GRAPHICS_RE = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}")
 _SHA_RE = re.compile(r"^%\s*Source sha:\s*([0-9a-f]{12})\b", re.M)
 SOURCE_PREFIX = "% ploma:source"
+SUGGESTION_SUFFIX = "_suggestion.tex"
 
 
 @dataclass
@@ -287,6 +292,17 @@ def sibling_path(sec: Section) -> Path:
     return (sec.file.parent / f"{stem}_suggestion.tex").resolve()
 
 
+def delete_sibling(sec: Section) -> tuple[Path, bool]:
+    """Delete the section's <stem>_suggestion.tex after a merge; (path, whether a file was deleted)."""
+    sib = sibling_path(sec)
+    if not sib.name.endswith(SUGGESTION_SUFFIX):
+        raise ValueError(f"refusing to delete {sib}: not a {SUGGESTION_SUFFIX} draft")
+    if sib.is_file() and not sib.is_symlink():
+        sib.unlink()
+        return sib, True
+    return sib, False
+
+
 def section_lines(sec: Section) -> list[str]:
     return _raw_lines(sec.file)[sec.start - 1: sec.end]
 
@@ -479,6 +495,8 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("check")
     c.add_argument("query")
     c.add_argument("draft")
+    d = sub.add_parser("delete-sibling")
+    d.add_argument("query")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -518,6 +536,13 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"{info['title']}: {info['file']} lines {info['start']}-{info['end']} (sha {info['sha']})")
                 print(f"sibling: {info['sibling']}" + (" (exists)" if info["sibling_exists"] else ""))
+            return 0
+        if args.action == "delete-sibling":
+            sib, deleted = delete_sibling(sec)
+            if args.json:
+                print(json.dumps({"sibling": _rel(sib, root), "deleted": deleted}))
+            else:
+                print(f"{'deleted' if deleted else 'no draft at'} {_rel(sib, root)}")
             return 0
         draft = Path(args.draft)
         draft = draft if draft.is_absolute() else root / draft

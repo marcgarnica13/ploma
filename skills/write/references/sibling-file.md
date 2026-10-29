@@ -47,6 +47,6 @@ A merge happens only in a run invoked with `--merge`, and only after the user sa
 2. Read the section's current lines (Read with offset and limit on the range) and the draft body.
 3. Replace exactly that line range with the body (everything after the header) using one Edit: `old_string` is the current section text, `new_string` is the body. Nothing outside the range changes.
 4. Confirm with `sections.py resolve` and a Read of the new span: it equals the body, ignoring trailing blank lines.
-5. Delete the sibling file (`rm <sibling>`), then recommend `/ploma:compile`.
+5. Delete the sibling file with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sections.py" --json delete-sibling "<query>"`, then recommend `/ploma:compile`.
 
 When the Edit fails (the old text is no longer there), stop and say so. Never patch around it.

@@ -2,7 +2,7 @@
 name: write
 description: Draft or redraft one section of the paper into a sibling <stem>_suggestion.tex file beside the section's file, never into the manuscript. Finds the section by title, label or path, follows the paper spec on request, self-checks the draft (style, numbers and notation against the rest of the paper, on a copy), shows a diff against the current section and lists open flags. Merges over the section only with --merge and the user's explicit yes. Use when the user asks to write, draft, redraft, rewrite, shorten or tighten a section of the paper.
 argument-hint: "<section title | sec:label | path> [--from-spec] [--merge]"
-allowed-tools: Read, Glob, Grep, Write, Bash(python3 *), AskUserQuestion
+allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), AskUserQuestion
 ---
 
 # ploma write
@@ -119,7 +119,7 @@ Merging happens only in a run invoked with `--merge`, and only after the user sa
 2. Run the self-check of step 4 on the sibling as it is now, show steps 5.2 to 5.4, and ask with AskUserQuestion: "Merge this draft" or "Keep the draft, do not merge". Without AskUserQuestion, ask in text and wait: an explicit yes in the user's next message completes this `--merge` run; any other reply ends it without merging. Silence, "looks good" about something else, or a yes given before a later change to the draft is not a yes to merge.
 3. `stale` true: say the section changed after the draft was written, show the new diff and ask again. Never merge a stale draft without a fresh yes.
 4. Apply the merge rules in the reference: Read the section's current lines, then one Edit whose `old_string` is exactly those lines and whose `new_string` is the draft body (the sibling without its header). Nothing outside the line range changes.
-5. Confirm: run `sections.py --json resolve "<query>"` again and Read the new span. It must equal the draft body, ignoring trailing blank lines on both sides (the span never ends in blank lines, the body may). Then delete the sibling (`rm "<sibling>"`).
+5. Confirm: run `sections.py --json resolve "<query>"` again and Read the new span. It must equal the draft body, ignoring trailing blank lines on both sides (the span never ends in blank lines, the body may). Then delete the sibling with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sections.py" --json delete-sibling "<query>"` (it deletes only the `_suggestion.tex` draft).
 6. Record and reply:
 
    ```bash
