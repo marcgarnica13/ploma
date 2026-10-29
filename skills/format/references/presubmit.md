@@ -33,13 +33,13 @@ An entry not in either table: list it as SKIP, "no automatic check; check by han
 
 ## Exit codes
 
-Read each command's exit code before its output. A result (findings or none) goes into the merge; a check that did not run is SKIP with the reason, never PASS.
+Read each command's exit code before its output. Exit 0 means no FAIL, not no findings: a WARN or INFO result also exits 0, and chktex exits 0 even when it prints warnings. A result (findings or none) goes into the merge; a check that did not run is SKIP with the reason, never PASS.
 
 | Command | Clean | Result with findings | Did not run |
 |---|---|---|---|
-| placeholders.py, bib_check.py, arxiv_rules.py | 0 | 1 = findings (a result) | 2 = did not run |
-| style_check.py, latex_log.py, profiles.py | 0 | 1 = findings (a result; latex_log.py: errors in the log) | 2 = did not run |
-| chktex | 0 | non-zero with output = findings (a result) | non-zero with no output = did not run |
+| placeholders.py, bib_check.py, arxiv_rules.py | 0 = no FAIL | 1 = findings (a result) | 2 = did not run |
+| style_check.py, latex_log.py, profiles.py | 0 = no FAIL | 1 = findings (a result; latex_log.py: errors in the log) | 2 = did not run |
+| chktex | 0, no output | 0 or non-zero with output = findings (a result) | non-zero with no output = did not run |
 | lacheck | 0, no output | any output = findings (a result) | |
 | texcount | 0 | | non-zero = did not run |
 | any | | | 127 = not installed: SKIP with the install hint |

@@ -125,3 +125,17 @@ def test_heading_match_allows_numbers_and_trailing_space():
     hits = pdf_pages.heading_positions(pages, [["Setup"], ["Method"]])
     assert [h and h["line"] for h in hits] == [1, 3]
     assert pdf_pages.heading_positions(["Methods and data\n"], [["Method"]]) == [None]
+
+
+def test_heading_in_the_right_column_is_found():
+    pages = ["1 Introduction\nWe study things in the left column.        2 Method\nMore left text.        Text.\n",
+             "x\n", "y\n", "3 Results\n"]
+    hits = pdf_pages.heading_positions(pages, [["1 Introduction"], ["2 Method", "Method"], ["3 Results"]])
+    assert [(h["page"], h["needle"]) if h else None for h in hits] == [(1, "1 Introduction"), (1, "2 Method"),
+                                                                      (4, "3 Results")]
+    assert hits[1]["line"] == 2
+
+
+def test_lower_case_words_are_not_a_numeral_prefix():
+    assert pdf_pages.heading_positions(["mild method\n"], [["Method"]]) == [None]
+    assert pdf_pages.heading_positions(["II. METHOD\n"], [["Method"]])[0]["line"] == 1

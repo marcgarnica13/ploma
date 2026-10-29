@@ -557,8 +557,8 @@ def test_presubmit_exit_codes_are_tabled():
         assert "## Exit codes" in text or "Exit codes" in text
     ref = (REPO / "skills" / "format" / "references" / "presubmit.md").read_text(encoding="utf-8")
     table = ref.split("## Exit codes", 1)[1].split("\n## ", 1)[0]
-    for row in ("| placeholders.py, bib_check.py, arxiv_rules.py | 0 | 1 = findings (a result) | 2 = did not run |",
-                "| chktex | 0 | non-zero with output = findings (a result) | non-zero with no output = did not run |",
+    for row in ("| placeholders.py, bib_check.py, arxiv_rules.py | 0 = no FAIL | 1 = findings (a result) | 2 = did not run |",
+                "| chktex | 0, no output | 0 or non-zero with output = findings (a result) | non-zero with no output = did not run |",
                 "| lacheck | 0, no output | any output = findings (a result) |",
                 "| texcount | 0 | | non-zero = did not run |",
                 "| any | | | 127 = not installed: SKIP with the install hint |"):
