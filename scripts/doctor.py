@@ -309,6 +309,8 @@ def _gitignore_finding(g: str, missing: list[str]) -> Finding:
 
 
 def _project_files(root: Path, cfg: dict) -> list[Finding]:
+    """Generated project files. Ids naming a file are project-files.<kind>:<path> (drift, missing, stale), so
+    a path such as .claude/rules/x.md never gives a double dot."""
     g = "project-files"
     out = []
     try:
@@ -323,7 +325,7 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
             target = root / spec.path
             if not target.is_file():
                 bad += 1
-                out.append(_f(g, f"missing.{spec.path}", WARN, f"generated rule {spec.path} is missing",
+                out.append(_f(g, f"missing:{spec.path}", WARN, f"generated rule {spec.path} is missing",
                               observed=f"missing: {spec.path}", remediation="Re-run /ploma:onboard"))
                 continue
             try:
@@ -334,7 +336,7 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
                 bad += 1
                 diff = "".join(difflib.unified_diff(current.splitlines(keepends=True),
                                                     spec.content.splitlines(keepends=True)))
-                out.append(_f(g, f"drift.{spec.path}", WARN,
+                out.append(_f(g, f"drift:{spec.path}", WARN,
                               f"{spec.path} differs from what ploma.yaml generates",
                               observed=_drift_excerpt(diff),
                               remediation="Re-run /ploma:onboard to regenerate it; change ploma.yaml, "
@@ -347,7 +349,7 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
                 generated = False
             if generated:
                 bad += 1
-                out.append(_f(g, f"stale.{project_files.PIPELINE_RULE}", WARN,
+                out.append(_f(g, f"stale:{project_files.PIPELINE_RULE}", WARN,
                               "a generated pipeline rule remains although pipeline.enabled is false",
                               observed=f"present: {project_files.PIPELINE_RULE}",
                               remediation="Re-run /ploma:onboard"))

@@ -9,7 +9,7 @@ input, tool error) is reported as not run, never as clean.
 | Check | What | Severity |
 |---|---|---|
 | `config.doctor` | every doctor finding with status FAIL or WARN in the config, project-files, state and legacy-harness groups, one finding each (id, summary, observed, remediation) | FAIL: CRITICAL; WARN: MAJOR |
-| `config.drift` | doctor `project-files.drift.*`: a generated rule differs from what `ploma.yaml` renders. Route `onboard`. | MAJOR |
+| `config.drift` | doctor `project-files.drift:*`: a generated rule differs from what `ploma.yaml` renders. Route `onboard`. | MAJOR |
 | `config.receipt` | `receipt.py compare` rows hand_edited or missing. A hand-edited enforced file is MAJOR (onboard will overwrite it); a hand-edited created-once file is MINOR and usually intended | MAJOR or MINOR |
 | `config.legacy` | doctor legacy-harness WARNs: vendored skills, hook entries or rules that duplicate ploma. Report the retirement checklist; never delete anything. | MAJOR |
 | `config.gate` | `gate.py check`: a required check missing or STALE, a FAIL entry | MAJOR |

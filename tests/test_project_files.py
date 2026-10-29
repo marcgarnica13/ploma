@@ -354,22 +354,23 @@ def test_enforced_drift_is_doctor_warn(onboarded_sample):
     rule.write_text(rule.read_text(encoding="utf-8").replace("Engine: pdflatex", "Engine: lualatex"),
                     encoding="utf-8")
     r = _doctor(onboarded_sample)
-    f = _ids(r)[f"project-files.drift.{MANUSCRIPT}"]
+    f = _ids(r)[f"project-files.drift:{MANUSCRIPT}"]
     assert f.status == WARN and "lualatex" in f.observed and "pdflatex" in f.observed
     assert "/ploma:onboard" in f.remediation
     assert r.verdict == "READY_WITH_WARNINGS"
+    assert not any(".." in i for i in _ids(r)), "a path starting with . must not give a double dot"
 
 
 def test_config_change_without_reonboard_is_drift(onboarded_sample):
     p = onboarded_sample / "ploma.yaml"
     p.write_text(p.read_text(encoding="utf-8").replace("cite_style: numeric", "cite_style: author-year"),
                  encoding="utf-8")
-    assert _ids(_doctor(onboarded_sample))[f"project-files.drift.{MANUSCRIPT}"].status == WARN
+    assert _ids(_doctor(onboarded_sample))[f"project-files.drift:{MANUSCRIPT}"].status == WARN
 
 
 def test_missing_enforced_file_warns(onboarded_sample):
     (onboarded_sample / PIPELINE).unlink()
-    f = _ids(_doctor(onboarded_sample))[f"project-files.missing.{PIPELINE}"]
+    f = _ids(_doctor(onboarded_sample))[f"project-files.missing:{PIPELINE}"]
     assert f.status == WARN and f.remediation == "Re-run /ploma:onboard"
 
 
@@ -500,7 +501,7 @@ def test_pipeline_rule_without_marker_is_left_alone(onboarded_sample):
 def test_stale_pipeline_rule_is_doctor_warn(onboarded_sample):
     _disable_pipeline(onboarded_sample)
     r = _doctor(onboarded_sample)
-    f = _ids(r)[f"project-files.stale.{PIPELINE}"]
+    f = _ids(r)[f"project-files.stale:{PIPELINE}"]
     assert f.status == WARN and f.remediation == "Re-run /ploma:onboard"
     assert "project-files.rules" not in _ids(r)
 
