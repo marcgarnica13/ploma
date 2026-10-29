@@ -235,7 +235,7 @@ def _rel(path: str | Path, root: Path) -> str:
 
 
 def _where(err: dict) -> str:
-    f = err.get("file") or "?"
+    f = err.get("file") or "main file"
     if f.startswith("./"):
         f = f[2:]
     line = err.get("line")
@@ -374,6 +374,11 @@ def run(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, clea
                     log_missing = f"log was not written by this build: {_rel(log_path, root)}"
             text = log_path.read_bytes().decode("utf-8", errors="replace")
             log_report = latex_log.parse_log(text, threshold)
+            main_rel = os.path.relpath(paths["main"], cwd) if paths["main"] else ""
+            for err in log_report.errors:
+                # A classic "!" error before any "(./<file>.tex" was opened belongs to the main file.
+                if not err.get("file") and main_rel:
+                    err["file"] = main_rel
         except OSError as exc:
             log_missing = f"log not readable at {_rel(log_path, root)}: {exc.strerror or exc}"
 

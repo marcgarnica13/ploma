@@ -23,6 +23,10 @@ _NEW_MESSAGE = re.compile(
 )
 _FILE_LINE_ERROR = re.compile(r"^((?:[A-Za-z]:)?[^\s:]*[./][^\s:]*):(\d+): (.+)$")
 _BANG_ERROR = re.compile(r"^! (.+)$")
+# "!  ==> Fatal error occurred, no output PDF file produced!" trails the real error under -halt-on-error.
+_FATAL_TRAILER = re.compile(r"^!\s+==>")
+# A source file opened in the log: "(./sections/intro.tex".
+_OPENED_TEX = re.compile(r"\((\.{1,2}/[^\s()]+\.tex)")
 _L_MARKER = re.compile(r"^l\.(\d+)\b")
 _OVERFULL = re.compile(r"^Overfull \\[hv]box \((\d+(?:\.\d+)?)pt too (?:wide|high)\)\s*(.*)$")
 _CITATION = re.compile(r"Citation [`']([^`']+)' on page \S+ undefined")
@@ -83,7 +87,13 @@ def _add_unique(items: list[str], value: str) -> None:
 def parse_log(text: str, overfull_threshold_pt: float = 10.0) -> LogReport:
     lines = unwrap(text)
     report = LogReport()
+    opened: str | None = None  # most recent "(./<file>.tex" seen, for errors without file:line form
     for idx, line in enumerate(lines):
+        found = _OPENED_TEX.findall(line)
+        if found:
+            opened = found[-1]
+        if _FATAL_TRAILER.match(line):
+            continue
         m = _FILE_LINE_ERROR.match(line)
         if m:
             report.errors.append({"file": m.group(1), "line": int(m.group(2)), "message": m.group(3).strip()})
@@ -98,7 +108,7 @@ def parse_log(text: str, overfull_threshold_pt: float = 10.0) -> LogReport:
                 if lm:
                     lineno = int(lm.group(1))
                     break
-            report.errors.append({"file": None, "line": lineno, "message": m.group(1).strip()})
+            report.errors.append({"file": opened, "line": lineno, "message": m.group(1).strip()})
             continue
         m = _OVERFULL.match(line)
         if m:

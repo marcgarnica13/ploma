@@ -1,0 +1,5 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2024.1.15)  29 OCT 2026 10:12
+**main.tex
+! Undefined control sequence.
+l.3 \badmacro
+             

@@ -375,3 +375,16 @@ def test_default_runner_kills_the_process_group_on_timeout(tmp_path):
 def test_default_runner_returns_completed_process(tmp_path):
     res = compile_mod._group_runner("echo hi; exit 3", cwd=str(tmp_path), shell=True, timeout=10)
     assert res.returncode == 3 and res.stdout == "hi\n"
+
+
+def test_classic_error_without_an_opened_file_is_attributed_to_the_main_file(sample_paper, cfg):
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log="classic_no_file.log", returncode=1))
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "`main.tex:3`" in text and "?:" not in text and "`?" not in text
+    assert "first at main.tex:3" in rep.reasons[-1] or any("main.tex:3" in r for r in rep.reasons)
+
+
+def test_halt_on_error_log_counts_one_error(sample_paper, cfg):
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log="halt_classic.log", returncode=1))
+    assert len(rep.log.errors) == 1
+    assert "1 error(s) in the log, first at sections/method.tex:9" in rep.reasons

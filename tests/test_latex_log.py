@@ -37,7 +37,24 @@ def test_error_with_file_line():
 
 def test_classic_error_takes_line_from_l_marker():
     e = parse_log(LOGS["error"]).errors[1]
-    assert e == {"file": None, "line": 42, "message": "Undefined control sequence."}
+    assert e == {"file": "./sections/results.tex", "line": 42, "message": "Undefined control sequence."}
+
+
+def test_fatal_error_trailer_is_not_an_error():
+    """"!  ==> Fatal error occurred" follows the real error under -halt-on-error; it is not a second error."""
+    r = parse_log(LOGS["halt_flerror"])
+    assert r.errors == [{"file": "./sections/intro.tex", "line": 7, "message": "Undefined control sequence."}]
+    r = parse_log(LOGS["halt_classic"])
+    assert len(r.errors) == 1 and r.errors[0]["line"] == 9
+
+
+def test_classic_error_attributed_to_most_recent_opened_tex_file():
+    e = parse_log(LOGS["halt_classic"]).errors[0]
+    assert e["file"] == "./sections/method.tex"
+
+
+def test_classic_error_without_any_opened_file_has_no_file():
+    assert parse_log(LOGS["classic_no_file"]).errors[0]["file"] is None
 
 
 def test_rerun():

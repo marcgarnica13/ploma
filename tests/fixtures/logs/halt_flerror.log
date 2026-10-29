@@ -1,0 +1,18 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2024.1.15)  29 OCT 2026 10:12
+entering extended mode
+ restricted \write18 enabled.
+ file:line:error style messages enabled.
+ %&-line parsing enabled.
+**main.tex
+(./main.tex
+LaTeX2e <2023-11-01> patch level 1
+(./sections/intro.tex
+./sections/intro.tex:7: Undefined control sequence.
+l.7 \badmacro
+             
+The control sequence at the end of the top line
+of your error message was never \def'ed.
+
+!  ==> Fatal error occurred, no output PDF file produced!
+Here is how much of TeX's memory you used:
+ 3127 strings out of 476041
