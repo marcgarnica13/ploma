@@ -191,3 +191,20 @@ def test_justified_one_column_page_is_not_two_columns():
         rows.append(" ".join(w[:k]) + "   " + " ".join(w[k:]) if i % 2 else " ".join(w))
     assert pdf_pages._gutter(rows) is None
     assert pdf_pages._gutter(TWO_COL[1].split("\n")) == 44
+
+
+def _lncs_table_page() -> list[str]:
+    """One-column page with a 12-row aligned table among 47 lines (the reviewer's LNCS-like page)."""
+    prose = "This is a line of justified prose text in a one column LNCS paper that goes on and on."
+    lines = ["Running head", "3", "4 Results"] + [prose] * 20 + ["Table 1. Fitness per team."]
+    lines += [f"   Team {i}            0.{70 + i}            0.{50 + i}            {10 + i}" for i in range(12)]
+    return lines + ["5 Discussion"] + [prose] * 10
+
+
+def test_one_column_page_with_an_aligned_table_is_not_two_columns():
+    lines = _lncs_table_page()
+    assert pdf_pages._gutter(lines) is None
+    li = lines.index("5 Discussion")
+    assert pdf_pages.page_fraction(lines, li, 0) == li / len(lines)
+    hit = pdf_pages.heading_positions(["\n".join(lines)], [["4 Results"], ["5 Discussion"]])[1]
+    assert hit["position"] == round(li / len(lines), 3)

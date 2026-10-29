@@ -119,23 +119,22 @@ def _columns(pattern: re.Pattern, line: str) -> list[int]:
 
 
 def _gutter(lines: list[str]) -> int | None:
-    """Start column of the right column on a two-column -layout page, else None. A line is split when a gap
-    of three or more spaces is followed by text starting between 35% and 65% of the page width; the page is
-    two-column when at least a quarter of its non-empty lines are split and most of those starts line up
-    (within 2 columns of their median, which is the gutter). Justified one-column text, whose occasional
-    wide gaps fall anywhere, is not taken for two columns."""
+    """Start column of the right column on a two-column -layout page, else None. A line is split when it
+    has exactly one gap of three or more spaces (after its indentation) and the text after it starts
+    between 35% and 65% of the page width; the page is two-column when at least half of its non-empty
+    lines are split and most of those starts line up (within 2 columns of their median, which is the
+    gutter). Justified one-column text, whose occasional wide gaps fall anywhere, and aligned table rows,
+    which have several gaps, are not taken for two columns."""
     text = [line.rstrip() for line in lines if line.strip()]
     if not text:
         return None
     width = max(len(line) for line in text)
     starts = []
     for line in text:
-        for m in re.finditer(r"\S\s{3,}(?=\S)", line):
-            start = m.end()
-            if 0.35 * width <= start <= 0.65 * width:
-                starts.append(start)
-                break
-    if len(starts) * 4 < len(text):
+        gaps = list(re.finditer(r"\S\s{3,}(?=\S)", line))
+        if len(gaps) == 1 and 0.35 * width <= gaps[0].end() <= 0.65 * width:
+            starts.append(gaps[0].end())
+    if len(starts) * 2 < len(text):
         return None
     starts.sort()
     median = starts[len(starts) // 2]
