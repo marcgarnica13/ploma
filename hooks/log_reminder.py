@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop hook: advisory session-log reminders on stderr. Never blocks.
+"""Stop hook: advisory session-log reminders as {"systemMessage": ...} JSON on stdout (exit 0). Never blocks.
 
 Two reminders, each at most once until the newest log changes: when no log exists under
 <outputs.dir>/session_logs/, and after 50 responses without the newest log changing.
@@ -85,8 +85,8 @@ def main(stdin: TextIO | str | None = None, root: Path | None = None, cfg: dict 
             hu.save_json(path, state)
             today = datetime.date.today().isoformat()
             rel = os.path.relpath(logs_dir, root).replace(os.sep, "/")
-            sys.stderr.write(f"\n[session-log] No session log yet. Consider creating "
-                             f"{rel}/{today}_description.md to capture the goal and key context.\n")
+            hu.emit({"systemMessage": f"[session-log] No session log yet. Consider creating "
+                                      f"{rel}/{today}_description.md to capture the goal and key context."})
         return 0
     latest = logs[0]
     mtime = latest.stat().st_mtime
@@ -99,8 +99,8 @@ def main(stdin: TextIO | str | None = None, root: Path | None = None, cfg: dict 
     state["counter"] = int(state.get("counter") or 0) + 1
     if state["counter"] >= THRESHOLD and not state.get("reminded"):
         state["reminded"] = True
-        sys.stderr.write(f"\n[session-log] {state['counter']} responses without updating "
-                         f"{latest.name}. Consider appending recent progress.\n")
+        hu.emit({"systemMessage": f"[session-log] {state['counter']} responses without updating "
+                                  f"{latest.name}. Consider appending recent progress."})
     hu.save_json(path, state)
     return 0
 

@@ -322,22 +322,23 @@ def test_verify_reminder_loads_config_when_not_given(sample_paper, capsys):
 def test_log_reminder_no_log_once(sample_paper, cfg, capsys):
     assert log_reminder.main(_payload(sample_paper), sample_paper, cfg) == 0
     captured = capsys.readouterr()
-    assert captured.out == "" and "No session log yet" in captured.err
-    assert "quality_reports/session_logs/" in captured.err
+    assert captured.err == ""
+    msg = json.loads(captured.out)["systemMessage"]       # a Stop hook's stderr is not shown on exit 0
+    assert "No session log yet" in msg and "quality_reports/session_logs/" in msg
     log_reminder.main(_payload(sample_paper), sample_paper, cfg)
-    assert capsys.readouterr().err == ""
+    assert capsys.readouterr().out == ""
 
 
 def test_log_reminder_after_threshold(sample_paper, cfg, capsys):
     (_logs(sample_paper) / "s.md").write_text("x")
     for _ in range(log_reminder.THRESHOLD):
         log_reminder.main(_payload(sample_paper), sample_paper, cfg)
-    assert capsys.readouterr().err == ""   # first call records mtime, then 49 increments
+    assert capsys.readouterr().out == ""   # first call records mtime, then 49 increments
     log_reminder.main(_payload(sample_paper), sample_paper, cfg)
     captured = capsys.readouterr()
-    assert "50 responses without updating s.md" in captured.err and captured.out == ""
+    assert "50 responses without updating s.md" in json.loads(captured.out)["systemMessage"] and captured.err == ""
     log_reminder.main(_payload(sample_paper), sample_paper, cfg)
-    assert capsys.readouterr().err == ""
+    assert capsys.readouterr().out == ""
 
 
 def test_log_reminder_resets_when_log_changes(sample_paper, cfg):
@@ -353,7 +354,7 @@ def test_log_reminder_resets_when_log_changes(sample_paper, cfg):
 
 def test_log_reminder_respects_stop_hook_active(sample_paper, cfg, capsys):
     log_reminder.main(_payload(sample_paper, stop_hook_active=True), sample_paper, cfg)
-    assert capsys.readouterr().err == ""
+    assert capsys.readouterr().out == ""
     assert not (sample_paper / ".ploma").exists()
 
 
@@ -428,16 +429,16 @@ def test_context_monitor_without_session_id_keeps_cache(sample_paper, capsys, mo
 
 def test_log_reminder_resets_on_new_session(sample_paper, cfg, capsys):
     log_reminder.main(_payload(sample_paper, session_id="s1"), sample_paper, cfg)
-    assert "No session log yet" in capsys.readouterr().err
+    assert "No session log yet" in capsys.readouterr().out
     log_reminder.main(_payload(sample_paper, session_id="s1"), sample_paper, cfg)
-    assert capsys.readouterr().err == ""
+    assert capsys.readouterr().out == ""
     log_reminder.main(_payload(sample_paper, session_id="s2"), sample_paper, cfg)
-    assert "No session log yet" in capsys.readouterr().err
+    assert "No session log yet" in capsys.readouterr().out
     log = _logs(sample_paper) / "s.md"
     log.write_text("x")
     for _ in range(log_reminder.THRESHOLD + 1):
         log_reminder.main(_payload(sample_paper, session_id="s2"), sample_paper, cfg)
-    assert "50 responses" in capsys.readouterr().err
+    assert "50 responses" in capsys.readouterr().out
     st = json.loads((sample_paper / ".ploma" / "log-reminder-state.json").read_text())
     assert st["session_id"] == "s2" and st["reminded"] is True
     log_reminder.main(_payload(sample_paper, session_id="s3"), sample_paper, cfg)
