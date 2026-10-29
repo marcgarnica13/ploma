@@ -638,3 +638,22 @@ def test_fail_claim_value_moved_off_the_cited_lines_is_stale(tmp_path, sample_pa
     p.write_text(PASSPORT_FAIL % "sections/results.tex:1-3")  # 0.81 is on lines 5 and 17, not 1-3
     rep = _run(sample_paper / "main.tex", passport=p)
     assert "consistency.passport_stale.C1" in _ids(rep)
+
+
+# ---------------------------------------------------------------- D11: passport_invalid names the field
+
+def test_passport_invalid_names_field_path_expected_enum_and_value(tmp_path, sample_paper):
+    p = tmp_path / "p.yaml"
+    p.write_text('paper: {slug: m}\nclaims:\n  - id: C1\n    claim: "0.81"\n    status: PASS\n'
+                 '  - id: C2\n    claim: "12"\n    status: OK\n')
+    rep = _run(sample_paper / "main.tex", passport=p)
+    f = next(f for f in rep.findings if f.id == "consistency.passport_invalid")
+    assert "claims[1].status (claim C2) must be one of PASS, FAIL, STALE, UNVERIFIED" in f.summary
+    assert "'OK'" in f.summary
+
+
+def test_passport_invalid_names_expected_type(tmp_path, sample_paper):
+    p = tmp_path / "p.yaml"
+    p.write_text('paper: {slug: m}\nclaims:\n  - id: C1\n    claim: "0.81"\n    status: PASS\n    source_line: twelve\n')
+    f = next(f for f in _run(sample_paper / "main.tex", passport=p).findings if f.id == "consistency.passport_invalid")
+    assert "claims[0].source_line (claim C1) must be integer or null" in f.summary and "twelve" in f.summary

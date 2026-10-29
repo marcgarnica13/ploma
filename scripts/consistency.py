@@ -616,6 +616,20 @@ def _claim_left_location(claim: dict, base: Path | None) -> bool:
     return not any(same_number(n, s) for n in numbers for s in shown)
 
 
+def _schema_problem(f: Finding, data: dict) -> str:
+    """ploma_config's schema message with the field path as claims[i].field (claim <id>) and the value
+    found: "claims[1].status (claim C2) must be one of PASS, FAIL, STALE, UNVERIFIED; got 'OK'"."""
+    path = f.id.split(".", 2)[2] if f.id.count(".") >= 2 else ""
+    pretty = re.sub(r"\.(\d+)(?=\.|$)", r"[\1]", path)
+    m = re.match(r"claims\[(\d+)\]", pretty)
+    claims = data.get("claims")
+    if m and isinstance(claims, list) and int(m.group(1)) < len(claims) and isinstance(claims[int(m.group(1))], dict) \
+            and claims[int(m.group(1))].get("id"):
+        pretty += f" (claim {claims[int(m.group(1))]['id']})"
+    text = f.summary.replace(path, pretty, 1) if path else f.summary
+    return text + (f"; got {f.observed}" if f.observed else "")
+
+
 def _passport_findings(path: Path, base: Path | None = None) -> tuple[list[Finding], dict]:
     def invalid(problem: str, observed: str = "") -> tuple[list[Finding], dict]:
         return [Finding("consistency.passport_invalid", FAIL, f"passport {path.name}: {problem}",
@@ -634,9 +648,9 @@ def _passport_findings(path: Path, base: Path | None = None) -> tuple[list[Findi
     problems: list[Finding] = []
     schema = json.loads(PASSPORT_SCHEMA.read_text(encoding="utf-8"))
     ploma_config._check(data, schema, "", problems)
-    errors = [f.summary for f in problems if f.status == FAIL]
+    errors = [_schema_problem(f, data) for f in problems if f.status == FAIL]
     if errors:
-        return invalid("does not match the schema", "; ".join(errors))
+        return invalid(errors[0] + (f" (and {len(errors) - 1} more)" if len(errors) > 1 else ""), "; ".join(errors))
     claims = data.get("claims") or []
     counts = {s: sum(1 for c in claims if c.get("status") == s) for s in ("PASS", "FAIL", "STALE", "UNVERIFIED")}
     out: list[Finding] = []
