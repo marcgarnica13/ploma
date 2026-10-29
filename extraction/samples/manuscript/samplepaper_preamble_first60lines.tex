@@ -1,0 +1,60 @@
+% This is samplepaper.tex, a sample chapter demonstrating the
+% LLNCS macro package for Springer Computer Science proceedings;
+% Version 2.21 of 2022/01/12
+%
+\documentclass[runningheads]{llncs}
+%
+\usepackage[T1]{fontenc}
+% T1 fonts will be used to generate the final print and online PDFs,
+% so please use T1 fonts in your manuscript whenever possible.
+% Other font encondings may result in incorrect characters.
+%
+\usepackage{graphicx}
+% Used for displaying a sample figure. If possible, figure files should
+% be included in EPS format.
+%
+% If you use the hyperref package, please uncomment the following two lines
+% to display URLs in blue roman font according to Springer's eBook style:
+\usepackage[hidelinks]{hyperref}
+\usepackage{color}
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+%
+\begin{document}
+%
+\title{Capturing Team Strategy in European Football via Process Mining and Visual Analytics}
+%
+\titlerunning{Capturing Team Strategy in Football}
+% If the paper title is too long for the running head, you can set
+% an abbreviated paper title here
+%
+\author{Marc Garnica-Caparrós\inst{1}\orcidID{0000-0002-7776-6755} \and
+Daniel Memmert\inst{1}\orcidID{0000-0002-3406-9175}}
+%
+\authorrunning{M. Garnica-Caparrós and D. Memmert}
+% First names are abbreviated in the running head.
+%
+\institute{Institute of Exercise Training and Sport Informatics, German Sport University of Cologne, 50933 Cologne, Germany \\
+\email{m.garnica@dshs-koeln.de}}
+%
+\maketitle              % typeset the header of the contribution
+%
+\begin{abstract}
+A team's tactics live in the patterns of play it repeats to reach an objective, yet they are hard to recover from data and are usually kept private. We present a process-aware approach to tactical discovery using event data. Each possession becomes a trace of zone-located actions, a purpose filter keeps only the possessions relevant to a chosen tactical question, and process discovery separates the recurrent structure of how a team pursues that purpose from the noise in the traces, yielding an interpretable model that we project onto the pitch as a \emph{Heuristic map}. We score the model against a directly-follows-graph baseline on fitness, precision, generalization, and simplicity. In the 2022/23 English Premier League, the discovered model is far more precise than the plain graph, capturing recurrent tactical dependencies that a directly-follows graph cannot. We read precision as a team's behavioral predictability. We further quantify how regularly each team executes its strategy across the season, and extend the analysis to individual players, profiling a player's role inside the process and scoring how well a player would fit another team's strategy, a concrete player-recruitment use case. The result is an interpretable model of team and player strategy that analysts can read and replay, a complement to the predictive models now common in football analytics.
+
+\keywords{Sports Analytics \and Event Data \and Team Tactics \and Process Discovery \and Visual Analytics.}
+\end{abstract}
+%
+%
+%
+\section{Introduction}\label{sec:introduction}
+When inspecting event and tracking data stemming from invasion sports, the digital reconstruction of what happens on the pitch is extremely detailed \cite{Gudmundsson2017,Lepschy2020}. Davis et al.~\cite{Davis202207} divided the use of analytics and data in sports into three areas: player recruitment, match preparation, and health management. Among these challenges, the concept of team tactical strategy, sometimes also called team style \cite{Hewitt2016}, is essential in understanding the analytical outcomes. For instance, when assessing a potential new player for a team, it is desirable to know the systems or mechanisms that the team intended to perform and how this player contributed to this team's strategy. On some other occasions, when approaching a certain opponent, some of the common questions the analyst team faces at a high level are 'how are they usually trying to generate chances?', 'what is their ball recovery strategy?'. However, for obvious reasons, this team strategy is kept private as it belongs to the coaching staff and is highly valuable for the team's success.
+
+Hewitt et al. \cite{Hewitt2016} define team playing style as "the characteristic playing pattern demonstrated by a team during games." Despite the media presenting football tactics at a high level on how a team aesthetically looks or simplifying it to aggregated metrics, tactics in football is divided into various levels and categories. Depending on the game situation, the team undergoes a defined process involving actions and actors (i.e., the players). All these processes are part of the team's guidelines, automatisms, and voluntarily executed actions from the players that, if repeated frequently, construct the team strategy. Technically, event data is interpreted as a time-ordered sequence of events, includes key attributes such as the players involved or the precise location of the event in the field. This paper assumes the developing of offensive and defensive tactics of football teams as a process with actions (steps in the process) and roles (players executing the steps). Then, we explore a different approach to discovering and modeling team tactics of play by using event data as a trace of such a strategy. Indeed, assuming teams have a set of principles of play defined before a match that describes how the team should unfold in certain game situations, event data can be considered as the data footprint or trace of such a system.
+
+
+
+\section{Related work}\label{sec:relatedwork}
+
+\subsection{Process mining unstructured systems}
+Process Mining (PM) is a semiautomatic evidence-based methodology to discover, monitor, evaluate and improve processes \cite{Aalst2012}. It untangles the differences between the event logs of a behavior or system and the actual processes (intent). Process discovery allows an automated definition of a behavioral process from the collected event data \cite{Aalst2016,Diamantini2016}. Additionally, conformance checking techniques provide methods to measure the deviations between the theoretical processes (i.e., plan or strategy) with the processes seen in reality (i.e., execution) \cite{Bergami2021}. These methods leverage the variants and deviations that might occur between the occurring events and the process model underneath \cite{Kulakli2021}.

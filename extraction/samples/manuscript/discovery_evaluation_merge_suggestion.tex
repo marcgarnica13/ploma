@@ -1,0 +1,19 @@
+\section{Discovery and evaluation of team processes}
+
+Given a team event log $L$, we compare two models built from the same traces. The main model is $M_{\mathrm{HM}}=\mathcal{D}_{\mathrm{HM}}(L)$, discovered with the Heuristic Miner (HM) \cite{Weijters2006,Ayutaya2012}. The baseline is $M_{\mathrm{DFG}}=\mathcal{D}_{\mathrm{DFG}}(L)$, a directly-follows graph (DFG) that links each observed activity to the activity that immediately follows it. Both models use the same case ids, activities $\alpha(e)=(a(e),\zeta(e))$, player resource, and timestamps, and both are scored on the same conformance dimensions.
+
+The DFG baseline represents the simplest directed-graph explanation of the traces. It preserves observed succession but does not apply HM's dependency-based filtering of infrequent behavior. HM is therefore expected to trade some raw replayability for a more precise and interpretable model: it should retain recurrent dependencies while suppressing noisy or weakly supported directly-following relations. This comparison directly addresses whether process discovery provides structure beyond a flat graph of consecutive actions.
+
+We use the PM4PY implementation \cite{Berti2019}, fix the HM dependency threshold at $\theta=0.50$ for all teams, and keep the remaining parameters at their defaults. The discovery step returns two complementary HM artifacts: a Petri net and a Heuristic net. The Petri net provides executable process semantics and supports replay-based conformance checking. The Heuristic net stores the frequency and dependency relations between activities and is the basis for the football-specific visualizations introduced below.
+
+Because the intended tactical plan of a team is unobserved, the discovered model cannot be validated against ground truth. We therefore evaluate the agreement between each model and $L$ with the standard conformance dimensions of process discovery \cite{Buijs2014,Syring2019}: \emph{fitness}, the share of observed behavior the model can replay; \emph{precision}, the extent to which the model avoids behavior absent from the log; \emph{generalization}, the estimated ability to represent plausible unseen traces; and \emph{simplicity}, the preference for smaller and less tangled models. Fitness and precision are computed through token-based replay, while generalization and simplicity follow the PM4PY implementations \cite{Buijs2014}. A DFG can achieve high fitness by retaining many observed directly-following relations, but this may reduce precision and simplicity. The HM-vs-DFG comparison therefore evaluates whether HM gives a better abstraction of team behavior, not whether one team is better than another.
+
+\subsection{Heuristic maps: Translating process models to football}\label{subsec:heuristicmaps}
+
+The Heuristic net can be inspected directly, but its activity-level dependencies are difficult to read in football terms. We therefore map the Heuristic net to a \emph{heuristic map}, a domain-specific visualization that projects the discovered dependencies back onto the pitch. The visualization, summarized in Fig.~\ref{fig:heuristic_flow_example}, uses three quantities: (i) start--end tendency, a standardized score in $[0,1]$ indicating whether a zone is more associated with the beginning or ending of traces; (ii) zone usage, the frequency with which activities in a zone appear in the Heuristic net; and (iii) zone dependencies, the retained dependency edges between zones. Examples of the resulting maps are presented in Section~\ref{sec:experiments}.
+
+\begin{figure}[t!]
+\centering
+\includegraphics[width=\textwidth]{fig3.pdf}
+\caption{Two examples of Heuristic maps with their components, a Heuristic Map of one match (a) and a Heuristic map of the same team for a whole season (b).}\label{fig:heuristic_flow_example}
+\end{figure}
