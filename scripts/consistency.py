@@ -43,7 +43,7 @@ Rules (spec section 7.2):
   consistency.results_unreadable.<file>            WARN  a results file could not be parsed
   consistency.passport.<id>                        FAIL  passport claim with status FAIL or STALE
   consistency.passport_stale.<id>                  WARN  a FAIL claim whose number no longer appears at
-                                                         its location (cited lines, or the file)
+                                                         its cited file (anywhere in it)
                                                    INFO  passport claim with status UNVERIFIED
   consistency.passport_invalid                     FAIL  passport missing, unparsable or off schema
 
@@ -612,19 +612,16 @@ def _scan(main: Path) -> tuple[list[dict], list[dict], list[dict], list[dict], l
 
 # ---------------------------------------------------------------- passport
 
-_LINES_RE = re.compile(r"\s*(\d+)(?:\s*-\s*(\d+))?\s*")
-
-
 def _claim_left_location(claim: dict, base: Path | None) -> bool:
     """Whether the manuscript no longer shows the claim's number where the claim says it is: the
     location's file (relative to the main file's folder or one of its parents) exists, and none of the
-    numbers in the claim text appear in its cited line range, or in the whole file when the location
-    names a table, a figure or a section instead of lines. False when this cannot be decided."""
+    numbers in the claim text appear anywhere in it. The whole file is searched even when the location
+    cites lines, since lines shift when text is added above. False when this cannot be decided."""
     numbers = extract_numbers(str(claim.get("claim") or ""))
     location = str(claim.get("location") or "")
     if base is None or not numbers or not location:
         return False
-    name, _, where = location.partition(":")
+    name = location.partition(":")[0]
     name = name.strip()
     target = next((d / name for d in (base, *list(base.parents)[:3]) if name and (d / name).is_file()), None)
     if target is None:
@@ -633,13 +630,7 @@ def _claim_left_location(claim: dict, base: Path | None) -> bool:
         text = target.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    lines = _texmask.strip_comments(text).splitlines()
-    span = _LINES_RE.fullmatch(where)
-    if span:
-        first = int(span.group(1))
-        last = int(span.group(2) or first)
-        lines = lines[max(first - 1, 0):last]
-    shown = extract_numbers("\n".join(lines))
+    shown = extract_numbers(_texmask.strip_comments(text))
     return not any(same_number(n, s) for n in numbers for s in shown)
 
 

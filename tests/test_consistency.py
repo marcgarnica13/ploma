@@ -632,11 +632,13 @@ def test_fail_claim_still_shown_at_its_location_stays_fail(tmp_path, sample_pape
     assert "consistency.passport_stale.C1" not in _ids(rep)
 
 
-def test_fail_claim_value_moved_off_the_cited_lines_is_stale(tmp_path, sample_paper):
+def test_fail_claim_still_in_the_file_but_off_the_cited_lines_stays_fail(tmp_path, sample_paper):
+    """Lines shift when text is added above; only a value gone from the whole file makes the claim stale."""
     p = tmp_path / "p.yaml"
     p.write_text(PASSPORT_FAIL % "sections/results.tex:1-3")  # 0.81 is on lines 5 and 17, not 1-3
     rep = _run(sample_paper / "main.tex", passport=p)
-    assert "consistency.passport_stale.C1" in _ids(rep)
+    assert "consistency.passport_stale.C1" not in _ids(rep)
+    assert {f.id: f.status for f in rep.findings}["consistency.passport.C1"] == "FAIL"
 
 
 # ---------------------------------------------------------------- D11: passport_invalid names the field
