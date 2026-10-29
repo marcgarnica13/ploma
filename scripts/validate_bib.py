@@ -140,7 +140,7 @@ def _rel(path: Any, root: Path) -> str:
 
 
 def _cell(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
+    return cite_lookup.plain_spaces(text).replace("|", "\\|").replace("\n", " ")
 
 
 def _end(text: str) -> str:
@@ -173,9 +173,9 @@ def _bullets(findings: list[Finding], empty: str) -> list[str]:
         return [f"- {empty}"]
     out = []
     for f in findings:
-        line = f"- **{f.status}** `{f.id}`: {_end(f.summary)}"
+        line = f"- **{f.status}** `{f.id}`: {_end(cite_lookup.plain_spaces(f.summary))}"
         if f.observed:
-            line += f" Observed: {_end(f.observed)}"
+            line += f" Observed: {_end(cite_lookup.plain_spaces(f.observed))}"
         if f.remediation and f.status != INFO:
             line += f" Fix: {_end(f.remediation)}"
         out.append(line)

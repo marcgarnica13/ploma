@@ -328,3 +328,18 @@ def test_time_budget_skips_and_report_counts_them(sample_paper, cfg, cache):
 def test_validate_bib_default_time_budget_is_480():
     import inspect
     assert inspect.signature(validate_bib.run).parameters["time_budget_s"].default == 480
+
+
+def test_unicode_spaces_in_api_titles_render_as_plain_spaces(sample_paper, cfg, cache):
+    """R127 D2: NBSP, thin and narrow NBSP from API titles never reach the report as escapes or raw characters."""
+    def spaced(item):
+        item["title"] = [item["title"][0].replace(" ", " ", 1).replace(" ", " ", 1).replace(" ", " ", 1)
+                         + " Extra"]
+        return item
+    rep = validate_bib.run(sample_paper, cfg, semantic=True, fetch=_doi_fetch(spaced), cache_path=cache, delay_s=0)
+    text = rep.report_path.read_text(encoding="utf-8")
+    assert "Extra" in text
+    for bad in ("\\xa0", "\\u2009", "\\u202f", " ", " ", " "):
+        assert bad not in text, bad
+    for r in rep.lookups:
+        assert not any(c in r.evidence for c in "   ") and "\\xa0" not in r.evidence

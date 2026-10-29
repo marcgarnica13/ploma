@@ -67,6 +67,18 @@ class _Hit:
     year: int | None
     doi: str
 
+    def __post_init__(self) -> None:
+        self.title = plain_spaces(self.title)
+        self.authors = [plain_spaces(a) for a in self.authors]
+
+
+_SPACES_RE = re.compile("[\u00a0\u2000-\u200a\u202f\u205f\u3000]")
+
+
+def plain_spaces(text: str) -> str:
+    """NBSP, thin, narrow NBSP and other Unicode spaces as a plain space (R127 D2)."""
+    return _SPACES_RE.sub(" ", text or "")
+
 
 # ---------------------------------------------------------------- normalisation
 
