@@ -16,6 +16,12 @@ fraction times 100. With pipeline.metric_keys set, table cells and abstract and 
 match only results values with a metric key anywhere in their key path, or .csv columns named by
 one (Ruling R159); without metric keys every numeric results value counts (Ruling R157). A count
 matches only integer values and a decimal never matches an integer written as such (a count). siunitx \\num, \\qty and \\SI are read as numbers.
+A "%" in a column header makes that column's bare numbers percents.
+
+Table rows are tied to results entities by their label (Ruling R164): a label word must equal a word of
+an entity key or string field above the metric key. Row labels must therefore use the results' entity
+names or their words: a label "BERT-L" does not name "bert_large", so that row gets only the per-cell
+check and a value copied from another entity is missed.
 
 Rules (spec section 7.2):
   consistency.abstract_number_not_in_body.<raw>    FAIL  abstract number absent from the body
@@ -25,7 +31,7 @@ Rules (spec section 7.2):
   consistency.intro_number_only_in_results.<raw>   WARN  absent from the rest of the body, in results
   consistency.table_row_cell_other_entity.<label> WARN  with metric_keys set, a cell of a row whose label
                                                          names an entity in the results (a key path
-                                                         component or a string field such as "team")
+                                                         component or a string field such as "model")
                                                          matches only values located under another row's
                                                          entity (Ruling R164)
   consistency.table_cell_other_column.<label>      WARN  such a cell matches the row's entity only under a
@@ -246,7 +252,7 @@ def matches(num: dict, value: float, tolerances: dict) -> bool:
         # a count only matches an integer value (10 or 10.0, never 10.4)
         return float(value).is_integer() and abs(num["value"] - value) <= _tol(tolerances, "counts") + _EPS
     if kind == "decimal" and isinstance(value, int):
-        return False  # a decimal cell never matches an integer-typed count (9.99 is not 10 teams)
+        return False  # a decimal cell never matches an integer-typed count (9.99 is not 10 runs)
     exact = Decimal(repr(float(value)))  # the shortest decimal that round-trips, as the results file shows it
     if kind == "percent":
         candidates, tol = (exact, exact * 100), _tol(tolerances, "percentages_pp")
@@ -284,7 +290,7 @@ def _is_number(v: Any) -> bool:
 
 
 def _norm(text: Any) -> str:
-    """Lowercase alphanumerics only: "Manchester City" and "manchester_city" both give "manchestercity"."""
+    """Lowercase alphanumerics only: "Model A" and "model_a" both give "modela"."""
     return re.sub(r"[^a-z0-9]", "", str(text).lower())
 
 
@@ -296,13 +302,15 @@ def _tokens(text: Any) -> tuple[str, ...]:
 @dataclass
 class Located:
     """A keyed results value and where it sits (Ruling R164): the key path (file stem first, list indices
-    left out), the string fields of its object and of every enclosing object (a CSV row's string cells),
-    and every word of both (for the column check)."""
+    left out), every word of the path and of the string fields of its object and every enclosing object
+    (for the column check), and its entity slots: (level, name) pairs a row label can name. A level is a
+    path depth, ("depth", d), for the path components above the first metric key, or a string field,
+    ("field", name), of its object or an enclosing one (a CSV row's string cells, by column)."""
     value: float
     where: str
     path: tuple[str, ...]
-    ids: frozenset[str]
     words: frozenset[str]
+    slots: tuple[tuple[tuple, str], ...]
 
 
 @dataclass
@@ -320,16 +328,23 @@ def _uniq(values: list) -> list:
     return sorted({(isinstance(v, int), v): v for v in values}.values())
 
 
-def _locate(path: tuple[str, ...], strings: tuple[str, ...], value: float, where: str) -> Located:
-    words = {w for p in path for w in _tokens(p)} | {w for s in strings for w in _tokens(s)}
-    return Located(value, where, path, frozenset(_norm(s) for s in strings if _norm(s)), frozenset(words))
+def _locate(path: tuple[str, ...], strings: tuple[tuple[str, str], ...], value: float, where: str,
+            keys: set[str]) -> Located:
+    words = {w for p in path for w in _tokens(p)} | {w for _, s in strings for w in _tokens(s)}
+    slots: list[tuple[tuple, str]] = []
+    for d, comp in enumerate(path):
+        if comp in keys:
+            break  # a metric key and what lies under it (mean, std) name no entity
+        slots.append((("depth", d), comp))
+    slots += [(("field", name), s) for name, s in strings if _norm(s)]
+    return Located(value, where, path, frozenset(words), tuple(slots))
 
 
 def _json_located(data: Any, keys: set[str], path: tuple[str, ...], where: str, strings: tuple[str, ...],
                   keyed: bool, out: list[Located]) -> None:
     """Every keyed number of a JSON document with its location (see Located)."""
     if isinstance(data, dict):
-        strings = strings + tuple(v for v in data.values() if isinstance(v, str))
+        strings = strings + tuple((str(k), v) for k, v in data.items() if isinstance(v, str))
         for k, v in data.items():
             _json_located(v, keys, path + (str(k),), f"{where}.{k}" if where else str(k), strings,
                           keyed or k in keys, out)
@@ -337,7 +352,7 @@ def _json_located(data: Any, keys: set[str], path: tuple[str, ...], where: str, 
         for i, v in enumerate(data):
             _json_located(v, keys, path, f"{where}[{i}]", strings, keyed, out)
     elif _is_number(data) and keyed:
-        out.append(_locate(path, strings, data, where))
+        out.append(_locate(path, strings, data, where, keys))
 
 
 def _csv_text(cell: str) -> bool:
@@ -381,7 +396,8 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
                 rows = list(csv.reader(text.splitlines()))
                 header = rows[0] if rows else []
                 for r, row in enumerate(rows):
-                    strings = tuple(c for c in row if c.strip() and _csv_text(c))
+                    strings = tuple((header[j].strip() if j < len(header) else str(j), c)
+                                    for j, c in enumerate(row) if c.strip() and _csv_text(c))
                     for i, cell in enumerate(row):
                         try:
                             number = _csv_number(cell)
@@ -395,7 +411,7 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
                             if row is not header:
                                 res.keyed_values.append(number)
                                 res.located.append(_locate((path.stem, header[i].strip()), strings, number,
-                                                           f"{path.name} row {r + 1} {header[i].strip()}"))
+                                                           f"{path.name} row {r + 1} {header[i].strip()}", keys))
         except (OSError, UnicodeDecodeError, ValueError, csv.Error) as exc:
             res.unreadable.append((path, str(exc).splitlines()[0] if str(exc) else type(exc).__name__))
             continue
@@ -457,7 +473,7 @@ def _row_label(cell: str) -> str:
 def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: str) -> list[dict]:
     """Numeric cells with file, line, the row they sit in ("row": file:line of the row start), the row's
     label (its first cell's words, or "line<N>"), and the column header of the latest row above with
-    several cells and no number ("header"), with its words that no other header column has ("distinct":
+    several cells and no number ("header"; a "%" in it makes the column's numbers percents), with its words that no other header column has ("distinct":
     "HM precision" next to "DFG precision" gives ["hm"])."""
     cells = []
     for _, content, end in _texmask.env_spans(stripped, TABULAR_ENVS):
@@ -467,6 +483,7 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
         offset = content
         headers: list[str] = []
         distinct: list[list[str]] = []
+        percent: list[bool] = []
         for row in re.split(r"(\\\\)", body):
             if row != "\\\\":
                 pos = offset
@@ -475,6 +492,7 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
                 texts = [p for p in parts if p != "&"]
                 if len(texts) >= 2 and all(_cell_number(t) is None for t in texts):
                     headers = [_row_label(t).replace("_", " ") for t in texts]
+                    percent = ["%" in t for t in texts]  # "acc (\\%)": the column's bare numbers are percents
                     words = [set(_tokens(h)) for h in headers]
                     distinct = [sorted(w - set().union(*(o for j, o in enumerate(words) if j not in (0, k))))
                                 for k, w in enumerate(words)]
@@ -487,6 +505,8 @@ def _table_cells(stripped: str, masked: str, lines: _texmask.LineIndex, file: st
                         column += 1
                     else:
                         n = _cell_number(cell)
+                        if n is not None and column and column < len(percent) and percent[column]:
+                            n["kind"] = "percent"
                         if n is not None and not (column == 0 and n["kind"] == "count"):
                             n.update(line=lines.line(pos + len(cell) - len(cell.lstrip())), file=file,
                                      row=f"{file}:{row_line}", label=label,
@@ -775,35 +795,41 @@ def _coverage(cell: dict, pool: list, cache: dict, tolerances: dict) -> tuple[fl
     return cache[key]
 
 
-def _contiguous(short: tuple[str, ...], long: tuple[str, ...]) -> bool:
-    n = len(short)
-    return 0 < n <= len(long) and any(long[i:i + n] == short for i in range(len(long) - n + 1))
+@functools.lru_cache(maxsize=262144)
+def _covers(name: str, label: str) -> frozenset[str]:
+    """Words of a row label that an entity slot name covers: all of them when both normalise alike
+    ("Model A", "model_a"), else the words they share ("Alpha HM" and "alpha" share alpha)."""
+    words = frozenset(_tokens(label))
+    if _norm(name) and _norm(name) == _norm(label):
+        return words
+    return words & frozenset(_tokens(name))
 
 
-def _identifies(label: str, loc: Located, keys: set[str]) -> bool:
-    """Whether a results value's location names the row's entity (Ruling R164): a string field of its
-    object or of an enclosing one equals the label (alphanumerics, lowercase), or a key path component
-    (file stem or JSON key; metric keys excluded) equals it, holds it as a run of words, or is a run of
-    the label's words."""
-    return _names(label, loc.path, loc.ids, frozenset(keys))
+def _entity(label: str, located: list[Located]) -> tuple[list[bool], dict[tuple, set[str]]] | None:
+    """The values a row label names (Ruling R164, fix round 2): those whose entity slots cover the most
+    label words (so "Alpha HM" picks hm.alpha, not hm.beta or dfg.alpha), and, per slot level they
+    were named at, the names that cover the label. None when no slot covers a label word."""
+    covered = [frozenset().union(*(_covers(n, label) for _, n in loc.slots)) for loc in located]
+    best = max((len(c) for c in covered), default=0)
+    if not best:
+        return None
+    own = [len(c) == best for c in covered]
+    levels: dict[tuple, set[str]] = {}
+    for loc, mine in zip(located, own):
+        if mine:
+            for level, name in loc.slots:
+                if _covers(name, label):
+                    levels.setdefault(level, set()).add(_norm(name))
+    return own, levels
 
 
-@functools.lru_cache(maxsize=65536)
-def _names(label: str, path: tuple[str, ...], ids: frozenset[str], keys: frozenset[str]) -> bool:
-    norm, words = _norm(label), _tokens(label)
-    if not norm:
-        return False
-    if norm in ids:
-        return True
-    for comp in path:
-        if comp in keys:
-            continue
-        if _norm(comp) == norm:
-            return True
-        cw = _tokens(comp)
-        if _contiguous(words, cw) or (len(_norm(comp)) >= 2 and _contiguous(cw, words)):
-            return True
-    return False
+def _other_entity(loc: Located, label: str, levels: dict[tuple, set[str]]) -> str | None:
+    """The other entity a value belongs to: its name at a level where the row's own entity was named,
+    when that name differs. None for a value above the per-entity level or beside it (a shared count)."""
+    for level, name in loc.slots:
+        if level in levels and _norm(name) not in levels[level] and not _covers(name, label):
+            return name
+    return None
 
 
 def _cell_list(items: list[tuple[dict, str]]) -> str:
@@ -812,7 +838,7 @@ def _cell_list(items: list[tuple[dict, str]]) -> str:
 
 def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], tolerances: dict) -> list[Finding]:
     """Table cells against the results (Ruling R164). With metric keys, a row whose label (first cell)
-    names an entity in the results (see _identifies) must have every numeric cell matched by a keyed
+    names an entity in the results (see _entity) must have every numeric cell matched by a keyed
     value located under that entity; a cell matched only under another row's entity is WARN
     table_row_cell_other_entity, and a cell matched only under a key that lacks its column header's
     distinguishing word (hm vs dfg) while the entity has such a key is WARN table_cell_other_column.
@@ -821,7 +847,6 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     table_check_uninformative when that pool covers more than half of the values a cell can display.
     A cell matching no results value is WARN table_cell_not_in_results."""
     pool = _pool(results, metric_keys)
-    keys = set(metric_keys)
     by_raw: dict[tuple[str, str], set] = {}
     for c in cells:
         if (c["kind"], c["raw"]) not in by_raw:
@@ -831,13 +856,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     for i, c in enumerate(cells):
         rows.setdefault(c.get("row", f"{c['file']}:{c['line']}"), []).append(i)
     located = results.located if metric_keys else []
-    labels = {c["label"] for c in cells if c.get("label") and not re.fullmatch(r"line\d+", c["label"])}
-    entity: dict[str, list[bool]] = {}
-
-    def mask(label: str) -> list[bool]:
-        if label not in entity:
-            entity[label] = [_identifies(label, loc, keys) for loc in located]
-        return entity[label]
+    entities: dict[str, Any] = {}
 
     out: list[Finding] = []
     missed: dict[str, list[dict]] = {}
@@ -848,8 +867,10 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
     for idxs in rows.values():
         unplaced += [cells[i] for i in idxs if not hits[i]]
         label = cells[idxs[0]].get("label") or ""
-        own = mask(label) if label in labels and located else []
-        if not any(own):
+        if label and not re.fullmatch(r"line\d+", label) and located and label not in entities:
+            entities[label] = _entity(label, located)
+        named = entities.get(label)
+        if not named:
             for i in idxs:
                 if not hits[i]:
                     missed.setdefault(cells[i]["raw"], []).append(cells[i])
@@ -858,6 +879,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                     if cov and cov[0] > 0.5:
                         dense.append((cov[0], cov[1], cells[i]))
             continue
+        own, levels = named
         ent = [loc for loc, m in zip(located, own) if m]
         other_entity: list[tuple[dict, str]] = []
         other_column: list[tuple[dict, str]] = []
@@ -875,10 +897,10 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
                                             + f", which lacks '{'/'.join(sorted(want))}'"))
                 continue
             elsewhere = [loc for loc in located if _vkey(loc.value) in hits[i]]
-            owners = [[o for o in labels if o != label and _identifies(o, loc, keys)] for loc in elsewhere]
+            owners = [_other_entity(loc, label, levels) for loc in elsewhere]
             if elsewhere and all(owners):
                 other_entity.append((c, "matches only " + ", ".join(
-                    f"{loc.where} ({'/'.join(sorted(o))})" for loc, o in zip(elsewhere[:3], owners[:3]))))
+                    f"{loc.where} ({o})" for loc, o in zip(elsewhere[:3], owners[:3]))))
         for rule, items, summary, fix in (
                 ("table_row_cell_other_entity", other_entity,
                  "holds a value the results give for another row's entity",

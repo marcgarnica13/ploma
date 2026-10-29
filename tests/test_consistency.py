@@ -710,15 +710,15 @@ def test_value_from_the_same_teams_other_column_warns(tmp_path, layout):
 
 
 def test_named_records_and_global_counts(tmp_path):
-    files = {"r.json": [{"team": "Manchester City", "hm_precision": 0.55, "dfg_precision": 0.12},
-                        {"team": "Leeds", "hm_precision": 0.48, "dfg_precision": 0.31}],
+    files = {"r.json": [{"model": "Model A", "hm_precision": 0.55, "dfg_precision": 0.12},
+                        {"model": "Model B", "hm_precision": 0.48, "dfg_precision": 0.31}],
              "cfg.json": {"runs": 30}}
     keys = ["hm_precision", "dfg_precision", "runs"]
-    main, res = _layout(tmp_path, files, rows=("Manchester City & 0.55 & 0.12 & 30", "Leeds & 0.48 & 0.31 & 30"),
-                        header="Team & HM precision & DFG precision & Runs")
+    main, res = _layout(tmp_path, files, rows=("Model A & 0.55 & 0.12 & 30", "Model B & 0.48 & 0.31 & 30"),
+                        header="Model & HM precision & DFG precision & Runs")
     assert _run(main, results_dir=res, metric_keys=keys).verdict == "PASS"
-    main.write_text(main.read_text().replace("City & 0.55", "City & 0.12"))
-    assert "consistency.table_cell_other_column.Manchester_City" in _ids(_run(main, results_dir=res, metric_keys=keys))
+    main.write_text(main.read_text().replace("Model A & 0.55", "Model A & 0.12"))
+    assert "consistency.table_cell_other_column.Model_A" in _ids(_run(main, results_dir=res, metric_keys=keys))
 
 
 def test_unknown_row_labels_fall_back_to_per_cell(tmp_path):
@@ -740,3 +740,74 @@ def test_density_counts_values_within_tolerance(tmp_path):
     (res / "r.json").write_text(json.dumps({"runs": [{"fit": round(0.03 * i, 2)} for i in range(34)]}))
     rep = _run(main, results_dir=res, metric_keys=["fit"])
     assert "consistency.table_check_uninformative" in _ids(rep)
+
+
+# ---------------------------------------------------------------- fix round 2: entity levels, % headers
+
+def _tables(tmp_path, tables, files):
+    main = tmp_path / "m.tex"
+    tex = "\\begin{document}\n"
+    for header, rows in tables:
+        tex += "\\begin{tabular}{lrr}\n" + header + " \\\\\n" + " \\\\\n".join(rows) + " \\\\\n\\end{tabular}\n"
+    main.write_text(tex + "\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    for name, content in files.items():
+        (res / name).write_text(content if isinstance(content, str) else json.dumps(content))
+    return main, res
+
+
+MT = {"r.json": {"hm": {"alpha": {"fitness": 0.74}, "beta": {"fitness": 0.71}},
+                 "dfg": {"alpha": {"fitness": 0.62}, "beta": {"fitness": 0.58}}}}
+
+
+def test_multi_word_label_entity_and_method(tmp_path):
+    """'Alpha HM': alpha picks the entity, hm narrows like a column word; Beta's HM value WARNs."""
+    rows = ["Alpha HM & 0.74 & 0.74", "Alpha DFG & 0.62 & 0.62", "Beta HM & 0.71 & 0.71", "Beta DFG & 0.58 & 0.58"]
+    main, res = _tables(tmp_path, [("Run & Fitness & x", rows)], MT)
+    assert _run(main, results_dir=res, metric_keys=["fitness"]).verdict == "PASS"
+    main.write_text(main.read_text().replace("Alpha HM & 0.74 & 0.74", "Alpha HM & 0.71 & 0.71"))
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Alpha_HM")
+    assert "beta" in f.observed
+
+
+def test_shared_top_level_value_is_not_another_entitys(tmp_path):
+    files = {"r.json": {"dataset": "Corpus1", "samples": 1000,
+                        "models": {"alpha": {"fitness": 0.74}, "beta": {"fitness": 0.71}}}}
+    models = ("Model & Fitness & Samples", ["Alpha & 0.74 & 1000", "Beta & 0.71 & 1000"])
+    for tables in ([models, ("Dataset & Samples & x", ["Corpus1 & 1000 & 1000"])], [models]):
+        sub = tmp_path / str(len(tables))
+        sub.mkdir()
+        main, res = _tables(sub, tables, files)
+        rep = _run(main, results_dir=res, metric_keys=["fitness", "samples"])
+        assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+
+
+def test_other_entity_named_by_its_entity_key(tmp_path):
+    files = {"r.json": {"alpha": {"fitness": {"mean": 0.74}}, "beta": {"fitness": {"mean": 0.71}},
+                        "baseline": {"fitness": {"mean": 0.60}}}}
+    main, res = _tables(tmp_path, [("Model & Fitness & x", ["Alpha & 0.74 & 0.74", "Beta & 0.60 & 0.60"]),
+                                   ("Stat & Fitness & x", ["Mean & 0.725 & 0.725"])], files)
+    rep = _run(main, results_dir=res, metric_keys=["fitness"])
+    f = next(f for f in rep.findings if f.id == "consistency.table_row_cell_other_entity.Beta")
+    assert "(baseline)" in f.observed and "(Mean)" not in f.observed
+
+
+def test_percent_declared_in_the_header_scales_bare_cells(tmp_path):
+    files = {"r.json": {"alpha": {"hm_acc": 0.741, "dfg_acc": 0.623}, "beta": {"hm_acc": 0.712, "dfg_acc": 0.584}}}
+    header = "Model & HM acc (\\%) & DFG acc (\\%)"
+    main, res = _tables(tmp_path, [(header, ["Alpha & 74.1 & 62.3", "Beta & 71.2 & 58.4"])], files)
+    rep = _run(main, results_dir=res, metric_keys=["hm_acc", "dfg_acc"])
+    assert rep.verdict == "PASS", [(f.id, f.observed) for f in rep.findings]
+    main.write_text(main.read_text().replace("Alpha & 74.1", "Alpha & 71.2"))
+    rep = _run(main, results_dir=res, metric_keys=["hm_acc", "dfg_acc"])
+    assert "consistency.table_row_cell_other_entity.Alpha" in _ids(rep)
+    assert not any(i.startswith("consistency.table_cell_not_in_results") for i in _ids(rep))
+
+
+def test_docs_say_row_labels_must_use_entity_names(repo_root):
+    doc = consistency.__doc__
+    skill = (repo_root / "skills" / "audit-reproducibility" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Row labels must therefore use the results' entity" in doc and '"BERT-L"' in doc
+    assert "row labels use the results' entity names" in skill
