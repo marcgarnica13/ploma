@@ -130,3 +130,44 @@ def test_cli(sample_paper, capsys):
 def test_cli_without_config_recommends_onboard(tmp_path, capsys):
     assert state.main(["--root", str(tmp_path), "next", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["stage"] == "onboard"
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("body, key, action", [
+    ("events: {a: 1}\n", "events", "record"),
+    ("rounds: [1]\n", "rounds", "record_review"),
+    ("rounds: {review: many}\n", "rounds.review", "record_review"),
+    ("events: [hello]\n", "events.0", "next"),
+    ("events: [hello]\n", "events.0", "render"),
+    ("stage: nowhere\n", "stage", "next"),
+])
+def test_corrupt_state_file_raises_value_error(sample_paper, cfg, body, key, action):
+    p = state.path(sample_paper, cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text('ploma_state: "0.1"\n' + body)
+    with pytest.raises(ValueError) as exc:
+        if action == "record":
+            state.record(sample_paper, cfg, "compile", "PASS")
+        elif action == "record_review":
+            state.record(sample_paper, cfg, "review", "PASS")
+        elif action == "next":
+            state.next_stage(state.load(sample_paper, cfg), cfg)
+        else:
+            state.render(state.load(sample_paper, cfg), cfg)
+    assert str(p) in str(exc.value) and f"'{key}'" in str(exc.value)
+
+
+@pytest.mark.parametrize("action", [["next"], ["render"], ["record", "compile", "PASS"]])
+def test_corrupt_state_file_cli_exits_2(sample_paper, cfg, action):
+    p = state.path(sample_paper, cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text('ploma_state: "0.1"\nevents: [hello]\n')
+    assert state.main(["--root", str(sample_paper)] + action) == 2
+
+
+def test_in_memory_non_dict_events_are_skipped(cfg):
+    st = {"ploma_state": "0.1", "stage": "compile", "rounds": {}, "events": ["hello", {"skill": "compile", "status": "PASS", "at": "2026-10-29T00:00:00Z"}]}
+    assert state.next_stage(st, cfg)["stage"] == "format"
+    assert "compile PASS" in state.render(st, cfg)

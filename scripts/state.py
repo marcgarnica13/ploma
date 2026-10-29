@@ -99,8 +99,22 @@ def load(root: Path, cfg: dict) -> dict:
         raise ValueError(f"{p} must contain a mapping at the top level")
     st = _empty()
     st.update(data)
-    st["rounds"] = st.get("rounds") or {}
-    st["events"] = st.get("events") or []
+    if st["rounds"] is None:
+        st["rounds"] = {}
+    if st["events"] is None:
+        st["events"] = []
+    if not isinstance(st["rounds"], dict):
+        raise ValueError(f"{p}: 'rounds' must be a mapping, got {type(st['rounds']).__name__}")
+    for skill, count in st["rounds"].items():
+        if not isinstance(count, int) or isinstance(count, bool):
+            raise ValueError(f"{p}: 'rounds.{skill}' must be an integer, got {count!r}")
+    if not isinstance(st["events"], list):
+        raise ValueError(f"{p}: 'events' must be a list, got {type(st['events']).__name__}")
+    for i, event in enumerate(st["events"]):
+        if not isinstance(event, dict):
+            raise ValueError(f"{p}: 'events.{i}' must be a mapping, got {event!r}")
+    if st["stage"] is not None and st["stage"] not in STAGES:
+        raise ValueError(f"{p}: 'stage' must be a lifecycle stage or null, got {st['stage']!r}")
     return st
 
 
@@ -127,15 +141,20 @@ def record(root: Path, cfg: dict, skill: str, status: str, artifact: str | None 
     return st
 
 
+def _events(st: dict) -> list[dict]:
+    events = st.get("events")
+    return [e for e in events if isinstance(e, dict)] if isinstance(events, list) else []
+
+
 def latest(st: dict, skill: str) -> dict | None:
-    for event in reversed(st.get("events") or []):
+    for event in reversed(_events(st)):
         if event.get("skill") == skill:
             return event
     return None
 
 
 def _latest_for_stage(st: dict, stage: str) -> dict | None:
-    for event in reversed(st.get("events") or []):
+    for event in reversed(_events(st)):
         if SKILL_TO_STAGE.get(event.get("skill")) == stage:
             return event
     return None
@@ -160,7 +179,7 @@ def next_stage(st: dict, cfg: dict | None) -> dict:
 def render(st: dict, cfg: dict | None) -> str:
     """Short human summary (under 600 characters) for the SessionStart hook and /ploma:status."""
     lines = [f"ploma stage: {st.get('stage') or 'none'}"]
-    events = (st.get("events") or [])[-5:]
+    events = _events(st)[-5:]
     if events:
         lines.append("recent:")
         for ev in events:

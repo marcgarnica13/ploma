@@ -49,13 +49,14 @@ def _git_ignored(base: Path, rels: list[str]) -> set[str]:
                                capture_output=True, text=True, timeout=10)
         if probe.returncode != 0 or probe.stdout.strip() != "true":
             return set()
-        res = subprocess.run(["git", "check-ignore", "--stdin"], cwd=str(base), input="\n".join(rels) + "\n",
-                             capture_output=True, text=True, timeout=30)
+        payload = b"".join(os.fsencode(r) + b"\0" for r in rels)
+        res = subprocess.run(["git", "check-ignore", "-z", "--stdin"], cwd=str(base), input=payload,
+                             capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return set()
     if res.returncode not in (0, 1):
         return set()
-    return {line.strip() for line in res.stdout.splitlines() if line.strip()}
+    return {os.fsdecode(item) for item in res.stdout.split(b"\0") if item}
 
 
 def manuscript_sha(root: Path, cfg: dict) -> str:
@@ -91,6 +92,16 @@ def load(root: Path, cfg: dict) -> dict:
         raise ValueError(f"{p} must contain a JSON object")
     out = _empty()
     out.update(data)
+    if not isinstance(out["checks"], dict):
+        raise ValueError(f"{p}: 'checks' must be an object, got {type(out['checks']).__name__}")
+    for name, entry in out["checks"].items():
+        if not isinstance(entry, dict):
+            raise ValueError(f"{p}: 'checks.{name}' must be an object, got {type(entry).__name__}")
+    if not isinstance(out["overrides"], list):
+        raise ValueError(f"{p}: 'overrides' must be a list, got {type(out['overrides']).__name__}")
+    streak = out["override_streak"]
+    if not isinstance(streak, int) or isinstance(streak, bool) or streak < 0:
+        raise ValueError(f"{p}: 'override_streak' must be a non-negative integer, got {streak!r}")
     return out
 
 
@@ -144,6 +155,7 @@ class GateReport:
     checks: dict[str, dict]
     verdict: str
     warnings: list[str]
+    reasons: list[str]
     override_streak: int
     can_override: bool
     manuscript_sha: str
@@ -162,13 +174,19 @@ def check(root: Path, cfg: dict) -> GateReport:
         checks[name] = {"status": entry.get("status") if present else None,
                         "fresh": present and entry.get("manuscript_sha") == sha,
                         "required": name in REQUIRED, "present": present}
-    req = [checks[n] for n in REQUIRED]
-    if any(c["present"] and c["fresh"] and c["status"] == "FAIL" for c in req):
-        verdict = "FAIL"
-    elif any(not c["present"] or not c["fresh"] for c in req):
-        verdict = "INCOMPLETE"
-    else:
-        verdict = "PASS"
+    failed: list[str] = []
+    incomplete: list[str] = []
+    for name in REQUIRED:
+        c = checks[name]
+        if not c["present"]:
+            incomplete.append(f"{name}: missing (required)")
+        elif not c["fresh"]:
+            incomplete.append(f"{name}: stale, manuscript changed since it ran (required)")
+        elif c["status"] == "FAIL":
+            failed.append(f"{name}: FAIL (required)")
+        elif c["status"] not in ("PASS", "WARN"):
+            incomplete.append(f"{name}: invalid status {c['status']!r} (required; re-run it)")
+    verdict = "FAIL" if failed else "INCOMPLETE" if incomplete else "PASS"
     warnings: list[str] = []
     for name in RECOMMENDED:
         c = checks[name]
@@ -178,8 +196,10 @@ def check(root: Path, cfg: dict) -> GateReport:
             warnings.append(f"{name}: stale, manuscript changed since it ran (recommended)")
         elif c["status"] in ("WARN", "FAIL"):
             warnings.append(f"{name}: {c['status']} (recommended)")
+        elif c["status"] != "PASS":
+            warnings.append(f"{name}: invalid status {c['status']!r} (recommended)")
     streak = int(data.get("override_streak") or 0)
-    return GateReport(checks, verdict, warnings, streak, streak < MAX_CONSECUTIVE_OVERRIDES, sha)
+    return GateReport(checks, verdict, warnings, failed + incomplete, streak, streak < MAX_CONSECUTIVE_OVERRIDES, sha)
 
 
 def render(report: GateReport) -> str:
@@ -188,6 +208,8 @@ def render(report: GateReport) -> str:
         kind = "required" if c["required"] else "recommended"
         state = "missing" if not c["present"] else f"{c['status']} {'FRESH' if c['fresh'] else 'STALE'}"
         lines.append(f"- {name} ({kind}): {state}")
+    for r in report.reasons:
+        lines.append(f"blocking: {r}")
     for w in report.warnings:
         lines.append(f"warning: {w}")
     lines.append(f"override streak: {report.override_streak}/{MAX_CONSECUTIVE_OVERRIDES}"

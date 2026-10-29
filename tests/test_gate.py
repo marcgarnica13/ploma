@@ -180,3 +180,75 @@ def test_cli(sample_paper, capsys):
 
 def test_cli_without_config(tmp_path):
     assert gate.main(["--root", str(tmp_path), "check"]) == 2
+
+
+def _write_raw(sample_paper, cfg, data):
+    p = gate.path(sample_paper, cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data))
+    return p
+
+
+@pytest.mark.parametrize("compile_entry, bib_entry, bad", [
+    ({}, {"status": "PASS"}, "compile: invalid status None"),
+    ({"status": None}, {"status": "PASS"}, "compile: invalid status None"),
+    ({"status": "PASS"}, {"status": "bogus"}, "bib: invalid status 'bogus'"),
+    ({"status": "SKIP"}, {"status": "PASS"}, "compile: invalid status 'SKIP'"),
+])
+def test_required_status_must_be_pass_or_warn(sample_paper, cfg, capsys, compile_entry, bib_entry, bad):
+    sha = gate.manuscript_sha(sample_paper, cfg)
+    _write_raw(sample_paper, cfg, {"schema": 1, "manuscript_sha": sha, "overrides": [], "override_streak": 0,
+                                    "checks": {"compile": dict(compile_entry, manuscript_sha=sha),
+                                               "bib": dict(bib_entry, manuscript_sha=sha)}})
+    r = gate.check(sample_paper, cfg)
+    assert r.verdict == "INCOMPLETE" and any(bad in x for x in r.reasons)
+    assert gate.main(["--root", str(sample_paper), "check"]) == 1
+
+
+def test_required_warn_passes(sample_paper, cfg):
+    gate.record(sample_paper, cfg, "compile", "WARN", "x.md")
+    gate.record(sample_paper, cfg, "bib", "PASS", "x.md")
+    r = gate.check(sample_paper, cfg)
+    assert r.verdict == "PASS" and r.reasons == []
+
+
+def test_reasons_name_blocking_checks(sample_paper, cfg):
+    gate.record(sample_paper, cfg, "compile", "FAIL", "x.md")
+    r = gate.check(sample_paper, cfg)
+    assert r.verdict == "FAIL"
+    assert any(x.startswith("compile: FAIL") for x in r.reasons) and any(x.startswith("bib: missing") for x in r.reasons)
+
+
+@pytest.mark.parametrize("patch, key, action", [
+    ({"checks": None}, "checks", "check"),
+    ({"checks": []}, "checks", "check"),
+    ({"checks": {"compile": "PASS"}}, "checks.compile", "check"),
+    ({"overrides": None}, "overrides", "override"),
+    ({"override_streak": "2"}, "override_streak", "check"),
+    ({"override_streak": None}, "override_streak", "override"),
+])
+def test_corrupt_gate_file_raises_value_error(sample_paper, cfg, patch, key, action):
+    data = {"schema": 1, "manuscript_sha": None, "checks": {}, "overrides": [], "override_streak": 0}
+    data.update(patch)
+    p = _write_raw(sample_paper, cfg, data)
+    with pytest.raises(ValueError) as exc:
+        if action == "check":
+            gate.check(sample_paper, cfg)
+        else:
+            gate.override(sample_paper, cfg, "r", ["compile"])
+    assert str(p) in str(exc.value) and f"'{key}'" in str(exc.value)
+    cli = ["check"] if action == "check" else ["override", "--reason", "r", "--checks", "compile"]
+    assert gate.main(["--root", str(sample_paper)] + cli) == 2
+
+
+def test_manuscript_sha_skips_gitignored_non_ascii(sample_paper, cfg):
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    subprocess.run(["git", "init", "-q", str(sample_paper)], check=True)
+    (sample_paper / ".gitignore").write_text("sections/ignoré.tex\n/ lead.tex\n", encoding="utf-8")
+    before = gate.manuscript_sha(sample_paper, cfg)
+    (sample_paper / "sections" / "ignoré.tex").write_text("ignored", encoding="utf-8")
+    (sample_paper / " lead.tex").write_text("ignored too")
+    assert gate.manuscript_sha(sample_paper, cfg) == before
+    (sample_paper / "sections" / "trackedé.tex").write_text("counted", encoding="utf-8")
+    assert gate.manuscript_sha(sample_paper, cfg) != before
