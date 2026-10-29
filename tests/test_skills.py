@@ -260,3 +260,45 @@ def test_onboard_eval_grades_the_dry_run_statement():
     flags = re.I if "i" in str(fm.get("flags", "")) else 0
     assert re.search(body.strip(), statement, flags)
     assert re.search(body.strip(), "Dry run: nothing written.", flags)
+
+
+# ---------------------------------------------------------------- shared skill references (milestone 2, Task 2)
+
+SHARED = REPO / "skills" / "_shared" / "references"
+SHARED_FILES = ("cove.md", "finding-format.md", "report-header.md")
+
+
+@pytest.mark.parametrize("name", SHARED_FILES)
+def test_shared_reference_is_generic_and_clean(name):
+    p = SHARED / name
+    text = p.read_text(encoding="utf-8")
+    assert not BANNED_RE.search(text) and not LLNCS_RE.search(text), name
+    assert not EM_DASH_RE.search(text), f"{name}: em-dash or en-dash"
+    assert "extraction/" not in text and "context: fork" not in text and "context=fork" not in text
+    for rel in PLUGIN_PATH_RE.findall(text):
+        assert (REPO / rel.rstrip(".")).exists(), f"{name}: {rel} does not exist"
+
+
+def test_cove_reference_isolates_the_verifier():
+    text = (SHARED / "cove.md").read_text(encoding="utf-8")
+    assert "ploma:claim-verifier" in text
+    for step in ("Draft", "Extract claims", "verification questions", "fresh context"):
+        assert step in text, step
+    for outcome in ("PASS", "PARTIAL", "FAIL", "Fail closed"):
+        assert outcome in text
+    assert "## Post-flight verification" in text  # the output block
+    assert "never the draft" in text.lower() or "never pass the draft" in text.lower()
+
+
+def test_finding_format_names_the_four_fields():
+    text = (SHARED / "finding-format.md").read_text(encoding="utf-8")
+    for field in ("Location", "Current", "Fix", "Severity"):
+        assert f"**{field}:**" in text
+    for level in ("CRITICAL", "MAJOR", "MINOR"):
+        assert level in text
+
+
+def test_report_header_fields():
+    text = (SHARED / "report-header.md").read_text(encoding="utf-8")
+    for field in ("**Date:**", "**File:**", "**Skill:**", "**Config:**"):
+        assert field in text
