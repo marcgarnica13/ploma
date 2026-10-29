@@ -8,7 +8,8 @@ Statuses: verified, partial, mismatch, missing, not_indexed, unreachable, skippe
 both answering without a title match (Semantic Scholar without a key answers 429 as a rule, D13), or a DOI
 that both Crossref and DataCite answer 404 for with no title match among the sources that answered;
 otherwise a work no source knows is ``not_indexed`` (R94). A title-matched entry whose DOI both registries
-answer 404 for is ``partial`` with ``doi_unresolved`` set (D14).
+answer 404 for is ``partial`` with ``doi_unresolved`` set (D14). Theses (ALL_SOURCES_TYPES) are missing only
+when all three sources answered (R165). A 200 with an empty or unreadable body counts as not answering.
 Results are cached for 90 days in ``default_cache_path()``; run() saves the cache every
 SAVE_EVERY network lookups and skips the remaining network lookups once its time budget is spent.
 Exit codes: 0 no result is missing or mismatch, 1 at least one is, 2 usage error or unreadable bib file.
@@ -41,6 +42,9 @@ STATUSES = ("verified", "partial", "mismatch", "missing", "not_indexed", "unreac
 # Entry types that citation indexes are expected to cover; others (misc, techreport, online, software) may be absent.
 STRICT_TYPES = frozenset({"article", "inproceedings", "conference", "book", "incollection", "inbook",
                           "phdthesis", "mastersthesis"})
+# Strict types the two-source rule does not cover (R165): Crossref and OpenAlex list theses poorly, so a
+# thesis is missing only when all three sources answered without a match.
+ALL_SOURCES_TYPES = frozenset({"phdthesis", "mastersthesis"})
 SAVE_EVERY = 5
 TIME_BUDGET_S = 480
 TITLE_MATCH = 0.90
@@ -279,16 +283,21 @@ class _Facts:
         self.record, self.fetch, self.mailto, self.keys = record, fetch, mailto, keys or {}
 
     def _get(self, url: str, headers: dict, parse: Callable[[dict], object]) -> tuple[bool, object]:
+        """(failed, parsed). A 404 is an answer (not found); a 200 with an empty body, a body that is not
+        a JSON object, or one whose shape the parser cannot read counts as the source not answering."""
         status, body = self.fetch(url, headers)
         if _failed(status):
             return True, None
-        if status == 404 or not body:
+        if status == 404:
             return False, None
+        if not body or not body.strip():
+            return True, None
         try:
             data = json.loads(body)
-            return False, parse(data) if isinstance(data, dict) else None
+            parsed = parse(data) if isinstance(data, dict) else None
         except Exception:
             return True, None  # not JSON or an unexpected shape: the source counts as failing
+        return (True, None) if parsed is None else (False, parsed)
 
     def doi(self, doi: str) -> tuple[bool, _Hit | None]:
         if self.fetch is None:
@@ -351,7 +360,10 @@ def _title_search(entry: Entry, facts: _Facts, *, doi_dead: bool = False) -> Loo
         evidence += f" ({failures} of {len(SOURCES)} sources did not answer)"
     if best:
         evidence += f"; closest {best[1]}: {best[2]}"
-    decided = {"crossref", "openalex"} <= answered or (doi_dead and bool(answered))
+    if entry.type.lower() in ALL_SOURCES_TYPES:
+        decided = answered == set(SOURCES)
+    else:
+        decided = {"crossref", "openalex"} <= answered or (doi_dead and bool(answered))
     return _not_found(entry, evidence, decided=decided)
 
 

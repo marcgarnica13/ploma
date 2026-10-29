@@ -610,3 +610,29 @@ def test_doi_unresolved_only_when_both_registries_answer_404():
     routes = {"api.crossref.org/works/10.9999": (404, ""), "api.datacite.org": (503, ""),
               "api.crossref.org/works?": (200, CROSSREF_MISS), "api.openalex.org": (200, OPENALEX_HIT)}
     assert lookup(e, fetch=fake_fetch(routes), cache={}).doi_unresolved is False
+
+
+# ---------------------------------------------------------------- fix round 1: R165 theses, empty 200 bodies
+
+def test_theses_need_all_three_sources_for_missing():
+    """R165: Crossref and OpenAlex cover theses poorly; without Semantic Scholar a thesis stays not_indexed."""
+    for t in ("phdthesis", "mastersthesis"):
+        assert lookup(_typed(t), fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={}).status == "not_indexed", t
+        assert lookup(_typed(t), fetch=fake_fetch(ALL_MISS), cache={}).status == "missing", t
+    assert lookup(_typed("book"), fetch=fake_fetch({**ALL_MISS, **S2_429}), cache={}).status == "missing"
+
+
+def test_thesis_with_dead_doi_still_needs_all_three_sources():
+    e = parse_bib(r"@phdthesis{T, author = {Nobody, Ann}, title = {A Study That Was Never Written},"
+                  r" year = 2020, doi = {10.9999/fake.123}}")[0]
+    assert lookup(e, fetch=fake_fetch({**DEAD_DOI, **ALL_MISS, **S2_429}), cache={}).status == "not_indexed"
+
+
+def test_empty_200_body_counts_as_not_answered():
+    calls = []
+    fetch = fake_fetch({"api.crossref.org/works/10.1/x": (200, ""), **ALL_MISS}, calls)
+    r = lookup(ENTRY_WITH_DOI, fetch=fetch, cache={})
+    assert "Crossref unreachable for DOI" in r.evidence
+    assert "api.datacite.org" not in [host(c) for c in calls]
+    fetch = fake_fetch({**ALL_MISS, "api.openalex.org": (200, "")})
+    assert lookup(_typed("article"), fetch=fetch, cache={}).status == "not_indexed"  # OpenAlex did not answer

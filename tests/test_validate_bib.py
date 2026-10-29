@@ -58,7 +58,7 @@ def unreachable_fetch(url: str, headers: dict) -> tuple[int, str]:
 
 
 def missing_fetch(url: str, headers: dict) -> tuple[int, str]:
-    if "api.crossref.org/works/" in url:
+    if "api.crossref.org/works/" in url or "api.datacite.org" in url:
         return 404, ""
     if "crossref" in url:
         return 200, json.dumps({"message": {"items": []}})
