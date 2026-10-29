@@ -34,9 +34,11 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 import sys
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -178,9 +180,19 @@ def extract_numbers(text: str, file: str | None = None) -> list[dict]:
 
 # ---------------------------------------------------------------- matching
 
+def _dec(raw: str) -> Decimal:
+    """Exact decimal value of a displayed number (raw as extracted: separators and % removed)."""
+    return Decimal(raw.rstrip("%").replace(",", ""))
+
+
 def _decimals(raw: str) -> int:
-    digits = raw.rstrip("%")
-    return len(digits.split(".", 1)[1]) if "." in digits else 0
+    """Decimal places the manuscript shows (0 for integers and for exponent forms without them)."""
+    return max(0, -_dec(raw).as_tuple().exponent)
+
+
+def _half_up(value: Decimal, places: int) -> Decimal:
+    """Round as a reader rounds a display: half away from zero, on the exact decimal digits."""
+    return value.quantize(Decimal(10) ** -places, rounding=ROUND_HALF_UP)
 
 
 def _tol(tolerances: dict, key: str) -> float:
@@ -199,23 +211,25 @@ def same_number(a: dict, b: dict) -> bool:
     if a["kind"] != b["kind"]:
         return False
     places = min(_decimals(a["raw"]), _decimals(b["raw"]))
-    return abs(round(a["value"], places) - round(b["value"], places)) <= _EPS
+    return _half_up(_dec(a["raw"]), places) == _half_up(_dec(b["raw"]), places)
 
 
 def matches(num: dict, value: float, tolerances: dict) -> bool:
     """Whether a manuscript number agrees with value: counts exactly (or within tolerances.counts),
     decimals within tolerances.metrics, percentages within tolerances.percentages_pp (value as is or
-    times 100). value is first rounded to the decimals the manuscript shows."""
+    times 100). value is first rounded half up to the decimals the manuscript shows."""
     kind = num["kind"]
     if kind == "count":
         return abs(num["value"] - value) <= _tol(tolerances, "counts") + _EPS
+    exact = Decimal(repr(float(value)))  # the shortest decimal that round-trips, as the results file shows it
     if kind == "percent":
-        candidates, tol = (value, value * 100), _tol(tolerances, "percentages_pp")
+        candidates, tol = (exact, exact * 100), _tol(tolerances, "percentages_pp")
     else:
-        candidates, tol = (value,), _tol(tolerances, "metrics")
+        candidates, tol = (exact,), _tol(tolerances, "metrics")
+    shown = _dec(num["raw"])
     places = _decimals(num["raw"])
     for v in candidates:
-        if abs(num["value"] - round(v, places)) <= _EPS or abs(num["value"] - v) <= tol + _EPS:
+        if _half_up(v, places) == shown or abs(shown - v) <= Decimal(repr(tol)) + Decimal("1e-9"):
             return True
     return False
 
@@ -236,7 +250,7 @@ def _walk_json(data: Any, keys: set[str], values: list[float], found: set[str]) 
 
 
 def _is_number(v: Any) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
 @dataclass
@@ -266,7 +280,10 @@ def load_results(results_dir: Path, metric_keys: list[str]) -> Results:
                 for row in rows:
                     for i, cell in enumerate(row):
                         try:
-                            res.values.append(float(cell.strip()))
+                            number = float(cell.strip())
+                            if not math.isfinite(number):
+                                continue
+                            res.values.append(number)
                             if i < len(header) and header[i].strip() in keys:
                                 res.keys_found.add(header[i].strip())
                         except ValueError:

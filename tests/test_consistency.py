@@ -80,6 +80,29 @@ def test_rounding_and_tolerance(tmp_path):
     main.write_text("\\begin{document}\n\\begin{abstract}A 0.81 score and 41.3\\% share.\\end{abstract}\n"
                     "We got 0.8134 and 41.31\\%.\n\\end{document}\n")
     assert _run(main).verdict == "PASS"
+    main.write_text("\\begin{document}\n\\begin{abstract}A 41.3\\% share.\\end{abstract}\n"
+                    "We got 41.25\\%.\n\\end{document}\n")
+    assert _run(main).verdict == "PASS", _ids(_run(main))
+
+
+@pytest.mark.parametrize("abstract,body", [
+    ("41.3\\%", "41.25\\%"), ("0.82", "0.815"), ("0.13", "0.125"), ("0.9", "0.85"), ("0.815", "0.82"),
+])
+def test_display_rounding_is_half_up(tmp_path, abstract, body):
+    rep = _run(_doc(tmp_path, f"We reach {abstract}.", f"We reach {body}."))
+    assert rep.verdict == "PASS", _ids(rep)
+
+
+def test_display_rounding_still_fails_on_digit_typo(tmp_path):
+    rep = _run(_doc(tmp_path, "We reach 0.85.", "We reach 0.84."))
+    assert "consistency.abstract_number_not_in_body.0.85" in _ids(rep)
+
+
+@pytest.mark.parametrize("raw,value", [("0.82", 0.815), ("0.13", 0.125), ("41.3%", 0.4125), ("2", 2.0)])
+def test_results_rounding_is_half_up(raw, value):
+    from consistency import _number, NUM_RE
+    num = _number(NUM_RE.search(raw.replace("%", "\\%")))
+    assert consistency.matches(num, value, {"counts": "exact", "metrics": 0.0, "percentages_pp": 0.0})
 
 
 def _doc(tmp_path, abstract, body, name="m.tex"):
@@ -359,3 +382,13 @@ def test_cli_usage_errors(tmp_path, capsys):
     assert consistency.main([str(tmp_path / "nope.tex")]) == 2
     assert consistency.main(["--root", str(tmp_path)]) == 2
     assert consistency.main(["--bogus"]) == 2
+
+
+def test_non_finite_results_values_are_ignored(tmp_path):
+    main = tmp_path / "m.tex"
+    main.write_text("\\begin{document}\n\\begin{tabular}{lr}\nA & 0.5 \\\\\n\\end{tabular}\n\\end{document}\n")
+    res = tmp_path / "res"
+    res.mkdir()
+    (res / "m.json").write_text('{"a": NaN, "b": Infinity, "c": 0.5}')
+    (res / "t.csv").write_text("x\nnan\ninf\n")
+    assert _run(main, results_dir=res).verdict == "PASS"
