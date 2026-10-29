@@ -38,6 +38,7 @@ stage: <from state.py render>
 next:  <from state.py render>
 gate:  <verdict>
   - <reason or warning>
+  override streak: <n>/3
 plan:  <name> (<status>)
 log:   <name>
 context: <line>

@@ -12,8 +12,10 @@ Read-only. Never edits a file, never asks "proceed?", never fixes anything.
 1. Run it, passing the arguments through (`$ARGUMENTS`: an optional path, an optional `--json`):
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.py" $ARGUMENTS
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.py" "$ARGUMENTS"
    ```
+
+   With both a path and `--json`, pass them as two quoted words: `"--json" "<path>"`.
 
    Exit 0 is READY or READY_WITH_WARNINGS, exit 1 is NOT_READY (a result, not an error), exit 2 is a usage error or a missing directory: quote the message and stop.
 

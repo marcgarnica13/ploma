@@ -30,7 +30,9 @@ Quote the JSON. Everything it answers is settled: never ask about it again.
 
 ## 3. Main file, only when ambiguous
 
-If `main` is null, ask the `document.main` question alone first, with one `AskUserQuestion` call. Get it from:
+If `main` is null and `main_candidates` is empty (only fragment `.tex` files), stop. Say: "ploma found no compilable main file (a .tex with \documentclass and \begin{document})." List the `.tex` files found, up to 10, and ask the user to name the main file in their reply. Do not offer to leave it unset. When they name it, continue with the `--main` re-run below.
+
+If `main` is null and there are candidates, ask the `document.main` question alone first, with one `AskUserQuestion` call. Get it from:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/inventory.py" --json gaps
@@ -72,7 +74,7 @@ Show, in this order:
    PLOMA_YAML
    ```
 
-   Quote the JSON, then render a table with columns path, mode, action. Under it, show the `diff` of every `overwrite` and `merge` row.
+   Quote the JSON, then render a table with columns path, mode, action. Under it, show the `diff` of every `overwrite`, `merge` and `remove` row (a generated rule that will be removed is shown before approval).
 3. The settings suggestion, unless step 5 withheld it:
 
    ```bash
@@ -89,7 +91,7 @@ Otherwise ask once with `AskUserQuestion`: "Write ploma.yaml and the project fil
 
 ## 7. Write
 
-1. Write `ploma.yaml` at the repo root with the Write tool, exactly the YAML shown in step 6.
+1. Write `ploma.yaml` at the repo root with the Write tool, exactly the YAML shown in step 6 (absorption run: Edit only, never Write; see Absorption).
 2. Apply the project files:
 
    ```bash
@@ -114,7 +116,7 @@ Quote the doctor's first two lines (verdict and counts) and every FAIL and WARN 
 
 - Run every `inventory.py` call with `--main <document.main from ploma.yaml>`.
 - Compare `propose` with the current `ploma.yaml`, key by key. Show a short table: key, ploma.yaml, detected. A key present in `ploma.yaml` is the user's: never change it, even when detection differs. Only keys missing from `ploma.yaml` may be added.
-- Ask only the gaps whose key is missing or null in `ploma.yaml`.
+- Ask only the gaps whose key is missing from `ploma.yaml`. A key present with null (for example `venue.page_budget: null`) is a deliberate answer: never re-ask it.
 - Plan from the current file plus the additions. With no additions, run `project_files.py --json plan` without `--config`.
 - Step 7: add the missing keys with Edit, keeping comments and order. Never rewrite `ploma.yaml` with Write. No additions and no plan rows other than `unchanged`: say "nothing to absorb", skip step 7 and go to step 8.
 - The plan never overwrites hand-edited files: rows marked `skip_hand_edited` are reported, not written.
