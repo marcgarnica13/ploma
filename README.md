@@ -33,7 +33,7 @@ Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
 - Venue profiles (`venues/`) and discipline profiles (`disciplines/`), overridable per project in `ploma.d/`.
 - Scripts behind the skills (`scripts/`), each with `--json` output, and eval cases for every installed skill (`evals/`).
 
-Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate.
+Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: brainstorm, lit-review, grill, spec, audit-reproducibility, verify-claims, proofread, write, format, review, devils-advocate, respond.
 
 ## Commit gate
 
@@ -62,7 +62,7 @@ Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; mi
 | 5b | Format | `/ploma:format` |
 | 6 | Validate | `/ploma:validate-bib`, `/ploma:verify-claims`, `/ploma:audit-reproducibility`, `/ploma:proofread` |
 | 7 | Review | `/ploma:review`, `/ploma:devils-advocate` |
-| 8 | Respond | `/ploma:respond <report>` (planned) |
+| 8 | Respond | `/ploma:respond <report>` |
 | 9 | Ship | `/ploma:commit` (planned) |
 | any | Session | `/ploma:status`, `/ploma:help`; planned: `/ploma:checkpoint`, `/ploma:compress-session`, `/ploma:learn`, `/ploma:deep-audit` |
 

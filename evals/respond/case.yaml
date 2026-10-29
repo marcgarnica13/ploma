@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: respond-sample-paper
+description: "/ploma:respond on a copy of the sample paper with its one referee report (review/review1.md, whose content says Reviewer #3). Run with --scaffold and --allow-tools 'Bash(python3 *),Write,Agent'. The manuscript was not revised, so most concerns are expected UNADDRESSED. Expected: concerns numbered R3.*, every concern classified, response_to_referees.md and the matrix CSV, the warning summary at the end, and no edit to the report or the manuscript."
+tags: [milestone-2, respond, ingestion, cove]
+context:
+  scaffold_script: scaffold.sh

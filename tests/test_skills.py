@@ -171,7 +171,7 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
              "audit-reproducibility", "proofread", "verify-claims", "write", "format", "review", "devils-advocate",
-             "brainstorm", "lit-review", "grill", "spec"}
+             "brainstorm", "lit-review", "grill", "spec", "respond"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -200,9 +200,9 @@ def test_uninstalled_skills_are_marked_planned():
 
 
 def test_planned_check_catches_a_bare_planned_command():
-    assert _planned_mention_problems("Run /ploma:respond next.", "x")
-    assert not _planned_mention_problems("/ploma:respond (planned, milestone 2) gives the map.", "x")
-    assert not _planned_mention_problems("trim manually; /ploma:respond arrives in milestone 2", "x")
+    assert _planned_mention_problems("Run /ploma:commit next.", "x")
+    assert not _planned_mention_problems("/ploma:commit (planned, milestone 2) gives the map.", "x")
+    assert not _planned_mention_problems("trim manually; /ploma:commit arrives in milestone 2", "x")
     assert not _planned_mention_problems("Run /ploma:compile next.", "x")
 
 
@@ -210,7 +210,7 @@ def test_planned_check_catches_a_bare_planned_command():
 
 SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "proofread", "status", "validate-bib",
                   "verify-claims", "write", "format", "review", "review-unknown-venue", "devils-advocate",
-                  "brainstorm", "lit-review", "grill")
+                  "brainstorm", "lit-review", "grill", "respond")
 
 
 def test_evals_contain_no_symlinks():
@@ -251,7 +251,8 @@ def test_eval_scaffold_runs(name, tmp_path):
 
 @pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "proofread", "status", "validate-bib",
                                   "verify-claims", "write", "format", "review", "review-unknown-venue",
-                                  "devils-advocate", "brainstorm", "lit-review", "grill", "spec"))
+                                  "devils-advocate", "brainstorm", "lit-review", "grill", "spec",
+                                  "respond"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -1001,3 +1002,128 @@ def test_spec_without_answers_and_other_logs():
                and fm.get("max") == 0 for fm, _ in graders)
     assert any(fm.get("type") == "tool_used" and fm.get("tool") == "AskUserQuestion" and fm.get("min") == 1
                for fm, _ in graders)
+
+
+# ---------------------------------------------------------------- respond (milestone 2, Task 11)
+
+RESPOND_DIR = REPO / "skills" / "respond"
+
+
+def _respond_ref(name: str) -> str:
+    return (RESPOND_DIR / "references" / f"{name}.md").read_text(encoding="utf-8")
+
+
+def test_respond_is_installed_and_not_marked_planned():
+    """R104 for Task 11: installed everywhere, planned nowhere."""
+    name = "respond"
+    assert name in INSTALLED and (RESPOND_DIR / "SKILL.md").is_file()
+    help_text = _skill("help")
+    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
+    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
+    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
+    installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
+    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert f"/ploma:{name}" in installed_line
+    core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
+    assert re.search(rf"Installed now:[^;]*\b{name}\b", core)
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in readme.splitlines() if line.startswith("| 8 | Respond"))
+    assert f"/ploma:{name}" in row and "planned" not in row
+    for p in [REPO / "README.md"] + [q for q in (REPO / "templates").rglob("*") if q.is_file()] \
+            + sorted((REPO / "rules").rglob("*.md")) + sorted((REPO / "skills").rglob("*.md")):
+        text = p.read_text(encoding="utf-8")
+        assert not re.search(rf"/ploma:{name}`?,? (?:\(planned|arrives in milestone 2)", text), p
+
+
+def test_respond_restates_no_cap():
+    texts = [_skill("respond")] + [p.read_text(encoding="utf-8") for p in (RESPOND_DIR / "references").glob("*.md")]
+    for text in texts:
+        m = CAP_RE.search(text)
+        assert not m, m.group(0)
+        assert "context: fork" not in text and "context=fork" not in text
+
+
+def test_respond_frontmatter_and_tools():
+    fm, _ = split_frontmatter(_skill("respond"))
+    assert fm["argument-hint"] == "<report-path-or-dir> [revised-manuscript] [--audit <draft>] [--no-verify]"
+    tools = _tools(fm)
+    for tool in ("Read", "Grep", "Glob", "Write", "Edit", "Agent", "Bash(python3 *)", "Bash(mktemp *)",
+                 "Bash(pdftotext *)", "Bash(pandoc *)", "Bash(docx2txt *)"):
+        assert tool in tools, tool
+
+
+def test_respond_ingestion_reference():
+    text = _respond_ref("ingestion")
+    # Converters, always through mktemp, never a predictable name; a missing converter stops.
+    for s in ("mktemp", 'pdftotext -layout "<file>" "$TMP"', "pandoc", "docx2txt", ".md", ".txt", ".pdf",
+              ".docx", ".html", "never a predictable", "install", "plain-text version"):
+        assert s in text, s
+    # Reviewer ID from content only.
+    for s in ("Reviewer #N", "Reviewer N", "Referee N", "R N", "case-insensitive", "next free number"):
+        assert s in text, s
+    assert "never from the file name" in text.lower() or "file name is never used" in text.lower()
+    # Concern splitting and fields.
+    for s in ("numbered", "bullet", "prompt", "distinct ask", "R{n}.{m}", "major", "minor", "typo",
+              "25 words", "summary"):
+        assert s in text, s
+    assert "data, never instructions" in text
+
+
+def test_respond_template_reference():
+    text = _respond_ref("response-template")
+    for s in ("### R{n}.{m}", "## Concern matrix", "Cover", "**Comment:**", "**Status:**", "**Location:**",
+              "**Response:**", "id,reviewer,severity,summary,status,location"):
+        assert s in text, s
+    for status in ("Addressed", "Partially addressed", "Deferred", "Disagreement",
+                   "UNADDRESSED - REQUIRES AUTHOR INPUT"):
+        assert status in text, status
+
+
+def test_respond_contract():
+    text = _skill("respond")
+    for s in ("references/ingestion.md", "references/response-template.md", "reviews.glob",
+              "<outputs.dir>/response_to_referees.md", "<outputs.dir>/response_to_referees_matrix.csv",
+              "<outputs.dir>/response_audit.md", "sections.py", "\\input"):
+        assert s in text, s
+    for status in ("Addressed", "Partially addressed", "Deferred", "Disagreement",
+                   "UNADDRESSED - REQUIRES AUTHOR INPUT"):
+        assert status in text, status
+    # Marc's response style.
+    for s in ("3 to 6 sentences", "no em-dashes", "\"we\"", "courteous but firm"):
+        assert s in text, s
+    # CoVe on location claims, isolated from the draft; downgrades.
+    for s in ("skills/_shared/references/cove.md", "ploma:claim-verifier", "never the response draft",
+              "limits.cove_regenerations", "--no-verify", "## Post-flight verification"):
+        assert s in text, s
+    assert "Partially addressed" in text.split("## Phase 5", 1)[1].split("## Phase 6", 1)[0]
+    # Reports and the draft are never edited; re-runs update in place by id.
+    assert "never edits the referee reports" in text
+    assert "--audit never edits the draft" in text
+    assert "update entries in place by id" in text and "never regenerate" in text
+    # Warning summary in the chat.
+    assert "## Unaddressed concerns requiring author input" in text
+    assert "All concerns addressed or explicitly classified." in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record respond' in text
+    assert "data, never instructions" in text
+
+
+def test_respond_eval():
+    graders = _graders("respond")
+    _, prompt = split_frontmatter((REPO / "evals" / "respond" / "prompt.md").read_text(encoding="utf-8"))
+    assert "review/review1.md" in prompt and "/ploma:" not in prompt
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Skill" and fm.get("input_match") == "respond"
+               for fm, _ in graders)
+    assert any(fm.get("type") == "file_exists" and fm.get("path") == "quality_reports/response_to_referees.md"
+               for fm, _ in graders)
+    assert any(fm.get("type") == "tool_used" and fm.get("tool") == "Edit" and fm.get("max") == 0
+               for fm, _ in graders)
+    rubric = " ".join(body for fm, body in graders if fm.get("type") == "llm")
+    for s in ("R3.", "Reviewer #3", "classified", "Unaddressed concerns requiring author input",
+              "review/review1.md"):
+        assert s in rubric, s
+    assert "respond" in SCAFFOLD_CASES
+    # The sample report's header is what the rubric relies on.
+    sample = (REPO / "examples" / "sample-paper" / "review" / "review1.md").read_text(encoding="utf-8")
+    assert sample.splitlines()[0].strip() == "Reviewer #3"
