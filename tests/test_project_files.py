@@ -501,3 +501,24 @@ def test_stale_pipeline_rule_is_doctor_warn(onboarded_sample):
     f = _ids(r)[f"project-files.stale.{PIPELINE}"]
     assert f.status == WARN and f.remediation == "Re-run /ploma:onboard"
     assert "project-files.rules" not in _ids(r)
+
+
+def test_cli_plan_from_proposed_config_on_stdin(sample_paper, capsys, monkeypatch):
+    """Onboard plans from the proposal before ploma.yaml exists; plan writes nothing."""
+    import io
+    text = (sample_paper / "ploma.yaml").read_text()
+    (sample_paper / "ploma.yaml").unlink()
+    before = sorted(p.relative_to(sample_paper) for p in sample_paper.rglob("*"))
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+    assert project_files.main(["--root", str(sample_paper), "--config", "-", "--json", "plan"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert {r["path"]: r["action"] for r in rows}[MANUSCRIPT] == "create"
+    assert sorted(p.relative_to(sample_paper) for p in sample_paper.rglob("*")) == before
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+    assert project_files.main(["--root", str(sample_paper), "--config", "-", "--json", "settings"]) == 0
+    assert "plansDirectory" in json.loads(capsys.readouterr().out)
+    monkeypatch.setattr("sys.stdin", io.StringIO(text))
+    assert project_files.main(["--root", str(sample_paper), "--config", "-", "apply"]) == 2
+    monkeypatch.setattr("sys.stdin", io.StringIO("a: [b\n"))
+    assert project_files.main(["--root", str(sample_paper), "--config", "-", "plan"]) == 2
+    assert not (sample_paper / "ploma.yaml").exists()

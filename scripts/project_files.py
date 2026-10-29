@@ -402,16 +402,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Plan, apply or suggest ploma project files.")
     parser.add_argument("--root", default=".", help="repo root holding ploma.yaml (default: cwd)")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument("--config", default=None,
+                        help="proposed ploma.yaml to plan from instead of <root>/ploma.yaml "
+                             "('-' reads stdin); plan and settings only")
     parser.add_argument("action", choices=("plan", "apply", "settings"))
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return 0 if exc.code == 0 else 2
     root = Path(args.root)
+    if args.config is not None and args.action == "apply":
+        return _error("apply reads the written ploma.yaml; --config is for plan and settings", args.json)
     try:
-        cfg = ploma_config.load(root)
+        if args.config is None:
+            cfg = ploma_config.load(root)
+        elif args.config == "-":
+            cfg = ploma_config.loads(sys.stdin.read(), "stdin")
+        else:
+            cfg = ploma_config.loads(Path(args.config).read_text(encoding="utf-8"), args.config)
     except ploma_config.ConfigError as exc:
         return _error(exc.message, args.json)
+    except (OSError, UnicodeDecodeError) as exc:
+        return _error(f"--config {args.config}: {exc}", args.json)
     try:
         if args.action == "settings":
             data: Any = settings_suggestion(cfg)

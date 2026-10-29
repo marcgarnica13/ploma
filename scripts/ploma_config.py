@@ -91,11 +91,20 @@ def load(root: Path) -> dict:
     if not path.is_file():
         raise ConfigError(f"{path} not found; run /ploma:onboard to create it")
     try:
-        data = _yamlio.load_yaml(path)
-    except (_yamlio.YamlError, OSError, UnicodeDecodeError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(f"{path} could not be parsed ({_yamlio.LOADER}): {exc}") from exc
+    return loads(text, str(path))
+
+
+def loads(text: str, label: str = "ploma.yaml") -> dict:
+    """Parse ploma.yaml text (a proposal not yet on disk, too), merge over DEFAULTS, derive keys."""
+    try:
+        data = _yamlio.loads_yaml(text)
+    except _yamlio.YamlError as exc:
+        raise ConfigError(f"{label} could not be parsed ({_yamlio.LOADER}): {exc}") from exc
     if not isinstance(data, dict):
-        raise ConfigError(f"{path} must contain a mapping at the top level")
+        raise ConfigError(f"{label} must contain a mapping at the top level")
     cfg = _merge(DEFAULTS, data)
     _derive(cfg)
     return cfg
