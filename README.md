@@ -33,7 +33,7 @@ Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
 - Venue profiles (`venues/`) and discipline profiles (`disciplines/`), overridable per project in `ploma.d/`.
 - Scripts behind the skills (`scripts/`), each with `--json` output, and eval cases for every installed skill (`evals/`).
 
-Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: audit-reproducibility, verify-claims, proofread.
+Milestone 2 adds brainstorm, lit-review, grill, spec, write, format, verify-claims, audit-reproducibility, proofread, review, devils-advocate, respond, commit, checkpoint, compress-session, learn and deep-audit, plus the consistency and style checks and the agents behind them. Installed so far from milestone 2: audit-reproducibility, verify-claims, proofread, write.
 
 ## Commit gate
 
@@ -47,7 +47,7 @@ Until then, `python3 scripts/gate.py check` shows the gate state.
 
 ## Lifecycle
 
-Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added audit-reproducibility, verify-claims and proofread so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
+Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; milestone 2 has added audit-reproducibility, verify-claims, proofread and write so far. Skills marked *planned* arrive in milestone 2; do not invoke them yet.
 
 | # | Stage | Skill |
 |---|---|---|
@@ -57,7 +57,7 @@ Milestone 1 installs onboard, doctor, status, help, compile and validate-bib; mi
 | 1b | Literature | `/ploma:lit-review` (planned) |
 | 2 | Grill | `/ploma:grill` (planned) |
 | 3 | Spec | `/ploma:spec` (planned) |
-| 4 | Write | `/ploma:write <section>` (planned) |
+| 4 | Write | `/ploma:write <section>` |
 | 5 | Compile | `/ploma:compile` |
 | 5b | Format | `/ploma:format` (planned) |
 | 6 | Validate | `/ploma:validate-bib`, `/ploma:verify-claims`, `/ploma:audit-reproducibility`, `/ploma:proofread` |

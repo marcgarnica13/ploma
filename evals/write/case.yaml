@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: write-sample-paper
+description: "/ploma:write on a copy of the sample paper: a short redraft of the introduction. Run with --scaffold and --allow-tools 'Bash(python3 *),Write'. Expected: sections/intro_suggestion.tex with the header block, the style and consistency self-check, a diff, open flags, and no edit to any manuscript file."
+tags: [milestone-2, write, sibling-file]
+context:
+  scaffold_script: scaffold.sh

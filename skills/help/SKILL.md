@@ -48,11 +48,12 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:audit-reproducibility [--rerun]`: match the paper's reported numbers against the pipeline's results within the configured tolerances and keep the claims passport (needs `pipeline.enabled`).
 - `/ploma:verify-claims [file] [--source <path-or-url>]`: fact-check citation and other factual claims with a fresh-context verifier (Chain-of-Verification).
 - `/ploma:proofread [file.tex | all]`: report-only proofreading, one report per file; fixes only after approval.
+- `/ploma:write <section> [--from-spec] [--merge]`: draft a section into a `<stem>_suggestion.tex` sibling with a self-check and a diff; merges only on `--merge` and your yes.
 - `/ploma:help`: this page.
 
 ## Milestone 2 (not yet installed, don't invoke)
 
-brainstorm, lit-review, grill, spec, write, format, review, devils-advocate, respond, commit, checkpoint, compress-session, learn, deep-audit.
+brainstorm, lit-review, grill, spec, format, review, devils-advocate, respond, commit, checkpoint, compress-session, learn, deep-audit.
 
 If the user asks for one of these, say it is not installed yet and name the nearest installed skill, if any (`/ploma:doctor` or `/ploma:status` for state, `/ploma:compile` before any review). Until `/ploma:commit` arrives, `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed.
 

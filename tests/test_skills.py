@@ -170,7 +170,7 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
-             "audit-reproducibility", "proofread", "verify-claims"}
+             "audit-reproducibility", "proofread", "verify-claims", "write"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -208,7 +208,7 @@ def test_planned_check_catches_a_bare_planned_command():
 # ---------------------------------------------------------------- eval setup (R91)
 
 SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "proofread", "status", "validate-bib",
-                  "verify-claims")
+                  "verify-claims", "write")
 
 
 def test_evals_contain_no_symlinks():
@@ -248,7 +248,7 @@ def test_eval_scaffold_runs(name, tmp_path):
 
 
 @pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "proofread", "status", "validate-bib",
-                                  "verify-claims"))
+                                  "verify-claims", "write"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -450,3 +450,69 @@ def test_proofread_rule_and_agent_agree_on_the_report_path():
     agent = (REPO / "agents" / "proofreader.md").read_text(encoding="utf-8")
     assert "<outputs.dir>/<stem>_report.md" in rule and "<outputs.dir>/<stem>_report.md" in agent
     assert "_proofread_report.md" not in agent and "proofread_<document.slug>.md" not in rule
+
+
+# ---------------------------------------------------------------- write and format (milestone 2, Tasks 6 and 7)
+
+LIFECYCLE_ROWS = {"write": "| 4 | Write"}
+
+
+@pytest.mark.parametrize("name", sorted(LIFECYCLE_ROWS))
+def test_lifecycle_skills_are_installed_and_not_marked_planned(name):
+    """R104 for write and format: installed everywhere, planned nowhere."""
+    assert name in INSTALLED and (REPO / "skills" / name / "SKILL.md").is_file()
+    help_text = _skill("help")
+    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
+    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
+    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
+    installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
+    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert f"/ploma:{name}" in installed_line
+    core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
+    assert re.search(rf"Installed now:[^;]*\b{re.escape(name)}\b", core)
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in readme.splitlines() if line.startswith(LIFECYCLE_ROWS[name]))
+    assert f"/ploma:{name}" in row and "planned" not in row
+    for p in [REPO / "README.md"] + [q for q in (REPO / "templates").rglob("*") if q.is_file()] \
+            + sorted((REPO / "rules").rglob("*.md")) + sorted((REPO / "skills").rglob("*.md")) \
+            + [REPO / "scripts" / "compile.py"]:
+        text = p.read_text(encoding="utf-8")
+        assert not re.search(rf"/ploma:{re.escape(name)}`?,? (?:\(planned|arrives in milestone 2)", text), p
+
+
+def test_write_contract():
+    text = _skill("write")
+    fm, _ = split_frontmatter(text)
+    assert fm["argument-hint"] == "<section title | sec:label | path> [--from-spec] [--merge]"
+    assert "Edit" not in _tools(fm)  # the merge edit always prompts
+    assert "AskUserQuestion" in _tools(fm)
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sections.py" --json resolve "<query>"' in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sections.py" --json check "<query>" "<sibling>"' in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/style_check.py" --root . "<sibling>" --json' in text
+    assert ".ploma/tmp/" in text and "--record" in text  # checks run on a copy, never recorded
+    assert "diff -u" in text and "Open flags" in text
+    assert "% ploma:source <script> <args>" in text and "never invent a script" in text
+    assert "paper_spec.md not found" in text
+    assert "explicit yes" in text and "stale" in text
+    assert "Run /ploma:compile" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record write' in text
+    assert "never edits the manuscript" in text and "never fixed there" in text
+    assert "skills/_shared/references/finding-format.md" in text
+    assert not re.search(r"\bat most \d|\b[23] (?:times|rounds|retries)\b", text)  # caps come from limits.md
+    ref = (REPO / "skills" / "write" / "references" / "sibling-file.md").read_text(encoding="utf-8")
+    for field in ("% Source:", "% Source sha:", "% Spec items served:", "% Date:", "% Merge:"):
+        assert field in ref, field
+    assert "<stem>_suggestion.tex" in ref and "rm <sibling>" in ref
+
+
+def test_write_eval_guards_the_manuscript():
+    graders = {p.stem: split_frontmatter(p.read_text(encoding="utf-8"))[0]
+               for p in (REPO / "evals" / "write" / "graders").glob("*.md")}
+    assert any(g.get("type") == "file_exists" and g.get("path") == "sections/intro_suggestion.tex"
+               for g in graders.values())
+    assert any(g.get("type") == "tool_used" and g.get("tool") == "Edit" and g.get("max") == 0
+               for g in graders.values())
+    _, prompt = split_frontmatter((REPO / "evals" / "write" / "prompt.md").read_text(encoding="utf-8"))
+    assert "introduction" in prompt.lower() and "shorter" in prompt.lower()
