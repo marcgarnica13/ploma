@@ -1,6 +1,6 @@
 ---
 name: help
-description: What ploma is, which lifecycle stage owns which skill, which ploma skills are installed now and which are planned, and how to install or update the plugin. Use when the user asks for ploma help, what ploma can do, which command to run for a stage, or how to install or update ploma.
+description: What ploma is, which lifecycle stage owns which skill, which ploma skills are installed, and how to install or update the plugin. Use when the user asks for ploma help, what ploma can do, which command to run for a stage, or how to install or update ploma.
 argument-hint: "[question]"
 allowed-tools: Read, Glob, Bash(python3 *)
 ---
@@ -64,11 +64,7 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:commit [message] [--branch <name>] [--no-pr]`: commit behind the gate; refreshes compile, the structural bibliography check and consistency when stale, stops on a required FAIL unless you write `commit anyway: <reason>`, stages paths explicitly, asks before any push or pull request.
 - `/ploma:help`: this page.
 
-## Milestone 2 (not yet installed, don't invoke)
-
-None. Every lifecycle skill is installed.
-
-`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed without committing.
+Every lifecycle skill is installed. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed without committing.
 
 ## Install and update
 
@@ -80,4 +76,14 @@ export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
 /ploma:onboard
 ```
 
+On a host without SSH keys for GitHub, the first two lines set up HTTPS; with SSH keys, skip them.
+
 Update: `/plugin marketplace update ploma`, then `/reload-plugins`.
+
+## Evals
+
+Each skill has an eval case under `evals/`. Evals bill model calls, so run one case at a time unless you mean to spend more. Smoke run of one case:
+
+```
+claude plugin eval . --trust-plugin --scaffold --allow-tools 'Bash(python3 *)' --case <case-name> --runs 1 --ablation none
+```

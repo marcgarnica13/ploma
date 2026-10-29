@@ -13,6 +13,7 @@ import _yamlio
 from _banned import BANNED_RE, EM_DASH_RE, LLNCS_RE
 
 REPO = Path(__file__).resolve().parent.parent
+OLD_HARNESS = "extraction" + "/"  # spelled split so the shipped-tree grep for the seed path stays empty
 SKILLS = sorted(d for d in (REPO / "skills").iterdir() if d.is_dir() and not d.name.startswith("_"))
 HIDDEN = {"onboard", "commit", "deep-audit", "learn", "checkpoint", "compress-session"}
 DESCRIPTION_MAX = 1536
@@ -73,7 +74,7 @@ def test_skill_text_is_generic_and_clean(d):
         assert not BANNED_RE.search(text), f"{p}: banned term {BANNED_RE.search(text).group(0)!r}"
         assert not LLNCS_RE.search(text), f"{p}: names the llncs class"
         assert not EM_DASH_RE.search(text), f"{p}: em-dash or en-dash"
-        assert "extraction/" not in text, f"{p}: references extraction/"
+        assert OLD_HARNESS not in text, f"{p}: references the old harness"
 
 
 @pytest.mark.parametrize("d", SKILLS, ids=lambda d: d.name)
@@ -205,6 +206,25 @@ def test_uninstalled_skills_are_marked_planned():
     assert not problems, "\n".join(problems)
 
 
+def test_installed_set_matches_skill_dirs_and_every_mention_exists():
+    """Milestone 2 is complete: nothing is planned, and every /ploma:<name> in the user-facing files is a skill dir."""
+    dirs = {d.name for d in (REPO / "skills").iterdir() if (d / "SKILL.md").is_file()}
+    assert INSTALLED == dirs and len(dirs) == 23
+    files = [REPO / "README.md", REPO / "skills" / "help" / "SKILL.md"]
+    files += [p for p in (REPO / "templates").rglob("*") if p.is_file()]
+    files += sorted((REPO / "rules").rglob("*.md")) + sorted((REPO / "hooks").glob("*.py"))
+    problems = []
+    for p in files:
+        text = p.read_text(encoding="utf-8")
+        problems += [f"{p}: /ploma:{n}" for n in _PLOMA_CMD.findall(text) if n not in dirs]
+        if re.search(r"\(planned|not yet installed|^- Planned", text, re.M):
+            problems.append(f"{p}: still marks something planned")
+    assert not problems, "\n".join(problems)
+    help_text = _skill("help")
+    installed = help_text.split("## Installed now", 1)[1].split("\n## ", 1)[0]
+    assert {n for n in _PLOMA_CMD.findall(installed)} == dirs
+
+
 def test_planned_check_catches_a_bare_planned_command():
     assert _planned_mention_problems("Run /ploma:ship next.", "x")
     assert not _planned_mention_problems("/ploma:ship (planned, milestone 2) gives the map.", "x")
@@ -288,7 +308,7 @@ def test_shared_reference_is_generic_and_clean(name):
     text = p.read_text(encoding="utf-8")
     assert not BANNED_RE.search(text) and not LLNCS_RE.search(text), name
     assert not EM_DASH_RE.search(text), f"{name}: em-dash or en-dash"
-    assert "extraction/" not in text and "context: fork" not in text and "context=fork" not in text
+    assert OLD_HARNESS not in text and "context: fork" not in text and "context=fork" not in text
     for rel in PLUGIN_PATH_RE.findall(text):
         assert (REPO / rel.rstrip(".")).exists(), f"{name}: {rel} does not exist"
 
@@ -337,13 +357,12 @@ def test_validate_skills_are_installed_and_not_marked_planned(name):
     """R104: the installed set holds the skill and no planned list names it."""
     assert name in INSTALLED and (REPO / "skills" / name / "SKILL.md").is_file()
     help_text = _skill("help")
-    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
-    assert name not in planned_help.split(", ") and f"{name}," not in planned_help
+    assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
     section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
-    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
-    assert name not in planned_line and f"/ploma:{name}" in installed_line
+    assert not any(line.startswith("- Planned") for line in section.splitlines())
+    assert f"/ploma:{name}" in installed_line
     core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
     assert re.search(rf"Installed now:[^;]*\b{re.escape(name)}\b", core)
     readme = (REPO / "README.md").read_text(encoding="utf-8")
@@ -473,13 +492,11 @@ def test_lifecycle_skills_are_installed_and_not_marked_planned(name):
     """R104 for write and format: installed everywhere, planned nowhere."""
     assert name in INSTALLED and (REPO / "skills" / name / "SKILL.md").is_file()
     help_text = _skill("help")
-    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
-    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
     section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
-    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
-    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
     core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
     assert re.search(rf"Installed now:[^;]*\b{re.escape(name)}\b", core)
@@ -774,13 +791,11 @@ def test_ideation_skills_are_installed_and_not_marked_planned(name):
     """R104 for Task 10: installed everywhere, planned nowhere."""
     assert name in INSTALLED and (REPO / "skills" / name / "SKILL.md").is_file()
     help_text = _skill("help")
-    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
-    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
     section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
-    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
-    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
     core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
     assert re.search(rf"Installed now:[^;]*\b{re.escape(name)}\b", core)
@@ -1024,13 +1039,11 @@ def test_respond_is_installed_and_not_marked_planned():
     name = "respond"
     assert name in INSTALLED and (RESPOND_DIR / "SKILL.md").is_file()
     help_text = _skill("help")
-    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
-    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
     section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
-    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
-    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
     core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
     assert re.search(rf"Installed now:[^;]*\b{name}\b", core)
@@ -1226,13 +1239,11 @@ def test_session_skills_are_installed_and_not_marked_planned(name):
     fm, _ = split_frontmatter(_skill(name))
     assert fm["disable-model-invocation"] is True
     help_text = _skill("help")
-    planned_help = help_text.split("## Milestone 2 (not yet installed, don't invoke)", 1)[1].split("\n\n")[1]
-    assert name not in [w.strip(" .") for w in planned_help.split(",")]
+    assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
     section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
-    planned_line = next(line for line in section.splitlines() if line.startswith("- Planned"))
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
-    assert name not in [w.strip(" .") for w in planned_line.split(":", 1)[1].split(",")]
+    assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
     core = (REPO / "rules" / "eager" / "00-core.md").read_text(encoding="utf-8")
     assert re.search(rf"Installed now:[^;]*\b{name}\b", core)

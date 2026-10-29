@@ -1,6 +1,6 @@
 # Upstreams
 
-Projects ploma took ideas, structure or text from. Review each row before a release.
+Projects ploma took ideas, structure or text from. Review each row before a release; every row was last reviewed for 0.1.0 on 2026-10-29.
 
 | Upstream | What ploma took | Observed | Last reviewed |
 |---|---|---|---|

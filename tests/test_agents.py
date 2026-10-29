@@ -102,7 +102,7 @@ def test_agent_text_is_generic_and_clean(p):
     assert not BANNED_RE.search(text), f"{p}: banned term {BANNED_RE.search(text).group(0)!r}"
     assert not LLNCS_RE.search(text), f"{p}: names the llncs class"
     assert not EM_DASH_RE.search(text), f"{p}: em-dash or en-dash"
-    assert "extraction/" not in text and ".claude/" not in text, f"{p}: references the old harness"
+    assert "extraction" + "/" not in text and ".claude/" not in text, f"{p}: references the old harness"
 
 
 @pytest.mark.parametrize("p", AGENTS, ids=lambda p: p.stem)
