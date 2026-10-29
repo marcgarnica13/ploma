@@ -5,8 +5,10 @@ Usage: python3 scripts/compile.py [--root R] [--clean] [--json]
 
 Runs build.command through the shell in build.cwd when set (the user's own command, e.g. make);
 otherwise latexmk with the engine flag from build.engine. The log at build.log is parsed even when
-the build fails. Writes <outputs.dir>/compile_<slug>.md, records the "compile" gate entry and a
-state event.
+the build fails. With --clean a make build runs as `make -B` (forced rebuild); any other build runs
+`latexmk -c` first. A zero exit that leaves the log untouched is "build was up to date" (PASS on the
+existing log) when log and PDF are newer than every .tex/.bib under document.root, else FAIL.
+Writes <outputs.dir>/compile_<slug>.md, records the "compile" gate entry and a state event.
 
 Exit codes: 0 PASS, 1 FAIL (build error, log errors, undefined citations or references, over budget,
 missing log or PDF), 2 usage error or unreadable ploma.yaml.
@@ -37,8 +39,7 @@ import state  # noqa: E402
 TIMEOUT_S = 600
 TAIL_LINES = 40
 ENGINE_FLAGS = {"pdflatex": "-pdf", "xelatex": "-pdfxe", "lualatex": "-pdflua"}
-MAKEFILES = ("GNUmakefile", "makefile", "Makefile")
-_CLEAN_TARGET = re.compile(r"^clean\s*:", re.M)
+_PRUNE = {"node_modules", "__pycache__", ".venv", "venv"}
 # "make: pdflatex: No such file or directory", "sh: 1: latexmk: not found", "bash: x: command not found"
 _MISSING_TOOL = re.compile(r"^(?:make(?:\[\d+\])?: |(?:/bin/)?(?:ba|da)?sh: (?:line )?\d*:? ?)([\w.+-]+): "
                            r"(?:No such file or directory|not found|command not found)\s*$", re.M)
@@ -103,30 +104,39 @@ def build_command(cfg: dict, paths: dict) -> tuple[str | list[str], bool]:
     return ["latexmk", flag, "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", main], False
 
 
-def _uses_make(cfg: dict, cwd: Path) -> bool:
+def _make_command(cfg: dict) -> str | None:
+    """build.command when it is exactly "make" or starts with "make ", else None."""
     command = (cfg.get("build") or {}).get("command")
-    if not isinstance(command, str) or not command.strip():
-        return False
-    try:
-        first = shlex.split(command)[0]
-    except (ValueError, IndexError):
-        return False
-    if Path(first).name not in ("make", "gmake"):
-        return False
-    for name in MAKEFILES:
-        p = cwd / name
-        if p.is_file():
-            try:
-                return bool(_CLEAN_TARGET.search(p.read_text(encoding="utf-8", errors="replace")))
-            except OSError:
-                return False
-    return False
+    if isinstance(command, str):
+        command = command.strip()
+        if command == "make" or command.startswith("make "):
+            return command
+    return None
+
+
+def forced_make_command(command: str) -> str:
+    """Insert make's -B (unconditionally rebuild every target) right after "make"."""
+    return "make -B" + command[len("make"):]
 
 
 def clean_command(cfg: dict, paths: dict) -> tuple[str | list[str], bool]:
-    if _uses_make(cfg, Path(paths["build_cwd"])):
-        return "make clean", True
+    """The latexmk -c clean step for non-make builds (make builds force a rebuild with -B instead)."""
     return ["latexmk", "-c", os.path.relpath(paths["main"], paths["build_cwd"])], False
+
+
+def _sources_mtime(root: Path) -> float | None:
+    """Newest mtime of every .tex and .bib under document.root (hidden and build dirs skipped)."""
+    newest: float | None = None
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in _PRUNE]
+        for name in filenames:
+            if name.endswith((".tex", ".bib")):
+                try:
+                    m = os.stat(os.path.join(dirpath, name)).st_mtime
+                except OSError:
+                    continue
+                newest = m if newest is None or m > newest else newest
+    return newest
 
 
 def _tool_name(cmd: str | list[str]) -> str:
@@ -310,6 +320,16 @@ def _next_steps(rep: CompileReport) -> list[str]:
 
 # ---------------------------------------------------------------- run
 
+def _up_to_date(log_mtime: float, pdf: Path | None, paths: dict) -> bool:
+    """R92: the log and the PDF are both newer than every .tex and .bib source under document.root."""
+    if pdf is None or not pdf.is_file() or not paths.get("root"):
+        return False
+    newest = _sources_mtime(Path(paths["root"]))
+    if newest is None:
+        return False
+    return log_mtime > newest and pdf.stat().st_mtime > newest
+
+
 def run(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, clean: bool = False) -> CompileReport:
     root = Path(root).resolve()
     runner = runner or _default_runner
@@ -321,32 +341,46 @@ def run(root: Path, cfg: dict, *, runner: Callable[..., Any] | None = None, clea
     notes: list[str] = []
 
     started = time.time()
-    if clean:
+    cmd, shell = build_command(cfg, paths)
+    make_cmd = _make_command(cfg)
+    if clean and make_cmd is not None:
+        # R92: make skips up-to-date targets and a clean target may delete the log; force the rebuild.
+        cmd = forced_make_command(make_cmd)
+    elif clean:
         ccmd, cshell = clean_command(cfg, paths)
         crc, _ctail, cerr = _execute(runner, ccmd, cshell, cwd)
         if cerr or crc:
             notes.append(f"clean step `{_show(ccmd)}` did not succeed: {cerr or f'exit {crc}'}")
-    cmd, shell = build_command(cfg, paths)
     returncode, tail, build_error = _execute(runner, cmd, shell, cwd)
     duration = time.time() - started
 
     log_path = Path(paths["log"]) if paths["log"] else None
+    pdf_path = Path(paths["pdf"]) if paths["pdf"] else None
     log_report = latex_log.LogReport()
     log_missing = ""
+    up_to_date = False
     if log_path is None or not log_path.is_file():
         log_missing = f"log not found at {_rel(log_path, root)}" if log_path else "build.log is not set"
     else:
         try:
-            if log_path.stat().st_mtime < started - 1:
-                log_missing = f"log was not written by this build: {_rel(log_path, root)}"
+            log_mtime = log_path.stat().st_mtime
+            if log_mtime < started - 1:
+                if returncode == 0 and not build_error and _up_to_date(log_mtime, pdf_path, paths):
+                    up_to_date = True
+                    notes.append("build was up to date")
+                elif returncode == 0 and not build_error:
+                    log_missing = "make did not rebuild; run /ploma:compile --clean"
+                else:
+                    log_missing = f"log was not written by this build: {_rel(log_path, root)}"
             text = log_path.read_bytes().decode("utf-8", errors="replace")
             log_report = latex_log.parse_log(text, threshold)
         except OSError as exc:
             log_missing = f"log not readable at {_rel(log_path, root)}: {exc.strerror or exc}"
 
-    pdf_path = Path(paths["pdf"]) if paths["pdf"] else None
     if pdf_path is not None:
         pages, budget, pnotes = _pages(cfg, pdf_path, started, root)
+        if up_to_date:
+            pnotes = [n for n in pnotes if "older than this build" not in n]
         notes.extend(pnotes)
     else:
         pages, budget = None, {"pages": None, "budget": None, "over_by": None, "status": "SKIP",

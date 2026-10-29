@@ -7,7 +7,7 @@ allowed-tools: Read, Glob, Grep, Bash(python3 *), AskUserQuestion
 
 # ploma compile
 
-Arguments: `$ARGUMENTS`. `--clean` removes build artifacts first (`make clean` when the Makefile has a clean target, else `latexmk -c`).
+Arguments: `$ARGUMENTS`. `--clean` forces a full rebuild: a `make` build command runs as `make -B` (make rebuilds every target), any other build runs `latexmk -c` first.
 
 No `ploma.yaml` in the repo root: say "ploma is not set up here. Run /ploma:onboard." and stop.
 

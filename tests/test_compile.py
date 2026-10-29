@@ -36,7 +36,7 @@ class Runner:
         self.calls.append((cmd, kw))
         if self.exc is not None:
             raise self.exc
-        is_clean = (cmd == "make clean") or (isinstance(cmd, list) and "-c" in cmd)
+        is_clean = isinstance(cmd, list) and "-c" in cmd
         if not is_clean:
             if self.log:
                 shutil.copyfile(FIXTURES / "logs" / self.log, self.root / "main.log")
@@ -119,10 +119,29 @@ def test_missing_command_uses_latexmk_with_engine_flag(sample_paper):
     assert rep.status == "PASS"
 
 
-def test_clean_runs_make_clean_before_build(sample_paper, cfg):
+def test_clean_with_make_forces_rebuild_with_dash_b(sample_paper, cfg):
+    """R92: make builds are cleaned by forcing the rebuild (make -B), not by make clean."""
+    runner = Runner(sample_paper)
+    rep = compile_mod.run(sample_paper, cfg, runner=runner, clean=True)
+    assert [c[0] for c in runner.calls] == ["make -B"]
+    assert rep.command == "make -B" and rep.status == "PASS"
+
+
+def test_clean_inserts_dash_b_after_make_keeping_the_target(sample_paper):
+    _set_cfg(sample_paper, 'command: "make"', 'command: "make pdf"')
+    cfg = ploma_config.load(sample_paper)
     runner = Runner(sample_paper)
     compile_mod.run(sample_paper, cfg, runner=runner, clean=True)
-    assert [c[0] for c in runner.calls] == ["make clean", "make"]
+    assert [c[0] for c in runner.calls] == ["make -B pdf"]
+
+
+def test_clean_with_non_make_command_keeps_latexmk_c(sample_paper):
+    _set_cfg(sample_paper, 'command: "make"', 'command: "makeindex x && latexmk -pdf main"')
+    cfg = ploma_config.load(sample_paper)
+    runner = Runner(sample_paper)
+    compile_mod.run(sample_paper, cfg, runner=runner, clean=True)
+    assert runner.calls[0][0] == ["latexmk", "-c", "main.tex"]
+    assert runner.calls[1][0] == "makeindex x && latexmk -pdf main"
 
 
 def test_clean_without_make_uses_latexmk_c(sample_paper):
@@ -232,15 +251,102 @@ def test_budget_located_has_no_unverified_flag(sample_paper, cfg):
     assert "budget_unverified" not in gate.load(sample_paper, cfg)["checks"]["compile"]
 
 
-def test_old_log_not_written_by_this_build_fails(sample_paper, cfg):
-    """R88: the build ran but left a log from an earlier run."""
+def _age(paths, seconds_ago):
     import os
+    import time
+    t = time.time() - seconds_ago
+    for p in paths:
+        os.utime(p, (t, t))
+
+
+def _sources(root: Path) -> list[Path]:
+    return [p for p in root.rglob("*") if p.suffix in (".tex", ".bib")]
+
+
+def test_up_to_date_build_passes_on_the_existing_log(sample_paper, cfg):
+    """R92: exit 0, log not rewritten, log and PDF newer than every source: PASS, up to date."""
+    shutil.copyfile(FIXTURES / "logs" / "clean.log", sample_paper / "main.log")
+    shutil.copyfile(FIXTURES / "pdf" / "three_pages.pdf", sample_paper / "main.pdf")
+    _age(_sources(sample_paper), 1000)
+    _age([sample_paper / "main.log", sample_paper / "main.pdf"], 100)
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log=None, pdf=None,
+                                                           stdout="make: Nothing to be done for 'build'.\n"))
+    assert rep.status == "PASS", rep.reasons
+    assert "build was up to date" in rep.notes
+    assert rep.pages == 3
+    assert "build was up to date" in rep.report_path.read_text(encoding="utf-8")
+
+
+def test_up_to_date_build_still_reports_errors_in_the_existing_log(sample_paper, cfg):
+    shutil.copyfile(FIXTURES / "logs" / "undefined.log", sample_paper / "main.log")
+    shutil.copyfile(FIXTURES / "pdf" / "three_pages.pdf", sample_paper / "main.pdf")
+    _age(_sources(sample_paper), 1000)
+    _age([sample_paper / "main.log", sample_paper / "main.pdf"], 100)
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log=None, pdf=None))
+    assert rep.status == "FAIL" and rep.log.undefined_citations
+
+
+def test_stale_log_older_than_a_source_fails_with_clean_advice(sample_paper, cfg):
+    """R92 (supersedes R88): exit 0 but a source is newer than the log: make did not rebuild."""
     log = sample_paper / "main.log"
     shutil.copyfile(FIXTURES / "logs" / "clean.log", log)
-    os.utime(log, (1_000_000_000, 1_000_000_000))
-    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log=None))
+    shutil.copyfile(FIXTURES / "pdf" / "three_pages.pdf", sample_paper / "main.pdf")
+    _age([log, sample_paper / "main.pdf"], 1000)
+    _age([sample_paper / "main.tex"], 100)
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log=None, pdf=None))
+    assert rep.status == "FAIL"
+    assert "make did not rebuild; run /ploma:compile --clean" in rep.report_path.read_text(encoding="utf-8")
+
+
+def test_old_log_after_a_failed_build_is_not_written_by_this_build(sample_paper, cfg):
+    log = sample_paper / "main.log"
+    shutil.copyfile(FIXTURES / "logs" / "clean.log", log)
+    _age([log], 1000)
+    rep = compile_mod.run(sample_paper, cfg, runner=Runner(sample_paper, log=None, returncode=2))
     assert rep.status == "FAIL"
     assert "log was not written by this build: main.log" in rep.report_path.read_text(encoding="utf-8")
+
+
+FAKE_PDFLATEX = """#!/bin/sh
+for a in "$@"; do last="$a"; done
+stem="${last%.tex}"
+cp "__FIX__/logs/clean.log" "$stem.log"
+cp "__FIX__/pdf/three_pages.pdf" "$stem.pdf"
+echo "Output written on $stem.pdf"
+"""
+FAKE_BIBTEX = """#!/bin/sh
+touch "$1.bbl"
+"""
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="make not installed")
+def test_real_make_up_to_date_then_clean_forces_rebuild(sample_paper, cfg, tmp_path, monkeypatch):
+    """R92 with REAL make and a fake engine: build, build again (up to date), then --clean (make -B)."""
+    import os
+    fakebin = tmp_path / "fakebin"
+    fakebin.mkdir()
+    for name, body in (("pdflatex", FAKE_PDFLATEX.replace("__FIX__", str(FIXTURES))), ("bibtex", FAKE_BIBTEX)):
+        (fakebin / name).write_text(body, encoding="utf-8")
+        (fakebin / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fakebin}{os.pathsep}{os.environ.get('PATH', '')}")
+    _age([p for p in sample_paper.rglob("*") if p.is_file()], 1000)
+
+    first = compile_mod.run(sample_paper, cfg)
+    assert first.status == "PASS", (first.reasons, first.output_tail)
+    _age([sample_paper / "main.log", sample_paper / "main.pdf"], 100)
+    log_mtime = (sample_paper / "main.log").stat().st_mtime
+
+    second = compile_mod.run(sample_paper, cfg)
+    assert "Nothing to be done" in second.output_tail or "up to date" in second.output_tail
+    assert (sample_paper / "main.log").stat().st_mtime == log_mtime, "make rebuilt; the test needs an up-to-date target"
+    assert second.status == "PASS", second.reasons
+    assert "build was up to date" in second.notes
+
+    third = compile_mod.run(sample_paper, cfg, clean=True)
+    assert third.command == "make -B"
+    assert third.status == "PASS", third.reasons
+    assert (sample_paper / "main.log").stat().st_mtime > log_mtime
+    assert "build was up to date" not in third.notes
 
 
 def test_default_runner_kills_the_process_group_on_timeout(tmp_path):
