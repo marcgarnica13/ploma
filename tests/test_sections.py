@@ -249,3 +249,13 @@ def test_check_sweeps_stale_tmp_dirs(sample_paper):
     fresh.rmdir()
     sections.check(sample_paper, sample_paper / "main.tex", "Introduction", draft)
     assert not (sample_paper / ".ploma" / "tmp").exists()
+
+
+@pytest.mark.parametrize("env", ["credits", "ack", "acknowledgement"])
+def test_last_section_stops_before_credits_and_ack_environments(tmp_path, env):
+    """LNCS 2023: the credits block (acknowledgments, disclosure of interests) is end matter."""
+    tail = (f"\\begin{{{env}}}\n\\subsubsection{{\\ackname}} We thank X.\n"
+            "\\subsubsection{\\discintname} The authors have no competing interests.\n"
+            f"\\end{{{env}}}\n%\n\\bibliographystyle{{splncs04}}\n\\bibliography{{refs}}\n")
+    sec = _last_section(tmp_path, tail)
+    assert (sec.start, sec.end) == (4, 6)

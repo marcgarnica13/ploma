@@ -9,7 +9,8 @@ Usage:
 A query is a \\section title (case-insensitive), a \\label (for example sec:intro), or a .tex path
 under document.root. A section runs from its \\section line to the line before the next \\section,
 \\appendix, \\chapter, \\part, \\bibliographystyle, \\bibliography, \\printbibliography,
-\\begin{thebibliography}, an acknowledgments environment (acks, acknowledgments) or \\end{document}, or
+\\begin{thebibliography}, an acknowledgments or credits environment (acks, ack, acknowledgments,
+acknowledgement, credits) or \\end{document}, or
 before the \\input line that leads to the next section; trailing blank lines and page or column breaks
 (\\clearpage, \\newpage, \\cleardoublepage, \\onecolumn, \\twocolumn) are left out. A file under
 document.root with no \\section is one span covering the whole file.
@@ -51,7 +52,7 @@ import style_check  # noqa: E402
 _SECTION_RE = re.compile(r"\\section(\*?)\s*(?:\[[^\]]*\])?\s*\{")
 _BOUNDARY_RE = re.compile(r"\\(?:appendix|chapter|part|bibliography|bibliographystyle|printbibliography)(?![A-Za-z])"
                           r"|\\(?:begin|end)\s*\{document\}"
-                          r"|\\begin\s*\{(?:thebibliography|acks|acknowledgments|acknowledgements)\}")
+                          r"|\\begin\s*\{(?:thebibliography|acks|acknowledgments|acknowledgements|acknowledgement|ack|credits)\}")
 _NON_PROSE_RE = re.compile(r"^\s*(?:\\(?:clearpage|newpage|cleardoublepage|onecolumn|twocolumn)\b\s*)*$")
 _APPENDIX_RE = re.compile(r"\\appendix(?![A-Za-z])")
 _BEGIN_DOC_RE = re.compile(r"\\begin\s*\{document\}")
