@@ -784,7 +784,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
             continue
         best, best_n = None, -1
         for r, rvals in enumerate(records):
-            n = sum(1 for i in idxs if hits[i] & rvals)
+            n = sum(1 for i in idxs if not hits[i].isdisjoint(rvals))
             if n > best_n:
                 best, best_n = r, n
             if n == len(idxs):
@@ -792,7 +792,7 @@ def _check_tables(cells: list[dict], results: Results, metric_keys: list[str], t
         if best_n == len(idxs):
             continue
         rvals = records[best]
-        failed = [i for i in idxs if not hits[i] & rvals]
+        failed = [i for i in idxs if hits[i].isdisjoint(rvals)]
         first = cells[idxs[0]]
         label = first.get("label") or f"line{first['line']}"
         if label in labels:
