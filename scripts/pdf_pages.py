@@ -86,6 +86,52 @@ def section_page_map(pdf: Path, headings: list[str]) -> tuple[dict[str, int] | N
     return found, "pdftotext"
 
 
+def page_texts(pdf: Path) -> tuple[list[str] | None, str]:
+    """Text of each page via pdftotext -layout; (None, reason) without pdftotext."""
+    if not _which("pdftotext"):
+        return None, "pdftotext not found (install poppler-utils for the section page map)"
+    try:
+        text = _run(["pdftotext", "-layout", str(pdf), "-"])
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"pdftotext failed: {exc}"
+    return text.split("\f"), "pdftotext"
+
+
+def heading_positions(pages: list[str], headings: list[list[str]]) -> list[dict | None]:
+    """Where each heading starts, searching in order: each heading is looked for after the previous one
+    found, so a heading word in the abstract or a running head before it is not taken for the heading.
+
+    Each heading is a list of candidate needles tried in turn (for example "2 Method", then "Method").
+    A hit is {page, line, lines, position, needle}: 1-based page and line, the page's line count, and
+    position = page - 1 + (line - 1) / lines (fractional pages from the start of the PDF).
+    """
+    split = [p.split("\n") for p in pages]
+    out: list[dict | None] = []
+    cur_page, cur_line = 0, 0
+    for candidates in headings:
+        hit = None
+        for needle in candidates:
+            norm = _norm(needle)
+            if not norm:
+                continue
+            for pi in range(cur_page, len(split)):
+                first = cur_line if pi == cur_page else 0
+                for li in range(first, len(split[pi])):
+                    if norm in _norm(split[pi][li]):
+                        lines = max(1, len(split[pi]))
+                        hit = {"page": pi + 1, "line": li + 1, "lines": lines,
+                               "position": round(pi + li / lines, 3), "needle": needle}
+                        break
+                if hit:
+                    break
+            if hit:
+                break
+        out.append(hit)
+        if hit:
+            cur_page, cur_line = hit["page"] - 1, hit["line"]
+    return out
+
+
 def budget_report(pages: int, budget: int | None) -> dict:
     """PASS when pages <= budget, FAIL when over, SKIP when there is no budget."""
     if budget is None:

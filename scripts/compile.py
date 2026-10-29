@@ -287,7 +287,7 @@ def _render(rep: CompileReport, cfg: dict, threshold: float) -> str:
     elif b.get("unverified"):
         out.append(f"{rep.pages} pages in total; page budget could not be checked: {b['reason']}. "
                    f"The budget of {b['budget']} excludes references; check the page where they start by hand "
-                   f"(/ploma:format (planned, milestone 2) will give the page map).")
+                   f"(/ploma:format gives the page map).")
     elif b.get("budget") is None:
         out.append(f"{rep.pages} pages; no page budget set (SKIP).")
     else:
@@ -311,7 +311,7 @@ def _next_steps(rep: CompileReport) -> list[str]:
     if log.undefined_references:
         steps.append("Undefined references: check the \\label and \\ref names, then rebuild.")
     if rep.budget.get("status") == "FAIL":
-        steps.append(f"Over the page budget by {rep.budget['over_by']}: trim manually; /ploma:format arrives in milestone 2.")
+        steps.append(f"Over the page budget by {rep.budget['over_by']}: run /ploma:format for the page map and a cut plan.")
     if not steps and rep.status == "FAIL":
         steps.append("Fix the problem named in the Build section, then run /ploma:compile again.")
     if rep.status == "PASS":

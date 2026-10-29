@@ -170,7 +170,7 @@ def test_validate_bib_semantic_run_uses_a_ten_minute_bash_timeout():
 
 # R104: grows with each milestone-2 skill task.
 INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
-             "audit-reproducibility", "proofread", "verify-claims", "write"}
+             "audit-reproducibility", "proofread", "verify-claims", "write", "format"}
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
@@ -199,16 +199,16 @@ def test_uninstalled_skills_are_marked_planned():
 
 
 def test_planned_check_catches_a_bare_planned_command():
-    assert _planned_mention_problems("Run /ploma:format next.", "x")
-    assert not _planned_mention_problems("/ploma:format (planned, milestone 2) gives the map.", "x")
-    assert not _planned_mention_problems("trim manually; /ploma:format arrives in milestone 2", "x")
+    assert _planned_mention_problems("Run /ploma:review next.", "x")
+    assert not _planned_mention_problems("/ploma:review (planned, milestone 2) gives the map.", "x")
+    assert not _planned_mention_problems("trim manually; /ploma:review arrives in milestone 2", "x")
     assert not _planned_mention_problems("Run /ploma:compile next.", "x")
 
 
 # ---------------------------------------------------------------- eval setup (R91)
 
 SCAFFOLD_CASES = ("audit-reproducibility", "compile", "doctor", "onboard", "proofread", "status", "validate-bib",
-                  "verify-claims", "write")
+                  "verify-claims", "write", "format")
 
 
 def test_evals_contain_no_symlinks():
@@ -248,7 +248,7 @@ def test_eval_scaffold_runs(name, tmp_path):
 
 
 @pytest.mark.parametrize("name", ("audit-reproducibility", "compile", "doctor", "proofread", "status", "validate-bib",
-                                  "verify-claims", "write"))
+                                  "verify-claims", "write", "format"))
 def test_eval_prompts_are_plain_language(name):
     _, body = split_frontmatter((REPO / "evals" / name / "prompt.md").read_text(encoding="utf-8"))
     assert "/ploma:" not in body and len(body.split()) >= 5
@@ -454,7 +454,7 @@ def test_proofread_rule_and_agent_agree_on_the_report_path():
 
 # ---------------------------------------------------------------- write and format (milestone 2, Tasks 6 and 7)
 
-LIFECYCLE_ROWS = {"write": "| 4 | Write"}
+LIFECYCLE_ROWS = {"write": "| 4 | Write", "format": "| 5b | Format"}
 
 
 @pytest.mark.parametrize("name", sorted(LIFECYCLE_ROWS))
@@ -516,3 +516,36 @@ def test_write_eval_guards_the_manuscript():
                for g in graders.values())
     _, prompt = split_frontmatter((REPO / "evals" / "write" / "prompt.md").read_text(encoding="utf-8"))
     assert "introduction" in prompt.lower() and "shorter" in prompt.lower()
+
+
+def test_format_contract():
+    text = _skill("format")
+    fm, _ = split_frontmatter(text)
+    assert fm["argument-hint"] == "[--budget N] [--presubmit]"
+    tools = _tools(fm)
+    assert "Edit" not in tools and "Agent" not in tools
+    for t in ("Bash(chktex *)", "Bash(lacheck *)", "Bash(texcount *)"):
+        assert t in tools, t
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/page_map.py" --json' in text
+    assert "<outputs.dir>/page_budget_<slug>.md" in text and "<outputs.dir>/presubmit_<slug>.md" in text
+    assert "skills/format/references/cut-plan.md" in text and "skills/format/references/presubmit.md" in text
+    assert 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state.py" record format' in text
+    assert "do not call `gate.py`" in text and "gate.py\" record" not in text
+    assert "never edits a source file" in text and "all in one message" in text and "SKIP" in text
+    ref = (REPO / "skills" / "format" / "references" / "presubmit.md").read_text(encoding="utf-8")
+    for cmd in ("chktex -q -n1 -n8 -n36 -v0", "lacheck", "texcount -inc -sum -brief", "scripts/placeholders.py",
+                "scripts/bib_check.py", "scripts/style_check.py", "scripts/arxiv_rules.py", "scripts/latex_log.py",
+                "scripts/profiles.py"):
+        assert cmd in ref, cmd
+    for hint in ("tlmgr install chktex", "tlmgr install lacheck", "tlmgr install texcount"):
+        assert hint in ref
+    cut = (REPO / "skills" / "format" / "references" / "cut-plan.md").read_text(encoding="utf-8")
+    for heading in ("## Where the pages go (measured)", "## Principle", "## Cut plan (ordered by value per page",
+                    "## Resulting budget", "## What is not cut", "## Risk", "## Recommendation"):
+        assert heading in cut, heading
+
+
+def test_compile_points_to_format():
+    import compile as compile_mod
+    assert "/ploma:format" in compile_mod.__loader__.get_source("compile")
+    assert "/ploma:format for the page map" in _skill("compile")
