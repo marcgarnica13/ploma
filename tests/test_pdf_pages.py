@@ -65,3 +65,14 @@ def test_cli(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["budget"]["status"] == "PASS"
     assert pdf_pages.main([str(FIX / "three_pages.pdf"), "--budget", "2"]) == 1
     assert pdf_pages.main([str(FIX / "missing.pdf")]) == 2
+
+
+def test_run_survives_non_utf8_output(tmp_path, monkeypatch):
+    """pdftotext can emit Latin-1 bytes; _run must not raise UnicodeDecodeError under any locale."""
+    import sys
+    stub = tmp_path / "stub.py"
+    stub.write_bytes(b"import sys\nsys.stdout.buffer.write(b'Page caf\\xe9 1\\n')\n")
+    monkeypatch.setenv("PYTHONIOENCODING", "utf-8")
+    monkeypatch.setenv("LC_ALL", "C.UTF-8")
+    out = pdf_pages._run([sys.executable, str(stub)])
+    assert out.startswith("Page caf") and "�" in out

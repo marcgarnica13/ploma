@@ -26,7 +26,7 @@ def _which(name: str) -> str | None:
 
 
 def _run(cmd: list[str]) -> str:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60).stdout
 
 
 def page_count(pdf: Path) -> tuple[int | None, str]:
