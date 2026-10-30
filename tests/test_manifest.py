@@ -5,7 +5,7 @@ import json
 def test_plugin_manifest_shape(repo_root):
     m = json.loads((repo_root / ".claude-plugin/plugin.json").read_text())
     assert m["name"] == "ploma"
-    assert m["version"] == "0.1.0"
+    assert m["version"] == "0.2.0"
     assert m["license"] == "Apache-2.0"
     for key in ("skills", "agents", "hooks"):
         if key in m:

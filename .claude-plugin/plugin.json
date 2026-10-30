@@ -1,7 +1,7 @@
 {
   "name": "ploma",
-  "version": "0.1.0",
-  "description": "A Claude Code harness for writing, validating, reviewing and formatting LaTeX academic papers.",
+  "version": "0.2.0",
+  "description": "A harness for writing, validating, reviewing and formatting LaTeX academic papers with a coding agent (Claude Code or Codex)",
   "author": {
     "name": "Marc Garnica Caparrós",
     "url": "https://github.com/marcgarnica13"
