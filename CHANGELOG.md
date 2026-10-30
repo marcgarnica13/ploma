@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-30)
 
 - Codex support: install from the same repo with `codex plugin marketplace add marcgarnica13/ploma` and `codex plugin add ploma@ploma`; skills are typed `$ploma:<name>`.
 - Host detection; the session hook refreshes the `.ploma/plugin` link to the plugin root.

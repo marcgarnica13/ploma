@@ -1,6 +1,6 @@
 # ploma
 
-**Status: 0.2.0, unreleased.** Every lifecycle skill is installed. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+**Status: 0.2.0, released 2026-10-30.** Every lifecycle skill is installed. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
 ## What ploma is
 
