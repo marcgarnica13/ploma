@@ -6,7 +6,7 @@ disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, AskUserQuestion, Bash(python3 *), Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git rev-parse *), Bash(git branch *), Bash(git switch *), Bash(git add *), Bash(git commit *), Bash(git remote *), Bash(git push -u origin *), Bash(gh pr create *), Bash(gh repo view *), Bash(command -v *)
 ---
 
-Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+Plugin root: if $CLAUDE_PLUGIN_ROOT/scripts is not a directory, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
 
 <!-- Ported from the traces harness commit skill (stage specific files, commit, PR); the
      0-100 score and surface-sync steps are replaced by the ploma commit gate and the doctor. -->

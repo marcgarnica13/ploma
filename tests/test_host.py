@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import host
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
@@ -48,8 +50,12 @@ def test_skill_ref_and_localize():
     assert host.localize("Run /ploma:compile then /ploma:status.", c) == "Run $ploma:compile then $ploma:status."
     assert host.localize("Run /ploma:compile", host.HOSTS["claude"]) == "Run /ploma:compile"
 
+def _plugin_dir(d):
+    (d / "scripts").mkdir(parents=True); (d / "scripts" / "host.py").write_text("")
+    return d
+
 def test_ensure_plugin_link_creates_replaces_keeps(tmp_path):
-    a, b = tmp_path / "a", tmp_path / "b"; a.mkdir(); b.mkdir()
+    a, b = _plugin_dir(tmp_path / "a"), _plugin_dir(tmp_path / "b")
     link = host.ensure_plugin_link(tmp_path / "repo", a)
     assert link == tmp_path / "repo" / ".ploma" / "plugin" and link.resolve() == a.resolve()
     host.ensure_plugin_link(tmp_path / "repo", b)
@@ -57,6 +63,18 @@ def test_ensure_plugin_link_creates_replaces_keeps(tmp_path):
     before = os.lstat(link).st_mtime_ns
     host.ensure_plugin_link(tmp_path / "repo", b)
     assert os.lstat(link).st_mtime_ns == before
+
+def test_ensure_plugin_link_refuses_self_loop_and_non_plugin_dirs(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"; repo.mkdir()
+    monkeypatch.chdir(repo)
+    with pytest.raises(ValueError, match="itself"):
+        host.ensure_plugin_link(repo, Path(".ploma/plugin"))
+    with pytest.raises(ValueError, match="itself"):
+        host.ensure_plugin_link(repo, repo / ".ploma" / "plugin")
+    other = tmp_path / "other"; other.mkdir()
+    with pytest.raises(ValueError, match="no scripts/host.py"):
+        host.ensure_plugin_link(repo, other)
+    assert not (repo / ".ploma" / "plugin").is_symlink()
 
 def test_host_files_lists_only_present_owned_files(onboarded_sample, cfg):
     files = host.host_files(onboarded_sample, cfg)
@@ -69,6 +87,11 @@ def test_host_files_lists_codex_files_after_codex_onboard(onboarded_for, cfg):
     for rel in ("AGENTS.md", ".codex/config.toml", ".codex/agents/ploma-editor.toml"):
         assert rel in files["codex"], rel
     assert "CLAUDE.md" in files["claude"]
+
+def test_host_files_skips_an_instructions_link_to_the_other_host(onboarded_sample, cfg):
+    (onboarded_sample / "AGENTS.md").symlink_to("CLAUDE.md")
+    files = host.host_files(onboarded_sample, cfg)
+    assert "CLAUDE.md" in files["claude"] and "AGENTS.md" not in files["codex"]
 
 def test_superpowers_detection_per_host(tmp_path):
     home = tmp_path / "home"; (home / ".agents" / "skills" / "superpowers").mkdir(parents=True)

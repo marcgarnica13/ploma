@@ -100,9 +100,16 @@ def localize(text: str, host: Host | None = None) -> str:
 
 
 def ensure_plugin_link(root: Path, plugin_root: Path) -> Path:
-    """Point <root>/.ploma/plugin at plugin_root; a correct link is left untouched. OSError propagates."""
+    """Point <root>/.ploma/plugin at plugin_root; a correct link is left untouched. OSError propagates.
+
+    Raises ValueError when plugin_root resolves to the link itself (a self-loop) or to a directory
+    without scripts/host.py (not a ploma plugin root)."""
     link = Path(root) / LINK
-    target = Path(plugin_root).resolve()
+    target = Path(os.path.realpath(plugin_root))
+    if target == Path(os.path.realpath(link.parent)) / link.name:
+        raise ValueError(f"refusing to link {LINK} to itself ({plugin_root})")
+    if not (target / "scripts" / "host.py").is_file():
+        raise ValueError(f"refusing to link {LINK} to {target}: it has no scripts/host.py")
     link.parent.mkdir(parents=True, exist_ok=True)
     if link.is_symlink() and link.exists() and link.resolve() == target:
         return link
@@ -146,6 +153,9 @@ def _read(p: Path) -> str | None:
 def host_files(root: Path, cfg: dict | None) -> dict[str, list[str]]:
     """Per host (claude, codex), the sorted repo-relative paths of ploma-owned project files present.
 
+    An instructions file that is a symlink to the other host's instructions file is that file, not this
+    host's, so it is skipped.
+
     cfg is accepted for callers that hold it; the paths do not depend on it."""
     import project_files  # inside the function: project_files imports host
 
@@ -154,7 +164,10 @@ def host_files(root: Path, cfg: dict | None) -> dict[str, list[str]]:
     for name in ("claude", "codex"):
         h = HOSTS[name]
         found: list[str] = []
-        text = _read(base / h.instructions_file)
+        other = base / HOSTS["codex" if name == "claude" else "claude"].instructions_file
+        mine = base / h.instructions_file
+        linked = mine.is_symlink() and other.exists() and os.path.realpath(mine) == os.path.realpath(other)
+        text = None if linked else _read(mine)  # AGENTS.md -> CLAUDE.md is the other host's file
         if text is not None:
             try:
                 owned = project_files.marker_span(text) is not None

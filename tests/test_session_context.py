@@ -114,7 +114,7 @@ def test_resume_block_on_compact(onboarded_sample, repo_root):
 
 def test_resume_block_reads_pre_compact_state(onboarded_sample, repo_root):
     state = onboarded_sample / ".ploma"
-    state.mkdir()
+    state.mkdir(exist_ok=True)
     (state / "pre-compact-state.json").write_text(json.dumps(
         {"plan_path": "p.md", "plan_status": "draft", "current_task": "fix table 2", "decisions": ["use 8 pages"]}))
     out = _ctx(onboarded_sample, repo_root, source="compact")

@@ -454,6 +454,7 @@ def test_host_match_and_other_host_files_info(onboarded_for, monkeypatch):
 
 
 def test_unknown_host_runs_with_claude_paths(onboarded_sample):
+    (onboarded_sample / ".ploma" / "host.json").unlink()  # apply records the host; a plain shell has none
     r = _run(onboarded_sample)
     assert _by_id(r, "host.host_unknown").status == INFO
     assert _by_id(r, "host.host_match").status == PASS
@@ -476,10 +477,12 @@ def test_root_export_and_link_warnings(onboarded_for, monkeypatch):
 
 def test_dangling_plugin_link_warns_on_claude(onboarded_sample, monkeypatch, tmp_path):
     monkeypatch.setenv("PLOMA_HOST", "claude")
+    import shutil
     gone = tmp_path / "gone"
-    gone.mkdir()
+    (gone / "scripts").mkdir(parents=True)
+    (gone / "scripts" / "host.py").write_text("")
     host.ensure_plugin_link(onboarded_sample, gone)
-    gone.rmdir()
+    shutil.rmtree(gone)
     assert _by_id(_run(onboarded_sample), "host.plugin_link").status == WARN
 
 
@@ -545,3 +548,17 @@ def test_remediation_is_localized(onboarded_for, monkeypatch):
     (root / "main.pdf").unlink()  # gives a remediation naming a skill
     txt = _run(root).render()
     assert "$ploma:compile" in txt and "/ploma:" not in txt
+
+
+def test_plugin_link_to_another_plugin_version_warns(onboarded_sample, monkeypatch, tmp_path, repo_root):
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    assert not any(f.id == "host.plugin_link_version" for f in _all(_run(onboarded_sample)))
+    old = tmp_path / "ploma-0.1.9"
+    (old / "scripts").mkdir(parents=True)
+    (old / "scripts" / "host.py").write_text("")
+    host.ensure_plugin_link(onboarded_sample, old)
+    r = _run(onboarded_sample)
+    assert _by_id(r, "host.plugin_link").status == PASS
+    f = _by_id(r, "host.plugin_link_version")
+    assert f.status == WARN and str(old) in f.observed
+    assert f.remediation == "Start a new session so the hook refreshes .ploma/plugin, or run /ploma:onboard."

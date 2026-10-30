@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -862,17 +863,68 @@ def test_switch_notice_none_without_receipt(sample_paper, cfg):
     assert project_files.switch_notice(sample_paper, cfg, host.HOSTS["codex"]) is None
 
 
-def test_apply_creates_link_and_host_json_from_env(sample_paper, cfg, repo_root, monkeypatch):
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(repo_root)); monkeypatch.setenv("PLOMA_HOST", "codex")
+def test_apply_creates_link_and_host_json(sample_paper, cfg, repo_root, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
     h = host.HOSTS["codex"]
     project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
-    assert (sample_paper / ".ploma/plugin").resolve() == repo_root.resolve() and host.read_host_json(sample_paper)["host"] == "codex"
+    assert (sample_paper / ".ploma/plugin").resolve() == repo_root.resolve()
+    data = host.read_host_json(sample_paper)
+    assert data["host"] == "codex" and Path(data["plugin_root"]).resolve() == repo_root.resolve()
 
 
-def test_apply_without_plugin_root_writes_no_link(sample_paper, cfg, monkeypatch):
-    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
-    _apply(sample_paper, cfg)
-    assert not (sample_paper / ".ploma").exists()
+def test_apply_ignores_relative_plugin_root_export(sample_paper, cfg, repo_root, monkeypatch):
+    """Repro A (I1): the Codex shell exports CLAUDE_PLUGIN_ROOT=.ploma/plugin; apply must not self-loop."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", ".ploma/plugin")
+    monkeypatch.chdir(sample_paper)
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    link = sample_paper / ".ploma/plugin"
+    assert link.is_symlink() and link.resolve() == repo_root.resolve()
+    assert Path(host.read_host_json(sample_paper)["plugin_root"]).is_absolute()
+
+
+def test_apply_from_parent_keeps_a_working_link(sample_paper, cfg, repo_root, monkeypatch):
+    """Repro B (I1): apply --root from the parent directory must not replace the link with a dangling one."""
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", ".ploma/plugin")
+    monkeypatch.chdir(sample_paper.parent)
+    assert project_files.main(["--root", sample_paper.name, "--host", "codex", "--json", "apply"]) == 0
+    link = sample_paper / ".ploma/plugin"
+    assert link.is_dir() and link.resolve() == repo_root.resolve()
+
+
+def test_switch_back_plans_a_receipt_row_and_apply_restores_the_host(onboarded_for, cfg):
+    """C1: Claude, then Codex, then Claude: the plan is not idle and apply sets the receipt host back."""
+    root = onboarded_for("codex")
+    h = host.HOSTS["claude"]
+    rows = project_files.plan(root, cfg, h)
+    rec_row = [r for r in rows if r["mode"] == "receipt"]
+    assert rec_row == [{"path": "quality_reports/ploma-receipt.json", "mode": "receipt", "action": "update", "diff": ""}]
+    assert all(r["action"] == "unchanged" for r in rows if r["mode"] != "receipt")
+    out = project_files.apply(root, cfg, rows, h)
+    assert receipt.load(root, cfg)["host"] == "claude"
+    assert next(r for r in out if r["mode"] == "receipt")["written"] is True
+    assert {r["action"] for r in project_files.plan(root, cfg, h)} == {"unchanged"}
+
+
+def test_fresh_clone_plans_the_link_row_and_apply_creates_it(onboarded_for, cfg, repo_root, capsys):
+    """C1: a co-author's clone has every committed file but no .ploma/: the plan has a link row."""
+    import shutil
+    root = onboarded_for("codex")
+    shutil.rmtree(root / ".ploma")
+    rows = project_files.plan(root, cfg, host.HOSTS["codex"])
+    assert [r for r in rows if r["action"] != "unchanged"] == \
+        [{"path": ".ploma/plugin", "mode": "link", "action": "create", "diff": ""}]
+    assert project_files.main(["--root", str(root), "--host", "codex", "--json", "plan"]) == 0
+    assert {"path": ".ploma/plugin", "mode": "link", "action": "create", "diff": ""} in \
+        json.loads(capsys.readouterr().out)["rows"]
+    assert project_files.main(["--root", str(root), "--host", "codex", "plan"]) == 0
+    assert "- create .ploma/plugin [link]" in capsys.readouterr().out
+    out = project_files.apply(root, cfg, rows, host.HOSTS["codex"])
+    assert (root / ".ploma/plugin").resolve() == repo_root.resolve()
+    assert next(r for r in out if r["mode"] == "link")["written"] is True
+    assert {r["action"] for r in project_files.plan(root, cfg, host.HOSTS["codex"])} == {"unchanged"}
 
 
 def test_record_accepts_host_learnings_target(sample_paper, cfg, monkeypatch, capsys):
@@ -962,9 +1014,28 @@ def test_host_env_is_isolated(sample_paper, cfg):
     import os
     assert not any(os.environ.get(k) for k in ("PLOMA_HOST", "CLAUDE_PLUGIN_ROOT", "CLAUDECODE", "CODEX_HOME"))
     _apply(sample_paper, cfg)
-    assert not (sample_paper / ".ploma").exists() and (sample_paper / "CLAUDE.md").is_file()
+    assert not (sample_paper / ".ploma" / "host.json").exists() and (sample_paper / "CLAUDE.md").is_file()
 
 
 def test_unknown_host_writes_the_claude_section(sample_paper, cfg):
     assert project_files.instructions_section(cfg, host.HOSTS["unknown"]) == \
         project_files.instructions_section(cfg, host.HOSTS["claude"])
+
+
+def test_symlinked_instructions_file_is_withheld(sample_paper, cfg, capsys):
+    """I3: AGENTS.md -> CLAUDE.md is never written through or replaced."""
+    (sample_paper / "CLAUDE.md").write_text("my notes\n", encoding="utf-8")
+    (sample_paper / "AGENTS.md").symlink_to("CLAUDE.md")
+    h = host.HOSTS["codex"]
+    assert project_files.withheld(cfg, sample_paper, h) == ["AGENTS.md"]
+    rows = project_files.plan(sample_paper, cfg, h)
+    assert "AGENTS.md" not in {r["path"] for r in rows}
+    project_files.apply(sample_paper, cfg, rows, h)
+    assert (sample_paper / "AGENTS.md").is_symlink() and (sample_paper / "CLAUDE.md").read_text() == "my notes\n"
+    assert "AGENTS.md" not in {e["path"] for e in receipt.load(sample_paper, cfg)["files"]}
+    root = str(sample_paper)
+    assert project_files.main(["--root", root, "--host", "codex", "--json", "plan"]) == 0
+    assert {"path": "AGENTS.md", "line": None} in json.loads(capsys.readouterr().out)["withheld"]
+    assert project_files.main(["--root", root, "--host", "codex", "plan"]) == 0
+    assert ("- withheld AGENTS.md: `AGENTS.md` is a symlink; ploma does not write through links: replace it "
+            "with a regular file or merge the section by hand") in capsys.readouterr().out

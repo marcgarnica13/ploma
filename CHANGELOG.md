@@ -11,7 +11,7 @@
 - Printed skill references are localized per host (`/ploma:<name>` or `$ploma:<name>`).
 - Promoted learnings on Codex live in an `AGENTS.md` block.
 - The `statusline` CLI action.
-- A bootstrap line in every skill sets the plugin root when the shell lacks it.
+- A bootstrap line in every skill sets the plugin root when `$CLAUDE_PLUGIN_ROOT/scripts` is not a directory (unset variable, or a missing or stale `.ploma/plugin`).
 
 ## 0.1.0 (2026-10-29)
 

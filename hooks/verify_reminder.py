@@ -4,7 +4,9 @@
 .tex -> /ploma:compile; .bib -> /ploma:validate-bib; the pipeline language extension
 (python .py, r .r, julia .jl, matlab .m; only with pipeline.enabled) -> the code reviewer.
 Skips paths under <outputs.dir>/, .claude/, .ploma/ and docs/. Suffixes compare lower-cased.
-Silent when tool_input has no file_path (Codex apply_patch carries only the patch text).
+Paths come from tool_input.file_path (Claude Code), else from the "*** Add File:" and "*** Update File:"
+lines of tool_input.command (Codex apply_patch), relative paths resolved against the payload cwd; one
+reminder per file. Silent when neither names a file.
 State: .ploma/verify-reminder-cache.json. Exit code: always 0.
 """
 from __future__ import annotations
@@ -52,6 +54,7 @@ if __name__ == "__main__":
     _RAW, _ROOT = _early_exit_if_no_config()
 
 import posixpath  # noqa: E402
+import re  # noqa: E402
 import time  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import TextIO  # noqa: E402
@@ -63,6 +66,29 @@ DEDUPE_SECONDS = 300
 CACHE_FILE = "verify-reminder-cache.json"
 LANGUAGE_EXT = {"python": ".py", "r": ".r", "julia": ".jl", "matlab": ".m"}
 FIXED_SKIP = (".claude", ".ploma", "docs")
+PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+?)\s*$", re.MULTILINE)
+
+
+def edited_paths(data: dict) -> list[str]:
+    """The files an edit tool call changed: file_path, else the apply_patch file lines (against cwd)."""
+    tool_input = data.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return []
+    file_path = tool_input.get("file_path")
+    if isinstance(file_path, str) and file_path:
+        return [file_path]
+    patch = tool_input.get("command")
+    if not isinstance(patch, str):
+        return []
+    cwd = data.get("cwd")
+    out: list[str] = []
+    for m in PATCH_FILE_RE.finditer(patch):
+        p = m.group(1)
+        if not os.path.isabs(p) and isinstance(cwd, str) and cwd:
+            p = os.path.join(cwd, p)
+        if p not in out:
+            out.append(p)
+    return out
 
 
 def action_for(rel: str, cfg: dict) -> str | None:
@@ -108,32 +134,36 @@ def main(stdin: TextIO | str | None = None, root: Path | None = None, cfg: dict 
     root = Path(root) if root else hu.project_dir(data)
     if not hu.has_config(root):
         return 0
-    tool_input = data.get("tool_input")
-    file_path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
-    if not isinstance(file_path, str) or not file_path:
+    paths = edited_paths(data)
+    if not paths:
         return 0
     if cfg is None:
         cfg = hu.load_config(root)
-    rel = _relative(file_path, root)
-    if rel is None or rel.startswith("../") or rel == ".." or skipped(rel, cfg):
-        return 0
-    action = action_for(rel, cfg)
-    if not action:
+    due: list[tuple[str, str]] = []
+    for file_path in paths:
+        rel = _relative(file_path, root)
+        if rel is None or rel.startswith("../") or rel == ".." or skipped(rel, cfg):
+            continue
+        action = action_for(rel, cfg)
+        if action:
+            due.append((rel, action))
+    if not due:
         return 0
     path = hu.state_dir(root) / CACHE_FILE
     cache = hu.load_json(path)
     now = time.time()
-    last = cache.get(rel, 0)
-    recent = isinstance(last, (int, float)) and now - last < DEDUPE_SECONDS
-    cache = {k: v for k, v in cache.items() if isinstance(v, (int, float)) and now - v < DEDUPE_SECONDS}
-    if recent:
-        hu.save_json(path, cache)
-        return 0
-    cache[rel] = now
-    hu.save_json(path, cache)
-    message = f"Verification reminder: {rel} changed. {action} before marking the task complete."
-    hu.emit({"systemMessage": message,
-             "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}})
+    fresh = {k: v for k, v in cache.items() if isinstance(v, (int, float)) and now - v < DEDUPE_SECONDS}
+    messages = []
+    for rel, action in due:
+        if rel in fresh:
+            continue
+        fresh[rel] = now
+        messages.append(f"Verification reminder: {rel} changed. {action} before marking the task complete.")
+    hu.save_json(path, fresh)
+    if messages:
+        message = "\n".join(messages)
+        hu.emit({"systemMessage": message,
+                 "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}})
     return 0
 
 

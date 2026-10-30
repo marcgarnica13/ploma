@@ -21,11 +21,14 @@ Usage:
   python3 scripts/project_files.py [--root R] [--config C] statusline
 
 plan shows what apply would do (--json: {"rows": [...], "withheld": [{"path", "line"}]}; withheld names a
-merged file ploma will not write, the .codex/config.toml block when the user's file already defines the
-shell_environment_policy table, with the line to merge by hand); apply writes create, overwrite and merge actions, deletes a
+merged file ploma will not write: the .codex/config.toml block when the user's file already defines the
+shell_environment_policy table, with the line to merge by hand, and a symlinked instructions file, with
+line null); apply writes create, overwrite and merge actions, deletes a
 generated pipeline rule left over after pipeline.enabled turned false (action remove), records the
-receipt with the host, and creates the .ploma/plugin link (and .ploma/host.json) from
-CLAUDE_PLUGIN_ROOT when it is set; settings prints the proposed .claude/settings.json additions (never
+receipt with the host, and creates the .ploma/plugin link (and .ploma/host.json) from this script's
+own plugin root (never CLAUDE_PLUGIN_ROOT); plan adds a receipt row (mode receipt, action update) when the
+receipt names another host and a link row (mode link, action create) when .ploma/plugin is missing or
+dangling; settings prints the proposed .claude/settings.json additions (never
 written); record adds a file another skill wrote to the receipt: the host's learnings target (written
 by /ploma:learn --promote) or a project skill under the host's project skills directory; switch prints
 {"notice": ...}, the switch sentence when the receipt names another host, else null; statusline prints
@@ -63,7 +66,8 @@ import ploma_config  # noqa: E402
 import receipt  # noqa: E402
 import state  # noqa: E402
 
-TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent  # the running plugin, reached through any link
+TEMPLATES = PLUGIN_ROOT / "templates"
 MARKER_BEGIN = "<!-- ploma:begin -->"
 MARKER_END = "<!-- ploma:end -->"
 LEARNINGS_BEGIN = "<!-- ploma-learnings:begin -->"  # Codex promoted learnings in AGENTS.md (/ploma:learn)
@@ -78,6 +82,8 @@ SKILLS = ("compile", "validate-bib", "audit-reproducibility", "verify-claims", "
           "review", "devils-advocate", "brainstorm", "lit-review", "grill", "spec", "respond", "checkpoint",
           "compress-session", "learn", "deep-audit", "commit", "doctor", "status", "help", "onboard")
 GITIGNORE_HEADER = "# ploma"
+SYMLINK_NOTICE = ("`{path}` is a symlink; ploma does not write through links: replace it with a regular file "
+                  "or merge the section by hand")
 WRITE_ACTIONS = ("create", "overwrite", "merge")
 PIPELINE_RULE = ".claude/rules/ploma-pipeline.md"
 PIPELINE_SKILL = ".claude/skills/analysis-pipeline/SKILL.md"  # created-once, pipeline.enabled only
@@ -405,9 +411,16 @@ def _pipeline_skill(h: _host.Host) -> str:
 
 
 def withheld(cfg: dict, root: Path, host: _host.Host | None = None) -> list[str]:
-    """Merged files ploma will not write: the root export when the user's file already defines the
-    shell_environment_policy table outside ploma's markers (the user merges export_line() by hand)."""
+    """Merged files ploma will not write: the instructions file when it is a symlink (ploma does not write
+    through links; the user replaces it with a regular file or merges the section by hand), and the root
+    export when the user's file already defines the shell_environment_policy table outside ploma's markers
+    (the user merges export_line() by hand)."""
     h = _resolve(host, root)
+    out = [h.instructions_file] if (Path(root) / h.instructions_file).is_symlink() else []
+    return out + _export_withheld(root, h)
+
+
+def _export_withheld(root: Path, h: _host.Host) -> list[str]:
     if not h.root_export:
         return []
     text = _read(Path(root), h.root_export)
@@ -432,7 +445,8 @@ def render_all(cfg: dict, root: Path, host: _host.Host | None = None) -> list[Fi
     """Every project file onboard owns for the host, in order, with the content it should hold now.
 
     host None means the detected host. Merged files carry the full merged text computed from what is on
-    disk under root; a withheld root export is left out (see withheld)."""
+    disk under root; a withheld file (a symlinked instructions file, a clashing root export) is left
+    out (see withheld)."""
     root = Path(root)
     h = _resolve(host, root)
     ctx = _context(cfg)
@@ -447,11 +461,13 @@ def render_all(cfg: dict, root: Path, host: _host.Host | None = None) -> list[Fi
     if _get(cfg, "pipeline.enabled") is True:
         skill = render_template(_template("project-skills/analysis-pipeline/SKILL.md"), ctx)
         specs.append(FileSpec(_pipeline_skill(h), "created-once", _host.localize(skill, h)))
-    section = instructions_section(cfg, h, ctx)
-    specs.append(FileSpec(h.instructions_file, "merged",
-                          _merge_file(root, h.instructions_file, section, MARKER_BEGIN, MARKER_END)))
+    held = withheld(cfg, root, h)
+    if h.instructions_file not in held:
+        section = instructions_section(cfg, h, ctx)
+        specs.append(FileSpec(h.instructions_file, "merged",
+                              _merge_file(root, h.instructions_file, section, MARKER_BEGIN, MARKER_END)))
     specs.append(FileSpec(".gitignore", "merged", merge_gitignore(_read(root, ".gitignore"), cfg)))
-    if h.root_export and h.root_export not in withheld(cfg, root, h):
+    if h.root_export and h.root_export not in held:
         specs.append(FileSpec(h.root_export, "merged",
                               _merge_file(root, h.root_export, _template("codex-config.toml"), TOML_BEGIN, TOML_END)))
     return specs
@@ -497,7 +513,11 @@ def has_generated_marker(text: str) -> bool:
 
 
 def plan(root: Path, cfg: dict, host: _host.Host | None = None) -> list[dict]:
-    """[{path, mode, action, diff}] for every rendered file, plus a stale pipeline rule; reads only."""
+    """[{path, mode, action, diff}] for every rendered file, plus a stale pipeline rule; reads only.
+
+    Two rows are not files ploma renders: mode receipt (action update) when the receipt names another
+    host, so a switch back is never idle; mode link (action create) when .ploma/plugin is missing or
+    dangling, so a co-author's fresh clone still gets the link. apply treats both as write actions."""
     root = Path(root)
     h = _resolve(host, root)
     outputs_dir(cfg)
@@ -522,14 +542,28 @@ def plan(root: Path, cfg: dict, host: _host.Host | None = None) -> list[dict]:
         rows.append({"path": PIPELINE_RULE, "mode": "enforced",
                      "action": "remove" if generated else "skip_hand_edited",
                      "diff": _diff(PIPELINE_RULE, stale, "") if generated else ""})
+    try:
+        data = receipt.load(root, cfg)
+    except ValueError:
+        data = None
+    if data is not None and data["host"] != _receipt_host(h):
+        rows.append({"path": receipt_rel(cfg), "mode": "receipt", "action": "update", "diff": ""})
+    if link_missing(root):
+        rows.append({"path": _host.LINK, "mode": "link", "action": "create", "diff": ""})
     return rows
+
+
+def receipt_rel(cfg: dict) -> str:
+    """The receipt's repo-relative posix path."""
+    return _under(outputs_dir(cfg), receipt.FILE_NAME)
 
 
 def apply(root: Path, cfg: dict, plan: list[dict], host: _host.Host | None = None) -> list[dict]:
     """Write files whose planned action is create, overwrite or merge, then record the receipt.
 
-    Content is re-rendered at apply time; returns the plan rows each with a ``written`` flag. With
-    CLAUDE_PLUGIN_ROOT set, the .ploma/plugin link and .ploma/host.json are created too (best effort)."""
+    Content is re-rendered at apply time; returns the plan rows each with a ``written`` flag. The receipt
+    is always rewritten (a receipt row only marks a host switch), and the .ploma/plugin link and
+    .ploma/host.json are created from this script's plugin root (best effort)."""
     root = Path(root)
     h = _resolve(host, root)
     outputs_dir(cfg)  # validate before anything is written
@@ -554,21 +588,32 @@ def apply(root: Path, cfg: dict, plan: list[dict], host: _host.Host | None = Non
              for s in specs if (root / s.path).is_file()]
     files += _recorded_elsewhere(root, cfg, {s.path for s in specs}, h)
     receipt.write(root, cfg, files, _receipt_host(h))
-    _link_plugin(root, h)
+    if actions.get(receipt_rel(cfg)) == "update":
+        written.add(receipt_rel(cfg))
+    if _link_plugin(root, h) and actions.get(_host.LINK) == "create":
+        written.add(_host.LINK)
     return [dict(row, written=row["path"] in written) for row in plan]
 
 
-def _link_plugin(root: Path, h: _host.Host) -> None:
-    """Create .ploma/plugin from CLAUDE_PLUGIN_ROOT, and .ploma/host.json when the hook has not written it."""
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if not plugin_root:
-        return
+def _link_plugin(root: Path, h: _host.Host) -> bool:
+    """Create .ploma/plugin, and .ploma/host.json when the hook has not written it; True when linked.
+
+    The plugin root is this script's own plugin directory (Ruling R9), never CLAUDE_PLUGIN_ROOT: on Codex
+    the model's shell exports CLAUDE_PLUGIN_ROOT=.ploma/plugin, which would link the link to itself."""
+    plugin_root = PLUGIN_ROOT
     try:
-        _host.ensure_plugin_link(root, Path(plugin_root))
+        _host.ensure_plugin_link(root, plugin_root)
         if h.name != "unknown" and _host.read_host_json(root) is None:
-            _host.write_host_json(root, h, Path(plugin_root), receipt.plugin_version())
-    except OSError:
-        pass  # the session hook refreshes the link; doctor reports it when missing
+            _host.write_host_json(root, h, plugin_root, receipt.plugin_version())
+    except (OSError, ValueError):
+        return False  # the session hook refreshes the link; doctor reports it when missing
+    return True
+
+
+def link_missing(root: Path) -> bool:
+    """True when <root>/.ploma/plugin is missing or dangling."""
+    link = Path(root) / _host.LINK
+    return not (link.is_symlink() and link.is_dir())
 
 
 def _recordable(rel: str, h: _host.Host) -> bool:
@@ -704,7 +749,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, KeyError, OSError) as exc:
         return _error(str(exc), args.json)
     if args.json:
-        held_rows = [{"path": rel, "line": export_line()} for rel in held]
+        held_rows = [{"path": rel, "line": export_line() if rel == h.root_export else None} for rel in held]
         print(json.dumps({"rows": rows, "withheld": held_rows} if args.action == "plan" else rows, indent=2))
     else:
         for row in rows:
@@ -713,8 +758,11 @@ def main(argv: list[str] | None = None) -> int:
             if row["diff"] and args.action == "plan":
                 print(row["diff"].rstrip("\n"))
         for rel in held:
-            print(f"- withheld {rel}: it already defines shell_environment_policy outside the ploma markers; "
-                  f"merge this line into that table by hand: {export_line()}")
+            if rel == h.root_export:
+                print(f"- withheld {rel}: it already defines shell_environment_policy outside the ploma markers; "
+                      f"merge this line into that table by hand: {export_line()}")
+            else:
+                print(f"- withheld {rel}: {SYMLINK_NOTICE.format(path=rel)}")
     return 0
 
 

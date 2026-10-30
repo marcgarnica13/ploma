@@ -116,10 +116,27 @@ def test_classify_tool(name, kind):
 
 
 def test_apply_patch_tex_recommends_compile(onboarded_sample, capsys):
+    """The real Codex payload: tool_input.command holds the patch text, paths relative to cwd."""
+    patch = ("*** Begin Patch\n*** Update File: main.tex\n@@\n-old\n+new\n"
+             "*** Add File: refs/extra.bib\n+@misc{x}\n*** Update File: notes.txt\n@@\n-a\n+b\n*** End Patch\n")
     payload = {"hook_event_name": "PostToolUse", "tool_name": "apply_patch", "cwd": str(onboarded_sample),
-               "tool_input": {"file_path": str(onboarded_sample / "main.tex")}}
+               "tool_input": {"command": patch}}
     verify_reminder.main(json.dumps(payload), root=onboarded_sample)
-    assert "/ploma:compile" in capsys.readouterr().out
+    out = json.loads(capsys.readouterr().out)["systemMessage"].splitlines()
+    assert out == ["Verification reminder: main.tex changed. Run /ploma:compile before marking the task complete.",
+                   "Verification reminder: refs/extra.bib changed. Run /ploma:validate-bib before marking the task "
+                   "complete."]
+    verify_reminder.main(json.dumps(payload), root=onboarded_sample)  # deduped per file
+    assert capsys.readouterr().out == ""
+
+
+def test_apply_patch_paths_resolve_against_payload_cwd(onboarded_sample, capsys):
+    sub = onboarded_sample / "sections"
+    sub.mkdir(exist_ok=True)
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "apply_patch", "cwd": str(sub),
+               "tool_input": {"command": "*** Begin Patch\n*** Add File: intro.tex\n+x\n*** End Patch\n"}}
+    verify_reminder.main(json.dumps(payload), root=onboarded_sample)
+    assert "sections/intro.tex changed" in capsys.readouterr().out
 
 
 def test_apply_patch_without_file_path_is_silent(onboarded_sample, capsys):

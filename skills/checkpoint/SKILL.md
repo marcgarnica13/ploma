@@ -6,7 +6,7 @@ disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), Bash(mkdir *), Bash(git status *), Bash(git log *), Bash(git diff *), Bash(git branch *), Bash(ls *)
 ---
 
-Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+Plugin root: if $CLAUDE_PLUGIN_ROOT/scripts is not a directory, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
 
 <!-- Pattern adapted from Hugo Sant'Anna's clo-author v4.2.0 (github.com/hugosantanna/clo-author),
      used with permission. Original /checkpoint shape: project-level session handoff with

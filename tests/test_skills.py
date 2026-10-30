@@ -85,7 +85,7 @@ def test_plugin_paths_exist(d):
             assert (REPO / rel).exists(), f"{p}: ${{CLAUDE_PLUGIN_ROOT}}/{rel} does not exist"
 
 
-BOOTSTRAP = "Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over)."
+BOOTSTRAP = "Plugin root: if $CLAUDE_PLUGIN_ROOT/scripts is not a directory, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over)."
 
 
 def read_skill(path: Path) -> tuple[dict, str]:

@@ -5,7 +5,7 @@ argument-hint: "[--rerun | --no-rerun]"
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), Bash(git rev-parse *), AskUserQuestion, Monitor
 ---
 
-Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+Plugin root: if $CLAUDE_PLUGIN_ROOT/scripts is not a directory, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
 
 # ploma audit-reproducibility
 

@@ -4,7 +4,7 @@ description: One-screen ploma status for a paper repo. Shows the lifecycle stage
 allowed-tools: Read, Glob, Grep, Bash(python3 *)
 ---
 
-Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+Plugin root: if $CLAUDE_PLUGIN_ROOT/scripts is not a directory, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
 
 # ploma status
 

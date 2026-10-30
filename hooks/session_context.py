@@ -189,7 +189,7 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
     try:
         host.ensure_plugin_link(root, plugin_root)
         host.write_host_json(root, h, plugin_root, receipt.plugin_version())
-    except OSError:
+    except (OSError, ValueError):
         pass
     block = host_block(h, plugin_root)
     rules = eager_rules(plugin_root)

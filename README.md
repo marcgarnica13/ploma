@@ -38,7 +38,7 @@ codex plugin add ploma@ploma
 
 Then open `/hooks` in the Codex TUI and trust ploma's hooks, and run `$ploma:onboard`. Skills are typed `$ploma:<name>`. Codex reads `.codex/config.toml` only for trusted projects, so trust the paper repo.
 
-Updates: `codex plugin marketplace upgrade ploma`, then `codex plugin add ploma@ploma` again.
+Updates: `codex plugin marketplace upgrade ploma`, then `codex plugin add ploma@ploma` again, then start a new session so the hook refreshes `.ploma/plugin`.
 
 API keys on Codex come from environment variables: `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY` and `CROSSREF_MAILTO`. The scripts read them when the Claude Code plugin options are absent. ploma never writes secrets into project files. For per-machine keys, set them in `~/.codex/config.toml`:
 

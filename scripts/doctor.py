@@ -40,6 +40,7 @@ GROUPS = (("runtime", "Runtime"), ("config", "Config"), ("toolchain", "Toolchain
           ("dependencies", "Dependencies"), ("legacy-harness", "Legacy harness"))
 # Without config these groups give one SKIP; host still reports `running` first.
 NEEDS_CONFIG = ("toolchain", "manuscript", "host", "project-files", "state", "legacy-harness")
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent  # the running plugin, reached through any link
 AGENTS_MD_LIMIT = 28 * 1024  # spec section 12: leaves headroom under Codex's project-doc size limit
 LINTERS = ("chktex", "lacheck", "texcount")
 PDF_TOOLS = ("pdfinfo", "pdftotext")
@@ -377,6 +378,11 @@ def _host(root: Path, cfg: dict, h: host_mod.Host) -> list[Finding]:
     link = root / host_mod.LINK
     if os.path.islink(link) and os.path.isdir(link):
         out.append(_f(g, "plugin_link", PASS, f"{host_mod.LINK} points at the plugin", observed=os.readlink(link)))
+        if Path(os.path.realpath(link)) != PLUGIN_ROOT:
+            out.append(_f(g, "plugin_link_version", WARN, f"{host_mod.LINK} points at another plugin version",
+                          observed=f"{host_mod.LINK} -> {os.path.realpath(link)}; running plugin: {PLUGIN_ROOT}",
+                          remediation="Start a new session so the hook refreshes .ploma/plugin, "
+                                      "or run /ploma:onboard."))
     else:
         out.append(_f(g, "plugin_link", WARN, f"{host_mod.LINK} is missing or dangling",
                       observed=f"{host_mod.LINK}: " + ("dangling link to " + os.readlink(link)
