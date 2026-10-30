@@ -11,3 +11,6 @@ __pycache__/
 examples/sample-paper/build/
 evals/results/
 media/logo/.cache/
+media/**/node_modules/
+media/**/out/
+media/**/.hyperframes/

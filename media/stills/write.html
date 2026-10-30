@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="../shared/chrome.css">
+<title>ploma write</title>
+</head>
+<body>
+<!-- Every .ln is verbatim from media/transcripts/write.md. -->
+<div class="win term" style="width:1300px;height:660px">
+<div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><div class="title"><img src="../../assets/logo/ploma-mark-dark.svg" alt="">ploma-demo-run</div></div>
+<div class="body">
+<div class="row prompt"><span class="ln">/ploma:write intro</span></div>
+<div class="row say"><span class="ln">Drafting the Introduction now.</span></div>
+<div class="row tool"><span class="ln">[tool] Write /home/mgarnica/ploma-demo-run/sections/intro_suggestion.tex</span></div>
+<div class="gap"></div>
+<div class="row say"><span class="ln">I drafted a new Introduction in <i class="mk">`</i><code>sections/intro_suggestion.tex</code><i class="mk">`</i>.</span></div>
+<div class="gap"></div>
+<div class="row"><span class="ln"><i class="mk">**</i><b>Self-check</b><i class="mk">**</i></span></div>
+<div class="row bullet"><span class="ln">Style check: no em-dashes, banned phrases or long sentences.</span></div>
+<div class="row" style="padding-left:22px"><span class="ln">{"verdict": "<b class="pass">PASS</b>", "findings": []}</span></div>
+<div class="row bullet"><span class="ln">Consistency check: the draft fixes the 31% mismatch, which was the only failing finding</span></div>
+<div class="gap"></div>
+<div class="row hunk"><span class="ln">@@ -2,9 +2,12 @@</span></div>
+<div class="row del"><span class="ln">-We present Hawser, a tracer that keeps this chain and cuts median trace-query latency by 31\%.</span></div>
+<div class="row add"><span class="ln">+We present Hawser, a tracer that keeps this chain.</span></div>
+<div class="row add"><span class="ln">+Against an OpenTelemetry pipeline, Hawser cuts median trace-query latency by 27.4\%.</span></div>
+<div class="gap"></div>
+<div class="row"><span class="ln"><i class="mk">**</i><b>Next:</b><i class="mk">**</i> to merge it, run <i class="mk">`</i><code>/ploma:write sec:intro --merge</code><i class="mk">`</i></span></div>
+</div>
+</div>
+</body>
+</html>

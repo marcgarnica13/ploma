@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="../shared/chrome.css">
+<title>ploma grill</title>
+</head>
+<body>
+<!-- Every .ln is verbatim from media/transcripts/grill.md or grill-decision-log.md. -->
+<div class="win term" style="width:1260px;height:700px">
+<div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><div class="title"><img src="../../assets/logo/ploma-mark-dark.svg" alt="">ploma-demo-run</div></div>
+<div class="body">
+<div class="row prompt"><span class="ln">/ploma:grill sections/intro.tex</span></div>
+<div class="ask">
+<div class="chip"><span class="ln">Empiricist</span></div>
+<div class="row q"><span class="ln">The intro now claims Hawser "cuts median trace-query latency by 31%" with no baseline named (sections/intro.tex:7, staged edit).</span></div>
+<div class="row q"><span class="ln">results/bench.json has 27.4% vs OpenTelemetry and 41.2% vs raw logs, and neither is 31.</span></div>
+<div class="row q"><span class="ln">Which headline number should the intro state?</span></div>
+<div class="opts">
+<div class="opt rec"><div class="lab"><span class="ln">27.4% vs OpenTelemetry (Recommended)</span></div><div class="desc"><span class="ln">matches bench.json <i class="mk">`</i><code>latency_cut_vs_otel_pct</code><i class="mk">`</i>, the abstract and results.tex:6, and is the strongest realistic baseline.</span></div></div>
+<div class="opt"><div class="lab"><span class="ln">Both: 27.4% vs OTel, 41.2% vs logs</span></div><div class="desc"><span class="ln">full range up front, one more sentence, invites a weak-baseline objection.</span></div></div>
+<div class="opt"><div class="lab"><span class="ln">Keep 31% (a new result)</span></div><div class="desc"><span class="ln">needs a results key producing 31% and a rerun; the audit fails the claim until then.</span></div></div>
+</div>
+</div>
+<div class="row ok"><span class="ln"><i class="mk">**</i><b>Answer:</b><i class="mk">**</i> 27.4% vs OpenTelemetry (Recommended)</span></div>
+<div class="row bullet"><span class="ln">The intro must name the OpenTelemetry baseline and state 27.4%; the "31%" in the staged edit is unsupported and must not be committed.</span></div>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1400">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="../shared/chrome.css">
+<title>ploma spec</title>
+</head>
+<body>
+<!-- Every .ln is verbatim from media/transcripts/spec.md or spec-paper_spec.md. -->
+<div class="win term" style="width:740px;height:740px">
+<div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><div class="title"><img src="../../assets/logo/ploma-mark-dark.svg" alt="">ploma-demo-run</div></div>
+<div class="body">
+<div class="row prompt"><span class="ln">/ploma:spec --no-verify</span></div>
+<div class="row tool"><span class="ln">[tool] Write /home/mgarnica/ploma-demo-run/quality_reports/paper_spec.md</span></div>
+<div class="gap"></div>
+<div class="row say"><span class="ln">The spec is written at <i class="mk">`</i><code>quality_reports/paper_spec.md</code><i class="mk">`</i>.</span></div>
+<div class="gap"></div>
+<div class="row"><span class="ln"><i class="mk">**</i><b>Locked decisions:</b><i class="mk">**</i> 11.</span></div>
+<div class="row bullet"><span class="ln"><i class="mk">**</i><b>L6:</b><i class="mk">**</i> Evaluation setup names the three frameworks, where the tasks come from, and the query set.</span></div>
+<div class="row bullet"><span class="ln"><i class="mk">**</i><b>L7:</b><i class="mk">**</i> report a 95% bootstrap confidence interval on each latency cut.</span></div>
+<div class="row bullet"><span class="ln"><i class="mk">**</i><b>L8:</b><i class="mk">**</i> time every back end on the same unsampled traces.</span></div>
+<div class="row bullet"><span class="ln"><i class="mk">**</i><b>L9:</b><i class="mk">**</i> run /ploma:lit-review before writing related work.</span></div>
+</div>
+</div>
+<div class="win pdfwin" style="width:520px;height:740px">
+<div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><div class="title">paper_spec.md</div></div>
+<div class="page">
+<div class="h1"><span class="ln">Paper Spec: Tracing Agentic Workloads at Scale</span></div>
+<div class="meta"><span class="ln"><i class="mk">**</i><b>Status:</b><i class="mk">**</i> binding contract for /ploma:write</span></div>
+<div class="meta"><span class="ln"><i class="mk">**</i><b>Paper type:</b><i class="mk">**</i> Empirical study</span></div>
+<div class="h2"><span class="ln">Identity</span></div>
+<p><span class="ln">Hawser is a tracer for LLM agents that records the causal link from each model decision to the tool results it consumed, and on 1200 tasks across three agent frameworks it cuts median trace-query latency by 27.4% against an OpenTelemetry pipeline at 1.1 times the storage, for operators who debug failed agent runs.</span></p>
+<div class="h2"><span class="ln">Claims and evidence</span></div>
+<div class="claim"><span class="ln">C1</span><span class="ln">Hawser's trace model links each model decision to the tool results in its context, so a task's trace is a DAG rather than a tree of spans.</span></div>
+<div class="claim"><span class="ln">C2</span><span class="ln">Hawser's query planner answers causal questions by walking indexed edges backwards instead of scanning whole traces.</span></div>
+<div class="claim"><span class="ln">C3</span><span class="ln">Against an OpenTelemetry pipeline, Hawser cuts median trace-query latency by 27.4%.</span></div>
+<div class="claim"><span class="ln">C5</span><span class="ln">Hawser stores 1.1 times the bytes of the OpenTelemetry pipeline.</span></div>
+</div>
+</div>
+</body>
+</html>
