@@ -5,6 +5,8 @@ argument-hint: "[--rerun | --no-rerun]"
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), Bash(git rev-parse *), AskUserQuestion, Monitor
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma audit-reproducibility
 
 Arguments: `$ARGUMENTS`. `--rerun` offers to re-run the pipeline before the audit (Phase 1). `--no-rerun` never re-runs and never ends the turn waiting: `/ploma:review` passes it (review mode: no rerun). With `--no-rerun`, Phase 1 is skipped entirely; missing or stale results become a finding in the report (missing: every claim that needs them is UNMATCHED; stale: a WARN naming the newest results file and the newest `.tex` file), and the audit continues with Phase 2 against the results that exist.

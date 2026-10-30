@@ -5,6 +5,8 @@ argument-hint: "[file.tex | all]"
 allowed-tools: Read, Glob, Grep, Write, Agent, Bash(python3 *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma proofread
 
 Arguments: `$ARGUMENTS`. A `.tex` path reviews that file only. Empty or `all` reviews every `.tex` file under `document.root`.

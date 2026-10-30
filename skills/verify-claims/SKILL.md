@@ -5,6 +5,8 @@ argument-hint: "[file] [--source <path-or-url>]..."
 allowed-tools: Read, Glob, Grep, Write, Agent, Bash(python3 *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma verify-claims
 
 Arguments: `$ARGUMENTS`. A file path checks that file (a `.tex`, `.md` or text draft). Without one, check the manuscript: `document.main` and every `.tex` file under `document.root`, leaving out `*_suggestion.tex`. Each `--source <path-or-url>` adds a source pointer; repeat it for several.

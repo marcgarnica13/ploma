@@ -5,6 +5,8 @@ argument-hint: "[path] [--adversarial | --peer <venue> [--r2|--r3|--stress|--var
 allowed-tools: Read, Glob, Grep, Write, Agent, Skill, AskUserQuestion, Bash(python3 *), Bash(mkdir *), Bash(cp *), Bash(git stash create*), Bash(git status *), Bash(git diff *), Bash(pdfinfo *), Bash(pdftotext *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Adapted from Hugo Sant'Anna's clo-author (github.com/hugosantanna/clo-author),
      used with permission. Peer-review pipeline shape, disposition taxonomy, and
      revise-and-resubmit, stress and variance modes credit: Hugo Sant'Anna. -->

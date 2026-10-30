@@ -6,6 +6,8 @@ disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, AskUserQuestion, Bash(python3 *), Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git rev-parse *), Bash(git branch *), Bash(git switch *), Bash(git add *), Bash(git commit *), Bash(git remote *), Bash(git push -u origin *), Bash(gh pr create *), Bash(gh repo view *), Bash(command -v *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Ported from the traces harness commit skill (stage specific files, commit, PR); the
      0-100 score and surface-sync steps are replaced by the ploma commit gate and the doctor. -->
 
@@ -77,7 +79,7 @@ Without `--branch`, commit on the current branch. With `--branch <name>`: `git s
 
 ## Step 3: Stage specific paths
 
-Build the list from `git status --porcelain`: every modified, added, deleted or renamed path, and untracked paths one by one. Leave out `.claude/settings.local.json`, `.env` and other credential files, anything that looks like a secret or a large binary not already tracked, and files under `.ploma/`. Show the list (path and status) and the left-out paths with the reason.
+Build the list from `git status --porcelain`: every modified, added, deleted or renamed path, and untracked paths one by one. Leave out Claude Code's local settings file (`settings.local.json` in its project settings directory), `.env` and other credential files, anything that looks like a secret or a large binary not already tracked, and files under `.ploma/`. Show the list (path and status) and the left-out paths with the reason.
 
 Ask once with `AskUserQuestion`: "Commit these paths?" Options: "Commit them (Recommended)", "Let me adjust the list". Adjust on request. Without `AskUserQuestion`, commit the shown list.
 

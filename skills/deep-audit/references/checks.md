@@ -15,15 +15,20 @@ input, tool error) is reported as not run, never as clean.
 | `config.gate` | `gate.py check`: a required check missing or STALE, a FAIL entry | MAJOR |
 | `config.paths` | every path in `ploma.yaml` (document.main, document.root, build.bib_files, build.cwd, pipeline.run_from, pipeline.outputs_dir, literature.sources) exists | CRITICAL for document.main, else MAJOR |
 
-## Area 2: Rules and CLAUDE.md
+## Area 2: Rules and instructions file
+
+The paths come from `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json` (`instructions_file`, `rules_dir`,
+`learnings_target`) and `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json files` (the active host's list of
+ploma-owned files). "The host's rules" means every `<rules_dir>/*.md` when `rules_dir` is set; on Codex
+(`rules_dir` null) the rule bodies are inlined in the ploma section of the instructions file.
 
 | Check | What | Severity |
 |---|---|---|
-| `rules.paths` | every repo path named in every `.claude/rules/*.md`, generated `ploma-*` rules and hand-written project rules alike (backticked paths, `paths:` frontmatter globs), and in the CLAUDE.md span between the ploma markers exists; a glob must match at least one file. Placeholders such as `<outputs.dir>` are resolved from the config first. | MAJOR |
-| `rules.restated_fact` | a project rule that ploma did not generate (no generated-by line after its frontmatter), `.claude/rules/ploma-learnings.md` included, states a value `ploma.yaml` holds: the build engine, the bibliography tool, the venue or document class, the page budget, the main file. Quote the line; the fix deletes it or replaces it with "see ploma.yaml". Also the CLAUDE.md text outside the markers. | MAJOR |
+| `rules.paths` | every repo path named in the host's rules and instructions file, generated `ploma-*` rules and hand-written project rules alike (backticked paths, `paths:` frontmatter globs), the learnings target, and the instructions file span between the ploma markers exists; a glob must match at least one file. Placeholders such as `<outputs.dir>` are resolved from the config first. | MAJOR |
+| `rules.restated_fact` | a project rule that ploma did not generate (no generated-by line after its frontmatter), the learnings target included, states a value `ploma.yaml` holds: the build engine, the bibliography tool, the venue or document class, the page budget, the main file. Quote the line; the fix deletes it or replaces it with "see ploma.yaml". Also the instructions file text outside the markers. | MAJOR |
 | `rules.contradiction` | two rules, or a rule and `ploma.yaml`, disagree (a different engine, a different main file, a different outputs directory) | CRITICAL |
-| `rules.commands` | every `/ploma:<name>` named in a project rule or CLAUDE.md is a skill the plugin ships (Glob `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md`) and every flag named appears in that skill's `argument-hint` | MINOR |
-| `rules.markers` | exactly one ploma marker pair in CLAUDE.md, outside code fences | MAJOR |
+| `rules.commands` | every `/ploma:<name>` named in a project rule or the instructions file is a skill the plugin ships (Glob `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md`) and every flag named appears in that skill's `argument-hint` | MINOR |
+| `rules.markers` | exactly one ploma marker pair in the instructions file, outside code fences | MAJOR |
 
 The generated rules (with the generated-by line) restate config facts by design: that is not a finding. Drift between them and `ploma.yaml` is `config.drift`.
 
@@ -37,7 +42,7 @@ Scope: Markdown under `<outputs.dir>/`, excluding `session_logs/` (personal, git
 | `outputs.dangling_line` | a cited `path:line` whose file exists but has fewer lines than cited | MINOR |
 | `outputs.gate_artifacts` | every `artifact` in the gate file and the latest state events exists | MAJOR |
 | `outputs.ledger_format` | every non-header line under `## Entries` in `learnings.md` matches the ledger pattern in `${CLAUDE_PLUGIN_ROOT}/skills/learn/references/ledger-format.md` | MINOR |
-| `outputs.promoted_missing` | a ledger line marked `(promoted <date>)` whose rule line is absent from `.claude/rules/ploma-learnings.md` | MINOR |
+| `outputs.promoted_missing` | a ledger line marked `(promoted <date>)` whose rule line is absent from the learnings target | MINOR |
 
 Historical reports are records of what was true when written. A dangling path in an old dated
 section is MINOR and the fix is a note ("file since removed"), never a rewrite of the finding.

@@ -5,6 +5,8 @@ argument-hint: "[--clean]"
 allowed-tools: Read, Glob, Grep, Bash(python3 *), AskUserQuestion
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma compile
 
 Arguments: `$ARGUMENTS`. `--clean` forces a full rebuild: a `make` build command runs as `make -B` (make rebuilds every target), any other build runs `latexmk -c` first.

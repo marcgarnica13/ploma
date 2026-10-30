@@ -5,6 +5,8 @@ argument-hint: "<section title | sec:label | path> [--from-spec] [--merge]"
 allowed-tools: Read, Glob, Grep, Write, Edit, Bash(python3 *), AskUserQuestion
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma write
 
 Arguments: `$ARGUMENTS`. Everything that is not a flag is the section query: a `\section` title (case does not matter), a label such as `sec:intro`, or a `.tex` path under `document.root`. `--from-spec` drafts against `<outputs.dir>/paper_spec.md`. `--merge` applies an existing draft over the section (see Merge). The user's request in the conversation (shorter, a different emphasis, a new paragraph) is the brief for the draft.

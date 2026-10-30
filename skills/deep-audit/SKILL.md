@@ -1,10 +1,12 @@
 ---
 name: deep-audit
-description: Audit this project's ploma installation and cross-document consistency. Runs the doctor (drift between ploma.yaml and the generated rules, receipt, legacy harness), checks that every path named in .claude/rules/*.md and the CLAUDE.md ploma section exists, that no project rule restates a ploma.yaml fact, that reports under <outputs.dir>/ cite files that still exist, and runs the deterministic consistency pass on the manuscript. Four parallel agents, one per area, then triage; fixes only after approval, looping up to the configured cap. Never edits the manuscript. Use when the user says deep audit, audit the setup, find inconsistencies, check everything, or after broad changes and before a release or submission.
+description: Audit this project's ploma installation and cross-document consistency. Runs the doctor (drift between ploma.yaml and the generated rules, receipt, legacy harness), checks that every path named in the host's rules and instructions file (ploma section) exists, that no project rule restates a ploma.yaml fact, that reports under <outputs.dir>/ cite files that still exist, and runs the deterministic consistency pass on the manuscript. Four parallel agents, one per area, then triage; fixes only after approval, looping up to the configured cap. Never edits the manuscript. Use when the user says deep audit, audit the setup, find inconsistencies, check everything, or after broad changes and before a release or submission.
 argument-hint: "[--report-only]"
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Write, Edit, Agent, AskUserQuestion, Bash(python3 *), Bash(mkdir *), Bash(ls *), Bash(git status *)
 ---
+
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
 
 # ploma deep-audit
 
@@ -32,7 +34,14 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/receipt.py" --json compare
 
 A non-zero exit is a finding, not a stop (doctor exits 1 on NOT_READY, consistency on FAIL, gate on an incomplete gate, receipt on a hand-edited file). Exit 2 from any of them: report the error line and leave that area to its agent.
 
-Then list the inputs the agents need: Glob `.claude/rules/*.md`, the CLAUDE.md span between `<!-- ploma:begin -->` and `<!-- ploma:end -->`, and Glob `<outputs.dir>/**/*.md` without `session_logs/` and `.cache/`.
+Then list the inputs the agents need. The host's rules and instructions file come from the host script, never from a fixed path:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json files
+```
+
+From the first, take `name`, `instructions_file`, `rules_dir` and `learnings_target`. From the second, take the list under the active host's `name` (the ploma-owned files present). Add Glob `<rules_dir>/*.md` when `rules_dir` is set (hand-written rules too), the span of `instructions_file` between `<!-- ploma:begin -->` and `<!-- ploma:end -->`, the learnings target, and Glob `<outputs.dir>/**/*.md` without `session_logs/` and `.cache/`. Pass these paths to the agents.
 
 ## Phase 1: Four parallel agents
 
@@ -47,7 +56,7 @@ Spawn four agents in one message (Agent tool, `subagent_type: general-purpose`),
 | Agent | Area | Main checks |
 |---|---|---|
 | 1 | Config and project files | doctor findings in config, project-files, state, legacy-harness (drift, missing rules, receipt, gitignore, legacy conflicts); gate freshness |
-| 2 | Rules and CLAUDE.md | every path named in any `.claude/rules/*.md` (generated or hand-written) and the CLAUDE.md ploma section exists; no project rule restates a `ploma.yaml` fact; every `/ploma:` command named is an installed skill |
+| 2 | Rules and instructions file | every path named in the host's rules (every `<rules_dir>/*.md`, generated or hand-written, when `rules_dir` is set), the learnings target and the ploma section of the host's instructions file exists; no project rule restates a `ploma.yaml` fact; every `/ploma:` command named is an installed skill |
 | 3 | Outputs and reports | files cited by reports, plans, checkpoints and specs under `<outputs.dir>/` still exist; ledger lines follow the ledger format; state and gate artifacts exist |
 | 4 | Manuscript consistency | consistency findings with their manuscript location; numbers or names that disagree between the spec, the passport and the manuscript |
 
@@ -60,7 +69,7 @@ For each returned finding:
 1. Re-check it yourself with one Read, Grep or Glob (the cited path exists or not, the quoted text is in the file). A finding whose Current text is not in the cited file is dropped and counted.
 2. Classify: genuine, or false alarm (with the reason, from the reference's false-alarm list or your check).
 3. Deduplicate findings that two agents report from different sides.
-4. Assign the fix route: `auto` (a fix this skill may apply after approval: a project rule, the CLAUDE.md text outside the ploma markers, a report or plan under `<outputs.dir>/`, the ledger), `onboard` (generated rules, the CLAUDE.md ploma section, `.gitignore`, the receipt: fixed by re-running `/ploma:onboard`), `config` (a change to `ploma.yaml`, applied only after approval), or `manuscript` (`.tex` or `.bib`: report only, name the skill).
+4. Assign the fix route: `auto` (a fix this skill may apply after approval: a project rule, the instructions file text outside the ploma markers, a report or plan under `<outputs.dir>/`, the ledger), `onboard` (generated rules or agents, the instructions file's ploma section, `.gitignore`, the receipt: fixed by re-running `/ploma:onboard`), `config` (a change to `ploma.yaml`, applied only after approval), or `manuscript` (`.tex` or `.bib`: report only, name the skill).
 
 Write the report `<outputs.dir>/deep_audit_<YYYY-MM-DD>.md` with the header in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/report-header.md` (title "Deep Audit"). If it exists, read it and add a `## Round N` section rather than overwrite it.
 
@@ -77,7 +86,7 @@ Write the report `<outputs.dir>/deep_audit_<YYYY-MM-DD>.md` with the header in `
 
 | # | Severity | Area | Location | Issue | Route | Status |
 |---|---|---|---|---|---|---|
-| 1 | MAJOR | rules | .claude/rules/project.md:4 | restates the page budget | auto | open |
+| 1 | MAJOR | rules | <rules_dir>/project.md:4 | restates the page budget | auto | open |
 
 <each genuine finding in the four-field format, numbered to match the table>
 

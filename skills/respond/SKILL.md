@@ -5,6 +5,8 @@ argument-hint: "<report-path-or-dir> [revised-manuscript] [--since <git-ref>] [-
 allowed-tools: Read, Glob, Grep, Write, Edit, Agent, Bash(python3 *), Bash(mktemp *), Bash(pdftotext *), Bash(pandoc *), Bash(docx2txt *), Bash(command -v *), Bash(git diff *), AskUserQuestion
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Ported from the traces harness respond-to-referees skill, which descends from pedrohcgs/claude-code-my-workflow (see UPSTREAMS.md). The source carries no attribution comment. -->
 
 # ploma respond

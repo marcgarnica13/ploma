@@ -5,6 +5,8 @@ argument-hint: "<topic, paper title or research question> [--no-verify]"
 allowed-tools: Read, Glob, Grep, Write, Agent, WebSearch, WebFetch, Bash(python3 *), Bash(mkdir *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Ported from the traces harness lit-review skill, which descends from pedrohcgs/claude-code-my-workflow (see UPSTREAMS.md). The source carries no attribution comment. -->
 
 # ploma lit-review

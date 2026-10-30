@@ -5,6 +5,8 @@ argument-hint: "[topic or file]"
 allowed-tools: Read, Glob, Grep, Write, AskUserQuestion, Bash(python3 *), Bash(mkdir *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Interaction pattern from mattpocock/skills grill-me (one question at a time, a recommended answer, facts looked up by the agent); lenses after ReviewerToo. See UPSTREAMS.md. -->
 
 # ploma grill

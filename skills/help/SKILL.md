@@ -5,11 +5,13 @@ argument-hint: "[question]"
 allowed-tools: Read, Glob, Bash(python3 *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma help
 
 Answer the user's question (`$ARGUMENTS`) from this page. With no question, give the short tour below. This is a router, not a manual: point to the skill, do not explain its internals.
 
-ploma is a Claude Code plugin for writing, validating, reviewing and formatting LaTeX academic papers. A repo declares its facts once in `ploma.yaml`, and every skill, hook and rule reads them from there.
+ploma is a plugin for Claude Code and Codex for writing, validating, reviewing and formatting LaTeX academic papers. A repo declares its facts once in `ploma.yaml`, and every skill, hook and rule reads them from there.
 
 When a `ploma.yaml` exists, add the recommended next stage:
 
@@ -59,14 +61,16 @@ Without one, the next step is `/ploma:onboard`.
 - `/ploma:respond <report-path-or-dir> [revised-manuscript] [--since <git-ref>] [--audit <draft>] [--no-verify]`: point-by-point response to referee reports in any format (reviewer numbers read from the content), every concern classified, location claims fact-checked; `--audit` checks an existing draft.
 - `/ploma:checkpoint [slug] [--no-learn]`: save a structured snapshot (plan, decisions, path:line pointers, open questions, next actions) under `<outputs.dir>/checkpoints/`; learnings reach the ledger only after your yes.
 - `/ploma:compress-session [slug]`: distil the session into a note under `<outputs.dir>/session_logs/` before auto-compaction, with what was discarded as noise.
-- `/ploma:learn [note | --promote [entry] | --skill <name>]`: append a learning to the ledger; `--promote` writes approved entries to `.claude/rules/ploma-learnings.md`; `--skill` drafts a project skill after approval.
-- `/ploma:deep-audit [--report-only]`: audit the ploma installation (config drift, rule and CLAUDE.md paths, restated config facts, dangling report references, manuscript consistency) with four parallel agents; fixes only after approval, never the manuscript.
+- `/ploma:learn [note | --promote [entry] | --skill <name>]`: append a learning to the ledger; `--promote` writes approved entries to the host's learnings target; `--skill` drafts a project skill after approval.
+- `/ploma:deep-audit [--report-only]`: audit the ploma installation (config drift, paths in the host's rules and instructions file, restated config facts, dangling report references, manuscript consistency) with four parallel agents; fixes only after approval, never the manuscript.
 - `/ploma:commit [message] [--branch <name>] [--no-pr]`: commit behind the gate; refreshes compile, the structural bibliography check and consistency when stale, stops on a required FAIL unless you write `commit anyway: <reason>`, stages paths explicitly, asks before any push or pull request.
 - `/ploma:help`: this page.
 
 Every lifecycle skill is installed. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/gate.py" check` shows whether the required checks have passed without committing.
 
 ## Install and update
+
+Claude Code:
 
 ```
 gh auth login && gh auth setup-git
@@ -79,6 +83,19 @@ export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
 On a host without SSH keys for GitHub, the first two lines set up HTTPS; with SSH keys, skip them.
 
 Update: `/plugin marketplace update ploma`, then `/reload-plugins`.
+
+Codex:
+
+```
+codex plugin marketplace add marcgarnica13/ploma
+codex plugin add ploma@ploma
+```
+
+Then open /hooks in Codex and trust ploma's hooks, and run `$ploma:onboard`. Update: `codex plugin marketplace upgrade ploma`, then reinstall with `codex plugin add ploma@ploma`. On Codex every skill is typed `$ploma:<name>` where this page says `/ploma:<name>`.
+
+## Switching hosts
+
+ploma runs on one host at a time. To move a repo to the other host, run onboard again there. The old host's files are left in place. The doctor reports `host_mismatch` until you do.
 
 ## Testing
 

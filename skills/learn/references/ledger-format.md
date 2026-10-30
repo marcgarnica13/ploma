@@ -28,7 +28,8 @@ Pattern (one entry per line):
 ## Promoted entries
 
 `/ploma:learn --promote` appends ` (promoted <YYYY-MM-DD>)` to each entry whose rule text it wrote
-into `.claude/rules/ploma-learnings.md`. An entry without that suffix is unpromoted. The entry text
+into the host's learnings target (`.claude/rules/ploma-learnings.md` on Claude Code, the learnings
+block in `AGENTS.md` on Codex). An entry without that suffix is unpromoted. The entry text
 itself never changes, so the ledger stays the audit trail.
 
 ```
@@ -48,9 +49,9 @@ Route a learning to the cheapest place that works:
 
 1. A check a script or hook can make: say so and suggest the check instead of a ledger line.
 2. The ledger (default landing place): `/ploma:learn <note>`.
-3. The project rule `.claude/rules/ploma-learnings.md`: only through `/ploma:learn --promote`, with
+3. The host's learnings target: only through `/ploma:learn --promote`, with
    approval, for a learning that keeps being missed although it is in the ledger. Rules load every
    session, so they cost context; keep them few.
-4. A project skill under `.claude/skills/<name>/`: `/ploma:learn --skill <name>`, for a repeatable
+4. A project skill under the host's project skills directory: `/ploma:learn --skill <name>`, for a repeatable
    multi-step procedure.
 5. Nowhere: a stale or one-off lesson is deleted.

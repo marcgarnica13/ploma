@@ -5,6 +5,8 @@ argument-hint: "<topic, phenomenon or dataset description> [--no-verify]"
 allowed-tools: Read, Glob, Grep, Write, Skill, Agent, WebSearch, WebFetch, Bash(python3 *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Ported from the traces harness research-ideation skill, which descends from pedrohcgs/claude-code-my-workflow (see UPSTREAMS.md). The source carries no attribution comment. -->
 
 # ploma brainstorm
@@ -29,13 +31,17 @@ No `ploma.yaml` in the repo root: say "ploma is not set up here. Run /ploma:onbo
 
 ## Open exploration (superpowers, when enabled)
 
-superpowers is enabled when the session's skill list shows `superpowers:brainstorming`, or when any of `~/.claude/settings.json`, `.claude/settings.json` and `.claude/settings.local.json` has an `enabledPlugins` key starting with `superpowers@` set to `true`.
+superpowers is enabled when the session's skill list shows `superpowers:brainstorming`, or when this prints `"installed": true` (it reads the active host's plugin settings):
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json superpowers
+```
 
 - Enabled: after Context and before the research questions, invoke `superpowers:brainstorming` with the Skill tool, with the input and this goal: "explore research directions for a paper; the output is a set of research questions, not a software design". Use it only for the conversation and the play-back of what the user wants: the problem, the user's goals and constraints, and the directions worth pursuing.
   - Exit: stop before its "Size the Work" step. Write no design document, make no commit, spawn no builder-check subagent, and offer no visual companion or spike. Its HARD-GATE and its `superpowers:writing-plans` step do not apply: the ideation report below is the output.
   - At every fork, ploma's rule wins over superpowers' "ask them to describe first": offer options with the recommended one first and its reason.
   - Carry its outcome (the framing the user settled on, constraints, directions ruled in or out) into the research questions.
-- Not enabled: say "superpowers is not enabled; running the ideation flow on its own (install it with /plugin install superpowers@claude-plugins-official)." and go on.
+- Not enabled: say "superpowers is not enabled; running the ideation flow on its own (on Claude Code, install it with /plugin install superpowers@claude-plugins-official)." and go on.
 
 ## Research questions
 

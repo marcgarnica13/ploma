@@ -5,6 +5,8 @@ argument-hint: "[--budget N] [--presubmit]"
 allowed-tools: Read, Glob, Grep, Write, Bash(python3 *), Bash(chktex *), Bash(lacheck *), Bash(texcount *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma format
 
 Arguments: `$ARGUMENTS`. `--budget N` replaces `venue.page_budget` for this run. `--presubmit` adds the pre-submission checks.

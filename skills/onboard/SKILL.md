@@ -6,6 +6,8 @@ disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash(python3 *), Write, Edit, AskUserQuestion
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 # ploma onboard
 
 Arguments: `$ARGUMENTS`. `--dry-run` stops after the proposal and writes nothing. `--yes` skips the single approval question.
@@ -13,6 +15,14 @@ Arguments: `$ARGUMENTS`. `--dry-run` stops after the proposal and writes nothing
 Work in the repo root (the current directory). Every script call below is part of the audit record: quote its JSON or text output in a fenced block, under the step it belongs to, in the reply the user reads. Short direct sentences. At every fork, offer options with the recommended one first.
 
 If `AskUserQuestion` is unavailable (a non-interactive session), take each gap's recommended answer, mark it "assumed" in the proposal, and write nothing unless `--yes` was given.
+
+## 0. Host
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json
+```
+
+Quote the JSON. Say `Onboarding for <display>` as the first line of the reply. Pass `--host <name>` to every `project_files.py` call below. The host's files (instructions file, rules or agents, project skills directory) come from this JSON; never assume Claude Code paths.
 
 ## 1. Refuse or route
 
@@ -63,29 +73,38 @@ If the inventory's `legacy_harness` list is non-empty, print it as a retirement 
 
 ## 6. Propose
 
+Absorption run only (the switch check reads `ploma.yaml` and the receipt): first run
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --host <name> --json switch
+```
+
+When `notice` is not null, print it verbatim before the proposal. Nothing is deleted or moved; the run proceeds as a normal run for this host.
+
 Show, in this order:
 
 1. The full proposed `ploma.yaml` as a YAML block.
 2. The plan table, from the proposal (nothing is written; the proposal goes on stdin):
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --config - --json plan <<'PLOMA_YAML'
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --host <name> --config - --json plan <<'PLOMA_YAML'
    <the proposed ploma.yaml>
    PLOMA_YAML
    ```
 
-   Quote the JSON, then render a table of its `rows` with columns path, mode, action. Under it, show the `diff` of every `overwrite`, `merge` and `remove` row (a generated rule that will be removed is shown before approval). For every entry in `withheld`, name its `path` (ploma will not write it) and quote its `line` for the user to merge by hand.
+   Quote the JSON, then render a table of its `rows` with columns path, mode, action. Under it, show the `diff` of every `overwrite`, `merge` and `remove` row (a generated rule that will be removed is shown before approval). For every entry in `withheld`, print: "`<path>` already has a shell_environment_policy table; add this line to it by hand: `<line>`". ploma does not write that file.
 
-   With `pipeline.enabled: true` the plan has a row for `.claude/skills/analysis-pipeline/SKILL.md` (created-once): a project skill for running and extending the pipeline, rendered from the `pipeline` block (language, run directory, rerun command, outputs, metric keys, env contract, gotchas, and the stage chain from the optional `pipeline.stages` list). Say in one line what it is and that it is written once and then belongs to the user. When `pipeline.stages` is unset, the skill says the stage chain is not declared; offer to add the ordered stage names to the proposal.
-3. The settings suggestion, unless step 5 withheld it:
+   With `pipeline.enabled: true` the plan has a row for `<project_skills_dir>/analysis-pipeline/SKILL.md` (created-once): a project skill for running and extending the pipeline, rendered from the `pipeline` block (language, run directory, rerun command, outputs, metric keys, env contract, gotchas, and the stage chain from the optional `pipeline.stages` list). Say in one line what it is and that it is written once and then belongs to the user. When `pipeline.stages` is unset, the skill says the stage chain is not declared; offer to add the ordered stage names to the proposal.
+3. The settings suggestion, only when the host JSON has `settings_suggestion: true` and step 5 did not withhold it:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --config - --json settings <<'PLOMA_YAML'
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --host <name> --config - --json settings <<'PLOMA_YAML'
    <the proposed ploma.yaml>
    PLOMA_YAML
    ```
 
    Show it as a JSON block for `.claude/settings.json` and say: "plugins cannot grant permissions; add this yourself if you want it." Never write it.
+4. The status line, only when the host JSON has `statusline: true`: offer `${CLAUDE_PLUGIN_ROOT}/templates/statusline.sh` in one line; its header comment says how to install it. Never write it.
 
 `--dry-run`: stop here. Say "dry run: nothing written." and name the next step (`/ploma:onboard` without `--dry-run`).
 
@@ -97,10 +116,12 @@ Otherwise ask once with `AskUserQuestion`: "Write ploma.yaml and the project fil
 2. Apply the project files:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --json apply
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --host <name> --json apply
    ```
 
    Quote the JSON. Rows with `"written": true` were written; the receipt goes to `<outputs.dir>/ploma-receipt.json`. A non-zero exit: quote the error and stop.
+3. Say that `.ploma/plugin` was created (or refreshed): apply links it to the plugin root so hooks and agents find the scripts.
+4. Host `codex` only: print "Codex runs plugin hooks only after you trust them: open /hooks in the Codex TUI and enable ploma's hooks, then restart the session."
 
 ## 8. Verify
 
@@ -119,6 +140,6 @@ Quote the doctor's first two lines (verdict and counts) and every FAIL and WARN 
 - Run every `inventory.py` call with `--main <document.main from ploma.yaml>`.
 - Compare `propose` with the current `ploma.yaml`, key by key. Show a short table: key, ploma.yaml, detected. A key present in `ploma.yaml` is the user's: never change it, even when detection differs. Only keys missing from `ploma.yaml` may be added.
 - Ask only the gaps whose key is missing from `ploma.yaml`. A key present with null (for example `venue.page_budget: null`) is a deliberate answer: never re-ask it.
-- Plan from the current file plus the additions. With no additions, run `project_files.py --json plan` without `--config`.
+- Plan from the current file plus the additions. With no additions, run `project_files.py --host <name> --json plan` without `--config`.
 - Step 7: add the missing keys with Edit, keeping comments and order. Never rewrite `ploma.yaml` with Write. No additions and no plan rows other than `unchanged`: say "nothing to absorb", skip step 7 and go to step 8.
 - The plan never overwrites hand-edited files: rows marked `skip_hand_edited` are reported, not written.

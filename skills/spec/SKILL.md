@@ -5,6 +5,8 @@ argument-hint: "[topic | start fresh] [--no-verify]"
 allowed-tools: Read, Glob, Grep, Write, Edit, AskUserQuestion, Agent, Bash(python3 *), Bash(mkdir *)
 ---
 
+Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over).
+
 <!-- Ported from the traces harness interview-me skill, which descends from pedrohcgs/claude-code-my-workflow; the binding contract follows the SNL-UCSB paper-writing-skill project_context.md idea (see UPSTREAMS.md). The source carries no attribution comment. -->
 
 # ploma spec

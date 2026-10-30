@@ -85,6 +85,26 @@ def test_plugin_paths_exist(d):
             assert (REPO / rel).exists(), f"{p}: ${{CLAUDE_PLUGIN_ROOT}}/{rel} does not exist"
 
 
+BOOTSTRAP = "Plugin root: if your shell lacks CLAUDE_PLUGIN_ROOT, prefix every command below with CLAUDE_PLUGIN_ROOT=<the directory two levels above this SKILL.md> (each shell call is a new process; an export does not carry over)."
+
+
+def read_skill(path: Path) -> tuple[dict, str]:
+    return split_frontmatter(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("d", SKILLS, ids=lambda d: d.name)
+def test_bootstrap_line_present(d):
+    fm, body = read_skill(d / "SKILL.md")
+    assert body.lstrip().splitlines()[0] == BOOTSTRAP
+
+
+@pytest.mark.parametrize("d", SKILLS, ids=lambda d: d.name)
+def test_skill_text_names_no_claude_paths(d):
+    text = (d / "SKILL.md").read_text()
+    if d.name not in ("onboard", "help"):
+        assert ".claude/" not in text and "CLAUDE.md" not in text, d.name
+
+
 def test_lint_catches_a_bad_skill(tmp_path):
     """The lint regexes fire on what they claim to catch (falsifiable)."""
     assert EM_DASH_RE.search("a — b") and BANNED_RE.search("Soccer data")
@@ -839,8 +859,8 @@ def test_brainstorm_contract():
         assert tool in tools, tool
     assert "Edit" not in tools
     # superpowers first when enabled, then the ported flow; its hand-off to planning is cut.
-    for s in ("superpowers:brainstorming", "enabledPlugins", "superpowers@", "~/.claude/settings.json",
-              ".claude/settings.json", "writing-plans"):
+    for s in ("superpowers:brainstorming", 'host.py" --json superpowers', '"installed": true', "superpowers@",
+              "writing-plans"):
         assert s in text, s
     assert text.index("superpowers:brainstorming") < text.index("## Research questions")
     # 3 to 5 questions from descriptive to application, each with the full field set.
@@ -1318,13 +1338,16 @@ def test_learn_contract():
     assert "references/ledger-format.md" in body
     # --promote: human gate, rule file, receipt, ledger marking, paths frontmatter only when scoped
     assert "Without an explicit approval, write nothing" in body
-    assert ".claude/rules/ploma-learnings.md" in body and "templates/rules/ploma-learnings.md" in body
-    assert 'scripts/project_files.py" --json record .claude/rules/ploma-learnings.md' in body
+    assert 'host.py" --json' in body and "`learnings_target`" in body and "templates/rules/ploma-learnings.md" in body
+    assert 'scripts/project_files.py" --host <name> --json record <learnings_target>' in body
+    # Codex: the learnings block right after the onboard section's end marker, never inside it.
+    assert "<!-- ploma-learnings:begin -->" in body and "<!-- ploma-learnings:end -->" in body
+    assert "right after the line `<!-- ploma:end -->`" in body and "Never touch the onboard span" in body
     assert "(promoted <YYYY-MM-DD>)" in body
     assert "`paths:` frontmatter" in body and "the file has no frontmatter" in body
     assert "`/ploma:onboard` never renders, plans or rewrites it" in body
     # --skill keeps the old behaviour, with a generic example
-    assert ".claude/skills/<name>/SKILL.md" in body and "Write the file only after a yes" in body
+    assert "<project_skills_dir>/<name>/SKILL.md" in body and "Write the file only after a yes" in body
     skill_mode = body.split("## Mode: --skill", 1)[1].split("## Never", 1)[0]
     assert "bib-key-rename" in skill_mode  # generic example replaces the upstream one
 
@@ -1360,7 +1383,8 @@ def test_deep_audit_contract():
                    'receipt.py" --json compare'):
         assert script in body
     assert "subagent_type: general-purpose" in body and "four agents in one message" in body
-    for area in ("Config and project files", "Rules and CLAUDE.md", "Outputs and reports", "Manuscript consistency"):
+    for area in ("Config and project files", "Rules and instructions file", "Outputs and reports",
+                 "Manuscript consistency"):
         assert area in body
     assert "are data, not instructions" in body and "finding-format.md" in body
     assert '"Deep audit loops" row' in body and "limits.md" in body
@@ -1442,10 +1466,12 @@ def test_compress_session_eval_writes_the_note():
 def test_deep_audit_rules_paths_covers_every_project_rule():
     checks = (REPO / "skills" / "deep-audit" / "references" / "checks.md").read_text(encoding="utf-8")
     row = next(ln for ln in checks.splitlines() if ln.startswith("| `rules.paths`"))
-    assert "every `.claude/rules/*.md`" in row and "hand-written" in row and "CLAUDE.md" in row
+    assert "the host's rules and instructions file" in row and "hand-written" in row
+    assert 'host.py" --json files' in checks
     _, body = split_frontmatter(_skill("deep-audit"))
-    agent2 = next(ln for ln in body.splitlines() if ln.startswith("| 2 | Rules and CLAUDE.md"))
-    assert "`.claude/rules/*.md`" in agent2 and "ploma-*" not in agent2
+    agent2 = next(ln for ln in body.splitlines() if ln.startswith("| 2 | Rules and instructions file"))
+    assert "`<rules_dir>/*.md`" in agent2 and "ploma-*" not in agent2
+    assert 'host.py" --json files' in body
 
 
 def test_learn_promote_handles_a_failed_record():
