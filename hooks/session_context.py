@@ -67,8 +67,11 @@ def _early_exit_if_no_config() -> tuple[str, str]:
             return raw, d
         if "--subagent" not in sys.argv[1:] and _has_tex(d):
             event = data.get("hook_event_name") if isinstance(data.get("hook_event_name"), str) else "SessionStart"
+            line = ONBOARD_LINE
+            if any(os.environ.get(k) for k in ("CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION", "PLUGIN_ROOT")):
+                line = line.replace("/ploma:", "$ploma:")
             sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": event,
-                                                               "additionalContext": ONBOARD_LINE}}) + "\n")
+                                                               "additionalContext": line}}) + "\n")
     except Exception:
         pass
     sys.exit(0)
@@ -140,23 +143,24 @@ def _resume_block(root: Path, cfg: dict, source: str) -> str:
     return "\n".join(lines)
 
 
-def _fit(head: str, status: str, resume: str, cap: int = CAP) -> str:
-    """Join blocks under cap: shrink status first, then resume. head (rules + project) is never cut."""
+def _fit(head: str, status: str, resume: str, cap: int = CAP, host: str = "") -> str:
+    """Join blocks under cap: shrink status first, then resume. head (rules + project) and the host
+    block (placed after status) are never cut."""
     def join(*parts: str) -> str:
         return "\n\n".join(p for p in parts if p)
 
     marker = "\n[truncated]"
-    text = join(head, status, resume)
+    text = join(head, status, host, resume)
     if len(text) < cap:
         return text
-    room = cap - len(join(head, "", resume)) - 2 - len(marker) - 1
+    room = cap - len(join(head, host, resume)) - 2 - len(marker) - 1
     status = status[:room] + marker if room > 40 else ""
-    text = join(head, status, resume)
+    text = join(head, status, host, resume)
     if len(text) < cap:
         return text
-    room = cap - len(head) - 2 - len(marker) - 1
+    room = cap - len(join(head, status, host)) - 2 - len(marker) - 1
     resume = resume[:room] + marker if room > 40 else ""
-    return join(head, resume)
+    return join(head, status, host, resume)
 
 
 def _plugin_paths(plugin_root: Path) -> str:
@@ -165,12 +169,29 @@ def _plugin_paths(plugin_root: Path) -> str:
     return f"ploma root: {base}\nploma scripts: {base / 'scripts'}"
 
 
+def host_block(host, plugin_root: Path) -> str:
+    """The eager host block rules/host/<host.name>.md (Codex only today), else ""."""
+    try:
+        return (Path(plugin_root) / "rules" / "host" / f"{host.name}.md").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path) -> str:
     root = Path(root)
     if not hu.has_config(root):
         return "" if subagent or not _has_tex(str(root)) else ONBOARD_LINE
     hu.add_scripts_path(Path(plugin_root))
+    import host
     import ploma_config
+    import receipt
+    h = host.detect(os.environ, root)
+    try:
+        host.ensure_plugin_link(root, plugin_root)
+        host.write_host_json(root, h, plugin_root, receipt.plugin_version())
+    except OSError:
+        pass
+    block = host_block(h, plugin_root)
     rules = eager_rules(plugin_root)
     try:
         cfg = ploma_config.load(root)
@@ -181,7 +202,7 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
         return text + "\n" + _plugin_paths(plugin_root) if subagent else text
     head = rules + "\n\n## ploma project\n" + ploma_config.summary(cfg)
     if subagent:
-        return head + "\n" + _plugin_paths(plugin_root)
+        return "\n\n".join(p for p in (head + "\n" + _plugin_paths(plugin_root), block) if p)
     try:
         status = _status_block(root, cfg)
     except Exception as exc:  # noqa: BLE001 - the rules and project block must survive
@@ -190,7 +211,7 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
         resume = _resume_block(root, cfg, source) if source in ("compact", "resume") else ""
     except Exception as exc:  # noqa: BLE001
         resume = f"## Resuming\nresume information unavailable: {exc}"
-    return _fit(head, status, resume)
+    return _fit(head, status, resume, host=block)
 
 
 @hu.fail_open

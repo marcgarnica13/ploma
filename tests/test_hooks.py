@@ -104,12 +104,73 @@ def test_scripts_run_with_config(onboarded_sample, repo_root, tmp_path):
     assert (onboarded_sample / ".ploma" / "pre-compact-state.json").is_file()
 
 
+@pytest.mark.parametrize("name,kind", [("Bash", "shell"), ("Write", "edit"), ("Edit", "edit"), ("MultiEdit", "edit"),
+    ("apply_patch", "edit"), ("Task", "spawn"), ("Agent", "spawn"), ("collaborationspawn_agent", "spawn"),
+    ("collaborationwait_agent", "other"), ("Read", "other"), (None, "other")])
+def test_classify_tool(name, kind):
+    assert hu.classify_tool(name) == kind
+
+
+def test_apply_patch_tex_recommends_compile(onboarded_sample, capsys):
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "apply_patch", "cwd": str(onboarded_sample),
+               "tool_input": {"file_path": str(onboarded_sample / "main.tex")}}
+    verify_reminder.main(json.dumps(payload), root=onboarded_sample)
+    assert "/ploma:compile" in capsys.readouterr().out
+
+
+def test_apply_patch_without_file_path_is_silent(onboarded_sample, capsys):
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "apply_patch", "cwd": str(onboarded_sample),
+               "tool_input": {"command": "*** Begin Patch ..."}}
+    assert verify_reminder.main(json.dumps(payload), root=onboarded_sample) == 0 and capsys.readouterr().out == ""
+
+
+def test_read_tool_is_ignored_by_both_post_tool_hooks(onboarded_sample, capsys, monkeypatch):
+    monkeypatch.setenv("PLOMA_CONTEXT_MAX_TOOL_CALLS", "4")
+    cache_path = onboarded_sample / ".ploma" / "context-monitor-cache.json"
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "Read", "cwd": str(onboarded_sample),
+               "tool_input": {"file_path": str(onboarded_sample / "main.tex")}}
+    assert verify_reminder.main(json.dumps(payload), root=onboarded_sample) == 0
+    assert capsys.readouterr().out == ""
+    assert not (onboarded_sample / ".ploma" / "verify-reminder-cache.json").exists()
+    context_monitor.main(_payload(onboarded_sample, tool_name="Bash"), onboarded_sample)
+    assert json.loads(cache_path.read_text())["tool_calls"] == 1
+    assert context_monitor.main(json.dumps(payload), onboarded_sample) == 0
+    assert capsys.readouterr().out == ""
+    assert json.loads(cache_path.read_text())["tool_calls"] == 1
+    for edit in ("Edit", "apply_patch"):  # edits are not counted by the monitor either
+        context_monitor.main(_payload(onboarded_sample, tool_name=edit), onboarded_sample)
+    assert json.loads(cache_path.read_text())["tool_calls"] == 1
+
+
+def test_context_monitor_counts_codex_spawn(onboarded_sample, monkeypatch):
+    monkeypatch.setenv("PLOMA_CONTEXT_MAX_TOOL_CALLS", "400")
+    cache_path = onboarded_sample / ".ploma" / "context-monitor-cache.json"
+    context_monitor.main(_payload(onboarded_sample, tool_name="Task"), onboarded_sample)
+    assert json.loads(cache_path.read_text())["tool_calls"] == 1
+    context_monitor.main(_payload(onboarded_sample, tool_name="collaborationspawn_agent"), onboarded_sample)
+    assert json.loads(cache_path.read_text())["tool_calls"] == 2
+    context_monitor.main(_payload(onboarded_sample, tool_name="collaborationwait_agent"), onboarded_sample)
+    assert json.loads(cache_path.read_text())["tool_calls"] == 2
+
+
+def test_no_state_dir_without_config(tmp_path, repo_root):
+    (tmp_path / "main.tex").write_text(r"\documentclass{article}")
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    r = subprocess.run([sys.executable, str(repo_root / "hooks" / "session_context.py")],
+                       input=_payload(tmp_path, hook_event_name="SessionStart", source="startup"),
+                       capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
+    assert r.returncode == 0 and "onboard" in r.stdout
+    assert not (tmp_path / ".ploma").exists()
+
+
 def test_hooks_json_wires_all_events(repo_root):
     h = json.loads((repo_root / "hooks/hooks.json").read_text())["hooks"]
     assert set(h) == {"SessionStart", "SubagentStart", "PreCompact", "PostToolUse", "Stop"}
-    post = {e["matcher"]: e["hooks"][0]["command"] for e in h["PostToolUse"]}
-    assert post["Bash|Task|Agent"].endswith('hooks/context_monitor.py"')
-    assert post["Write|Edit"].endswith('hooks/verify_reminder.py"')
+    assert all("matcher" not in e for e in h["PostToolUse"])
+    post = [e["hooks"][0]["command"] for e in h["PostToolUse"]]
+    assert post[0].endswith('hooks/context_monitor.py"')
+    assert post[1].endswith('hooks/verify_reminder.py"')
     assert h["PreCompact"][0]["hooks"][0]["command"].endswith('hooks/pre_compact.py"')
     assert h["Stop"][0]["hooks"][0]["command"].endswith('hooks/log_reminder.py"')
     for entries in h.values():
@@ -192,7 +253,7 @@ def _transcript(tmp_path, nbytes):
 def test_context_monitor_nudges_at_threshold(sample_paper, tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PLOMA_CONTEXT_WINDOW_TOKENS", "1000")
     tr = _transcript(tmp_path, 4 * 420)  # 42 %
-    assert context_monitor.main(_payload(sample_paper, transcript_path=tr), sample_paper) == 0
+    assert context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr), sample_paper) == 0
     out = json.loads(capsys.readouterr().out)
     assert "/ploma:checkpoint" in out["systemMessage"]
     assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
@@ -207,21 +268,21 @@ def test_context_monitor_nudges_at_threshold(sample_paper, tmp_path, capsys, mon
 def test_context_monitor_throttle_and_dedupe(sample_paper, tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PLOMA_CONTEXT_WINDOW_TOKENS", "1000")
     tr = _transcript(tmp_path, 4 * 420)
-    context_monitor.main(_payload(sample_paper, transcript_path=tr), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr), sample_paper)
     capsys.readouterr()
     tr = _transcript(tmp_path, 4 * 560)  # 56 %, but within 60 s
-    context_monitor.main(_payload(sample_paper, transcript_path=tr), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr), sample_paper)
     assert capsys.readouterr().out == ""
     cache_path = sample_paper / ".ploma" / "context-monitor-cache.json"
     cache = json.loads(cache_path.read_text())
     cache["last_check_time"] = time.time() - 61
     cache_path.write_text(json.dumps(cache))
-    context_monitor.main(_payload(sample_paper, transcript_path=tr), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr), sample_paper)
     assert "/ploma:checkpoint" in capsys.readouterr().out
     cache = json.loads(cache_path.read_text())
     cache["last_check_time"] = 0
     cache_path.write_text(json.dumps(cache))
-    context_monitor.main(_payload(sample_paper, transcript_path=tr), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr), sample_paper)
     assert capsys.readouterr().out == ""  # 40 and 55 already shown
 
 
@@ -231,27 +292,27 @@ def test_context_monitor_high_thresholds_not_throttled(sample_paper, tmp_path, c
     cache.mkdir()
     (cache / "context-monitor-cache.json").write_text(json.dumps(
         {"shown_checkpoint": [40, 55, 65], "last_check_time": time.time()}))
-    context_monitor.main(_payload(sample_paper, transcript_path=_transcript(tmp_path, 4 * 850)), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=_transcript(tmp_path, 4 * 850)), sample_paper)
     assert "soon" in json.loads(capsys.readouterr().out)["systemMessage"]
-    context_monitor.main(_payload(sample_paper, transcript_path=_transcript(tmp_path, 4 * 950)), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=_transcript(tmp_path, 4 * 950)), sample_paper)
     msg = json.loads(capsys.readouterr().out)
     assert "full quality" in msg["systemMessage"] and "/ploma:status" in msg["hookSpecificOutput"]["additionalContext"]
-    context_monitor.main(_payload(sample_paper, transcript_path=_transcript(tmp_path, 4 * 960)), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=_transcript(tmp_path, 4 * 960)), sample_paper)
     assert capsys.readouterr().out == ""
 
 
 def test_context_monitor_tool_call_fallback(sample_paper, capsys, monkeypatch):
     monkeypatch.setenv("PLOMA_CONTEXT_MAX_TOOL_CALLS", "4")
-    context_monitor.main(_payload(sample_paper), sample_paper)   # 1 of 4 calls: 25 %, no nudge
+    context_monitor.main(_payload(sample_paper, tool_name="Bash"), sample_paper)   # 1 of 4 calls: 25 %, no nudge
     assert capsys.readouterr().out == ""
-    context_monitor.main(_payload(sample_paper), sample_paper)   # 50 % but throttled (within 60 s)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash"), sample_paper)   # 50 % but throttled (within 60 s)
     assert capsys.readouterr().out == ""
     cache_path = sample_paper / ".ploma" / "context-monitor-cache.json"
     cache = json.loads(cache_path.read_text())
     assert cache["tool_calls"] == 2
     cache["last_check_time"] = 0
     cache_path.write_text(json.dumps(cache))
-    context_monitor.main(_payload(sample_paper), sample_paper)   # 75 %
+    context_monitor.main(_payload(sample_paper, tool_name="Bash"), sample_paper)   # 75 %
     assert "/ploma:checkpoint" in capsys.readouterr().out
 
 
@@ -366,7 +427,7 @@ def test_project_dir_found_from_subdirectory(onboarded_sample, repo_root, tmp_pa
     """R67: cwd a subdirectory of the project, no CLAUDE_PROJECT_DIR: the hooks still find ploma.yaml."""
     sub = onboarded_sample / "sections"
     assert hu.project_dir({"cwd": str(sub)}) == onboarded_sample
-    verify_reminder.main(_payload(sub, tool_input={"file_path": str(sub / "intro.tex")}))
+    verify_reminder.main(_payload(sub, tool_name="Edit", tool_input={"file_path": str(sub / "intro.tex")}))
     assert "/ploma:compile" in capsys.readouterr().out
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
     env.pop("CLAUDE_PROJECT_DIR", None)
@@ -408,23 +469,23 @@ def test_find_project_dir_identical_in_every_hook(repo_root):
 def test_context_monitor_resets_on_new_session(sample_paper, tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PLOMA_CONTEXT_WINDOW_TOKENS", "1000")
     tr = _transcript(tmp_path, 4 * 420)
-    context_monitor.main(_payload(sample_paper, transcript_path=tr, session_id="s1"), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr, session_id="s1"), sample_paper)
     assert "/ploma:checkpoint" in capsys.readouterr().out
     cache_path = sample_paper / ".ploma" / "context-monitor-cache.json"
     cache = json.loads(cache_path.read_text())
     cache["last_check_time"] = 0
     cache_path.write_text(json.dumps(cache))
-    context_monitor.main(_payload(sample_paper, transcript_path=tr, session_id="s1"), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr, session_id="s1"), sample_paper)
     assert capsys.readouterr().out == ""                                # same session: already shown
-    context_monitor.main(_payload(sample_paper, transcript_path=tr, session_id="s2"), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", transcript_path=tr, session_id="s2"), sample_paper)
     assert "/ploma:checkpoint" in capsys.readouterr().out               # new session: shown again
     assert json.loads(cache_path.read_text())["session_id"] == "s2"
 
 
 def test_context_monitor_without_session_id_keeps_cache(sample_paper, capsys, monkeypatch):
     monkeypatch.setenv("PLOMA_CONTEXT_MAX_TOOL_CALLS", "100")
-    context_monitor.main(_payload(sample_paper, session_id="s1"), sample_paper)
-    context_monitor.main(_payload(sample_paper), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash", session_id="s1"), sample_paper)
+    context_monitor.main(_payload(sample_paper, tool_name="Bash"), sample_paper)
     cache = json.loads((sample_paper / ".ploma" / "context-monitor-cache.json").read_text())
     assert cache["tool_calls"] == 2 and cache["session_id"] == "s1"
 

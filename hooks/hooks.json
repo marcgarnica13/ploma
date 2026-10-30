@@ -24,13 +24,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|Task|Agent",
         "hooks": [
           {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/context_monitor.py\"", "timeout": 5}
         ]
       },
       {
-        "matcher": "Write|Edit",
         "hooks": [
           {"type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/verify_reminder.py\"", "timeout": 5}
         ]

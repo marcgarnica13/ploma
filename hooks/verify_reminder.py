@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""PostToolUse hook (Write|Edit): remind to verify an edited source file, once per file per 300 s.
+"""PostToolUse hook (edit tools on either host, see _hookutil.classify_tool): remind to verify an edited source file, once per file per 300 s.
 
 .tex -> /ploma:compile; .bib -> /ploma:validate-bib; the pipeline language extension
 (python .py, r .r, julia .jl, matlab .m; only with pipeline.enabled) -> the code reviewer.
 Skips paths under <outputs.dir>/, .claude/, .ploma/ and docs/. Suffixes compare lower-cased.
+Silent when tool_input has no file_path (Codex apply_patch carries only the patch text).
 State: .ploma/verify-reminder-cache.json. Exit code: always 0.
 """
 from __future__ import annotations
@@ -102,6 +103,8 @@ def skipped(rel: str, cfg: dict) -> bool:
 @hu.fail_open
 def main(stdin: TextIO | str | None = None, root: Path | None = None, cfg: dict | None = None) -> int:
     data = hu.read_input(stdin)
+    if hu.classify_tool(data.get("tool_name")) != "edit":
+        return 0
     root = Path(root) if root else hu.project_dir(data)
     if not hu.has_config(root):
         return 0

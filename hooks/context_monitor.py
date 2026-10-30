@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PostToolUse hook (Bash|Task|Agent): coarse context-usage nudges, de-duplicated per session.
+"""PostToolUse hook (shell and subagent-spawn tools on either host, see _hookutil.classify_tool): coarse context-usage nudges, de-duplicated per session.
 
 At 40, 55 and 65 percent it suggests saving decisions to disk with /ploma:checkpoint; at 80 an info note; at 90 a caution.
 Below 80 percent checks are throttled to one per 60 s. The percentage is a coarse proxy: the
@@ -119,6 +119,8 @@ def _message(pct: float, cache: dict) -> tuple[str, str] | None:
 @hu.fail_open
 def main(stdin: TextIO | str | None = None, root: Path | None = None) -> int:
     data = hu.read_input(stdin)
+    if hu.classify_tool(data.get("tool_name")) not in ("shell", "spawn"):
+        return 0
     root = Path(root) if root else hu.project_dir(data)
     if not hu.has_config(root):
         return 0

@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+import host
 import session_context
 
 
@@ -208,3 +209,41 @@ def test_subagent_paths_survive_a_broken_config(tmp_path, repo_root):
     (tmp_path / "ploma.yaml").write_text("document: [unclosed\n")
     out = _ctx(tmp_path, repo_root, subagent=True)
     assert "## ploma project" in out and "ploma scripts: " in out
+
+
+def test_session_start_refreshes_link_and_host_json(onboarded_sample, repo_root, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    session_context.main("{}", plugin_root=repo_root, root=onboarded_sample)
+    assert (onboarded_sample / ".ploma/plugin").resolve() == repo_root.resolve()
+    assert host.read_host_json(onboarded_sample)["host"] == "codex"
+
+
+def test_host_block_present_on_codex_absent_on_claude(onboarded_sample, repo_root, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    text = session_context.build_context(onboarded_sample, subagent=False, source="startup", plugin_root=repo_root)
+    assert "$ploma:" in text and "agent_type" in text
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    assert "## ploma host" not in session_context.build_context(onboarded_sample, subagent=False, source="startup", plugin_root=repo_root)
+
+
+def test_subagent_context_also_carries_host_block_on_codex(onboarded_sample, repo_root, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    text = _ctx(onboarded_sample, repo_root, subagent=True)
+    assert "## ploma host: Codex" in text and "ploma scripts: " in text
+    assert text.index("ploma scripts: ") < text.index("## ploma host: Codex")
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    assert "## ploma host" not in _ctx(onboarded_sample, repo_root, subagent=True)
+
+
+def test_onboard_line_is_localized(tmp_path, repo_root):
+    (tmp_path / "main.tex").write_text(r"\documentclass{article}")
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root), CODEX_SESSION_ID="s1")
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    env.pop("PLOMA_HOST", None)
+    r = subprocess.run([sys.executable, str(repo_root / "hooks/session_context.py")],
+                       input=json.dumps({"source": "startup", "cwd": str(tmp_path)}),
+                       capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
+    assert r.returncode == 0
+    out = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "$ploma:onboard" in out and "/ploma:" not in out
+    assert not (tmp_path / ".ploma").exists()

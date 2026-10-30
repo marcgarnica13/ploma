@@ -54,6 +54,22 @@ def project_dir(data: dict) -> Path:
     return Path(_find_project_dir(data))
 
 
+SHELL_TOOLS = frozenset({"Bash"})
+EDIT_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "apply_patch"})
+SPAWN_TOOLS = frozenset({"Task", "Agent", "collaborationspawn_agent"})
+
+
+def classify_tool(name: object) -> str:
+    """PostToolUse tool_name on either host -> shell, edit, spawn or other (spec section 8)."""
+    if name in SHELL_TOOLS:
+        return "shell"
+    if name in EDIT_TOOLS:
+        return "edit"
+    if name in SPAWN_TOOLS:
+        return "spawn"
+    return "other"
+
+
 def plugin_root() -> Path:
     env = os.environ.get("CLAUDE_PLUGIN_ROOT")
     return Path(env) if env else Path(__file__).resolve().parent.parent

@@ -58,3 +58,11 @@ def test_style_rule_has_slop_list(repo_root):
     for phrase in ("delve", "leverage", "it is worth noting", "in this paper we", "crucial", "em-dash",
                    "compact, horizontal figures", "no ai preamble"):
         assert phrase in style, phrase
+
+
+def test_host_block_short_and_outside_eager(repo_root):
+    block = repo_root / "rules/host/codex.md"
+    assert block.is_file()
+    text = block.read_text(encoding="utf-8")
+    assert 0 < len(text) < 900 and not EM_DASH_RE.search(text)
+    assert not list((repo_root / "rules/eager").glob("host*"))
