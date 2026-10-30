@@ -1,10 +1,10 @@
 # media
 
-Sources for the images and the film in the ploma README. Each part builds an output that is committed under `assets/`.
+Sources for the images and the film in the ploma README. The logo, film and stills build outputs that are committed under `assets/`; the logo also writes the plugin icon to `.claude-plugin/icon.png`. The transcripts stay in `media/transcripts/`.
 
 ## Logo
 
-`media/logo/` holds a Python generator that writes the SVG logo and the plugin icon to `assets/logo/`.
+`media/logo/` holds a Python generator that writes the SVG logo and a 512 pixel PNG of the nib to `assets/logo/`, and the plugin icon to `.claude-plugin/icon.png`.
 
 ## Film
 
@@ -16,14 +16,16 @@ Sources for the images and the film in the ploma README. Each part builds an out
 
 ## Transcripts
 
-`media/transcripts/` holds rendered transcripts of real ploma runs on `examples/demo-paper`. Every line in the film and the stills comes from them.
+`media/transcripts/` holds rendered transcripts of real ploma runs on `examples/demo-paper`. They stay in this folder; no build step copies them to `assets/`. Every line in the film and the stills comes from them.
 
 ## Tools
 
-The logo, stills and demo paper need LaTeX, poppler and librsvg:
+The demo paper needs LaTeX, and the film's page image needs poppler. The logo needs fontTools and librsvg. The stills need Chrome (the HyperFrames Chrome Headless Shell, see `media/stills/render.sh`) and ffmpeg:
 
 ```bash
-sudo apt-get install -y texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended latexmk poppler-utils librsvg2-bin
+sudo apt-get install -y texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended latexmk poppler-utils librsvg2-bin ffmpeg
+python3 -m pip install fonttools
+(cd media && npx -y hyperframes@0.8.166 browser ensure)
 ```
 
 The film needs Node.js and npm:

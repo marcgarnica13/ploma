@@ -4,7 +4,7 @@ Real ploma runs on a scratch copy of `examples/demo-paper`. The film and the REA
 
 ## The rule
 
-Film and still text may shorten these transcripts. It never adds words to them.
+Film and still text may shorten these transcripts. They never add words to them.
 
 ## How they were made
 
@@ -25,7 +25,7 @@ The raw event stream goes to `raw/<name>.jsonl`. System events and rate limit ev
 - assistant text as written
 - `[tool] <name> <first 80 chars of input>` for a tool call
 
-Tool results, thinking blocks and system events are left out of the markdown. They stay in the raw files.
+Tool results and thinking blocks are left out of the markdown. They stay in the raw files. System events never reach the raw files, since they are dropped at capture.
 
 All runs are from 2026-10-30, with Claude Code 2.1.314 and model `claude-opus-5-5`. No citation API keys were set, so `validate-bib --semantic` used the polite pools.
 

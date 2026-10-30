@@ -32,14 +32,16 @@ Then open `/hooks` in the Codex TUI and trust ploma's hooks, and run `$ploma:onb
 
 ## Updates
 
-Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
+On Claude Code: `/plugin marketplace update ploma`, then `/reload-plugins`.
 
-Updates: `codex plugin marketplace upgrade ploma`, then `codex plugin add ploma@ploma` again, then start a new session so the hook refreshes `.ploma/plugin`.
+On Codex: `codex plugin marketplace upgrade ploma`, then `codex plugin add ploma@ploma` again, then start a new session so the hook refreshes `.ploma/plugin`.
 
 ## API keys
 
 API keys on Codex come from environment variables: `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY` and `CROSSREF_MAILTO`. The scripts read them when the Claude Code plugin options are absent. ploma never writes secrets into project files. For per-machine keys, set them in `~/.codex/config.toml`:
 
-    # ~/.codex/config.toml
-    [shell_environment_policy]
-    set = { OPENALEX_API_KEY = "...", SEMANTIC_SCHOLAR_API_KEY = "...", CROSSREF_MAILTO = "you@example.org" }
+```
+# ~/.codex/config.toml
+[shell_environment_policy]
+set = { OPENALEX_API_KEY = "...", SEMANTIC_SCHOLAR_API_KEY = "...", CROSSREF_MAILTO = "you@example.org" }
+```

@@ -13,7 +13,8 @@ def _links(text):
 def test_docs_exist_with_expected_sections():
     for name, h2s in DOCS.items():
         text = (REPO_ROOT / "docs" / name).read_text()
-        assert text.count("\n# ") + text.startswith("# ") == 1
+        prose = re.sub(r"^```.*?^```", "", text, flags=re.M | re.S)
+        assert prose.count("\n# ") + prose.startswith("# ") == 1, f"{name}: expected one H1 outside code fences"
         for h in h2s:
             assert f"\n## {h}\n" in text, (name, h)
 
