@@ -2,16 +2,16 @@
 \label{sec:method}
 
 \paragraph{Causal trace model.}
-Tether records two kinds of event.
+Hawser records two kinds of event.
 A \emph{decision} is one model call together with the context it received.
 A \emph{tool result} is the output of one tool call.
 Each decision carries edges to the tool results that appeared in its context, and each tool call carries an edge to the decision that issued it.
 The trace of a task is therefore a directed acyclic graph rather than a tree of spans.
-Like Pivot Tracing~\cite{Mace2015}, Tether propagates a small amount of metadata with each call so that edges can be built at the point of use rather than reconstructed afterwards.
+Like Pivot Tracing~\cite{Mace2015}, Hawser propagates a small amount of metadata with each call so that edges can be built at the point of use rather than reconstructed afterwards.
 
 \paragraph{Query planner.}
 Operators ask causal questions, such as which tool results influenced a failed decision.
 A naive answer scans the full trace and joins events by identifier.
-Tether instead indexes each edge by its source and destination and walks the graph backwards from the decision of interest.
+Hawser instead indexes each edge by its source and destination and walks the graph backwards from the decision of interest.
 The planner prunes branches whose events fall outside the requested time window.
-To bound storage, Tether samples whole traces rather than single events, following work on biased trace sampling~\cite{LasCasas2018,LasCasas2019}.
+To bound storage, Hawser samples whole traces rather than single events, following work on biased trace sampling~\cite{LasCasas2018,LasCasas2019}.

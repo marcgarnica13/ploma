@@ -14,8 +14,8 @@
 
 \begin{abstract}
 LLM agents issue long chains of tool calls, and current tracing stacks record each call without the decision that caused it.
-We present Tether, a tracer that records the causal link from each model decision to the tool results it consumed.
-Across 1200 tasks on three agent frameworks, Tether cuts median trace-query latency by 27.4\% against an OpenTelemetry pipeline.
+We present Hawser, a tracer that records the causal link from each model decision to the tool results it consumed.
+Across 1200 tasks on three agent frameworks, Hawser cuts median trace-query latency by 27.4\% against an OpenTelemetry pipeline.
 It stores 1.1 times the bytes of that pipeline.
 \end{abstract}
 

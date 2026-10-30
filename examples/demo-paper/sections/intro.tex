@@ -4,7 +4,7 @@
 LLM agents plan, call tools and act on the results, often thousands of times within one task~\cite{Wang2024,Park2023}.
 When an agent fails, the operator needs to know which decision led to which tool call and which result changed the next decision.
 Request tracing records the path of a request through a distributed system~\cite{Sambasivan2016,Kaldor2017}, but it treats each tool call as an independent span and loses the causal chain between a decision and the results it consumed.
-We present Tether, a tracer that keeps this chain and cuts median trace-query latency by 31\%.
+We present Hawser, a tracer that keeps this chain and cuts median trace-query latency by 31\%.
 
 This paper makes three contributions.
 First, a causal trace model that links each model decision to the tool results it read (Section~\ref{sec:method}).

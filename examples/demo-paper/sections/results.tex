@@ -2,22 +2,22 @@
 \label{sec:results}
 
 We ran 1200 tasks on three agent frameworks and issued the same set of causal queries against each tracing back end.
-Table~\ref{tab:results} reports the reduction in median trace-query latency that Tether achieves against two baselines.
-Against an OpenTelemetry pipeline, Tether cuts median latency by 27.4\%.
+Table~\ref{tab:results} reports the reduction in median trace-query latency that Hawser achieves against two baselines, and its storage relative to the OpenTelemetry pipeline.
+Against an OpenTelemetry pipeline, Hawser cuts median latency by 27.4\%.
 Against raw logs searched by identifier, it cuts median latency by 41.2\%.
-Tether stores 1.1 times the bytes of the OpenTelemetry pipeline, because it keeps the causal edges as well as the events.
+Hawser stores 1.1 times the bytes of the OpenTelemetry pipeline, because it keeps the causal edges as well as the events.
 
 \begin{table}[t]
   \centering
-  \caption{Reduction in median trace-query latency, 1200 tasks across three agent frameworks.}
+  \caption{Reduction in median trace-query latency against each baseline, and Hawser storage as a multiple of the baseline's, 1200 tasks across three agent frameworks. Storage was measured against the OpenTelemetry pipeline only.}
   \label{tab:results}
   %% ploma-source: results/bench.json
-  \begin{tabular}{lrr}
+  \begin{tabular}{lrrr}
     \toprule
-    Baseline & Tasks & Latency cut (\%) \\
+    Baseline & Tasks & Latency cut (\%) & Storage ratio \\
     \midrule
-    OpenTelemetry pipeline & 1200 & 27.4 \\
-    Raw logs & 1200 & 41.2 \\
+    OpenTelemetry pipeline & 1200 & 27.4 & 1.1 \\
+    Raw logs & 1200 & 41.2 & n/a \\
     \bottomrule
   \end{tabular}
 \end{table}
