@@ -1,60 +1,86 @@
-# ploma
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/ploma-lockup-dark.svg">
+    <img src="assets/logo/ploma-lockup.svg" width="320" alt="ploma">
+  </picture>
+</p>
 
-**Status: 0.2.0, released 2026-10-30.** Every lifecycle skill is installed. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+<p align="center"><strong>A research co-author for Claude Code and Codex.</strong><br>It grills your idea, grounds every claim in your results and your references, and refuses to commit what it cannot check.</p>
 
-## What ploma is
+<p align="center"><em>Your paper. Your claims. Checked.</em></p>
 
-ploma is a harness for coding agents (Claude Code or Codex) for writing, validating, reviewing and formatting LaTeX academic papers. The plugin is installed on the agent. The paper repo declares its facts once in `ploma.yaml` (manuscript path, build command, venue). Skills, agents, hooks and rules read that config instead of restating it. `/ploma:onboard` detects the facts by reading the repo and writes project files only after approval; `/ploma:doctor` says whether the repo is ready; a lifecycle of stages, each owned by one skill, is recommended from state that survives sessions. `/ploma:commit` refuses to commit until the required checks have passed. Skill names below use the Claude Code form `/ploma:<name>`; on Codex type `$ploma:<name>`.
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.0-1f5f8b" alt="version 0.2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache--2.0-1f5f8b" alt="licence Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/Claude%20Code-plugin-1d1b17" alt="Claude Code plugin">
+  <img src="https://img.shields.io/badge/Codex-plugin-1d1b17" alt="Codex plugin">
+  <a href="docs/testing.md"><img src="https://img.shields.io/badge/tests-1464%20passed-2e7d32" alt="tests 1464 passed"></a>
+</p>
 
-## Install
+<p align="center"><a href="#install-in-two-minutes">Install</a> · <a href="#how-a-paper-gets-written">See the workflow</a></p>
 
-### Claude Code
+![ploma session on the demo paper](assets/film/ploma-hero.gif)
 
-The same commands work on both machines (the development machine and the paper machine). On a machine without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
+Grill, write, merge, compile and commit on one paper. The paper is a fictional demo that ships in [`examples/demo-paper`](examples/demo-paper), so you can replay this session. Every terminal line in the film comes from a real ploma session; the transcripts are in [`media/transcripts/`](media/transcripts/). [Watch the MP4](assets/film/ploma-hero.mp4).
 
-```
-gh auth login && gh auth setup-git          # HTTPS credentials for git
-export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1    # clone over HTTPS, skip the SSH probe
-```
+## Why ploma exists
 
-Then, inside Claude Code:
+A coding agent can write a fluent introduction. The demo paper's introduction says its tracer, Hawser, cuts median trace-query latency by 31%. Its results file, `results/bench.json`, says 27.4%. The prose reads well either way.
 
-```
-/plugin marketplace add marcgarnica13/ploma
-/plugin install ploma@ploma
-/ploma:onboard
-```
+A paper needs every number to trace back to a result and every citation to a real record. A referee who reruns the benchmark should find the number the text states, and every entry in `refs.bib` should resolve to a published work.
 
-Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
+ploma makes the agent earn each sentence. It asks about the 31% before it drafts anything, the draft pins the number to `bench.json`, and `/ploma:commit` refuses to commit until the required checks pass on the current files.
 
-### Codex
+## How a paper gets written
 
-Install from the same repo:
+### Grill
 
-```
-codex plugin marketplace add marcgarnica13/ploma
-codex plugin add ploma@ploma
-```
+<img src="assets/stills/grill.png" width="700" alt="ploma grill asking which latency number the intro should state">
 
-Then open `/hooks` in the Codex TUI and trust ploma's hooks, and run `$ploma:onboard`. Skills are typed `$ploma:<name>`. Codex reads `.codex/config.toml` only for trusted projects, so trust the paper repo.
+Grill closes the open design decisions, one question at a time, each with a recommended answer and its reason. It reads the repo before it asks: here it found 31% in the intro, 27.4% and 41.2% in `results/bench.json`, and asked which number the intro should state.
 
-Updates: `codex plugin marketplace upgrade ploma`, then `codex plugin add ploma@ploma` again, then start a new session so the hook refreshes `.ploma/plugin`.
+### Spec
 
-API keys on Codex come from environment variables: `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY` and `CROSSREF_MAILTO`. The scripts read them when the Claude Code plugin options are absent. ploma never writes secrets into project files. For per-machine keys, set them in `~/.codex/config.toml`:
+<img src="assets/stills/spec.png" width="700" alt="ploma spec writing the binding paper spec">
 
-```
-# ~/.codex/config.toml
-[shell_environment_policy]
-set = { OPENALEX_API_KEY = "...", SEMANTIC_SCHOLAR_API_KEY = "...", CROSSREF_MAILTO = "you@example.org" }
-```
+Spec turns the answers into `quality_reports/paper_spec.md`, the binding contract that `/ploma:write` drafts against: claims, evidence, venue constraints, page targets and locked decisions. On the demo paper it locked 11 decisions.
 
-## Switching hosts
+### Write
 
-ploma runs on one host at a time. The repo is onboarded for the host you ran onboard under; the onboard receipt records it. To switch, run onboard on the new host. The old host's files stay in place. The doctor reports `host_mismatch` until you run onboard on the new host.
+<img src="assets/stills/write.png" width="700" alt="ploma write drafting a suggestion file with a diff">
 
-Co-authors on Codex run `$ploma:onboard` once per machine, after cloning. It is an absorption run: it writes nothing the repo already has and creates the machine-local `.ploma/plugin` link (`.ploma/` is gitignored, so a clone lacks it).
+Write drafts the section into a `_suggestion.tex` file beside the original and checks it before you read it. Here the draft replaced the unsupported 31% with 27.4% against the OpenTelemetry baseline. The manuscript changes only when you run `/ploma:write intro --merge` and answer yes.
 
-## Lifecycle
+### Ship
+
+<img src="assets/stills/ship.png" width="700" alt="ploma commit passing the gate">
+
+`/ploma:commit` commits only when the required checks pass on the current files. On the demo paper compile, bib and consistency passed with no override, and the commit landed. An override needs a written reason, and the reason is logged.
+
+## What stops slop
+
+- `/ploma:verify-claims` checks each factual claim with Chain-of-Verification; the verifier works in a fresh context and never sees the draft.
+- `/ploma:audit-reproducibility` matches every reported number against the pipeline's results files within the configured tolerances.
+- `/ploma:validate-bib --semantic` checks that each cited entry exists on Crossref, DataCite, OpenAlex or Semantic Scholar.
+- `/ploma:review` writes a referee-style review, with `--peer`, `--adversarial` and `--seven-pass` modes.
+- `/ploma:devils-advocate` asks 5 to 7 sceptical questions about your design choices and changes nothing.
+- `/ploma:proofread` reports problems and fixes them only after you approve.
+
+## Install in two minutes
+
+| Claude Code | Codex |
+|---|---|
+| `/plugin marketplace add marcgarnica13/ploma` | `codex plugin marketplace add marcgarnica13/ploma` |
+| `/plugin install ploma@ploma` | `codex plugin add ploma@ploma` |
+| `/ploma:onboard` | `$ploma:onboard` |
+
+Onboard reads the repo, proposes `ploma.yaml` and the project files, and writes them only after you approve. On Codex, open `/hooks` in the Codex TUI and trust ploma's hooks before you run onboard, and type skills as `$ploma:<name>`.
+
+[`docs/install.md`](docs/install.md) covers HTTPS without SSH keys, updates and API keys. [`docs/hosts.md`](docs/hosts.md) covers switching hosts and co-authors on Codex.
+
+## The full lifecycle
+
+ploma covers a LaTeX paper from the first idea to the response to referees. The paper repo declares its facts once in `ploma.yaml` (manuscript path, build command, venue). Skills, agents, hooks and rules read that config instead of restating it. Each stage is owned by one skill, and `/ploma:status` recommends the next one from state that survives sessions. `/ploma:doctor` says whether the repo is ready.
 
 | # | Stage | Skill |
 |---|---|---|
@@ -73,7 +99,8 @@ Co-authors on Codex run `$ploma:onboard` once per machine, after cloning. It is 
 | 9 | Ship | `/ploma:commit` |
 | any | Session | `/ploma:status`, `/ploma:checkpoint`, `/ploma:compress-session`, `/ploma:learn`, `/ploma:deep-audit`, `/ploma:help` |
 
-## Skills
+<details>
+<summary>All 23 skills</summary>
 
 - `/ploma:onboard`: detect the repo's facts, propose `ploma.yaml` and project files, write after approval.
 - `/ploma:doctor`: read-only readiness check with a verdict.
@@ -101,51 +128,17 @@ Co-authors on Codex run `$ploma:onboard` once per machine, after cloning. It is 
 
 Hooks (session context, pre-compact snapshot, context monitor, verify and log reminders) are silent in a repo without `ploma.yaml`. Venue profiles live in `venues/`, discipline profiles in `disciplines/`, both overridable per project in `ploma.d/`.
 
-## Commit gate
+</details>
 
-`/ploma:commit` refuses to commit until the required checks have passed on the current files. It refreshes missing or stale `compile`, `bib` (structural) and `consistency` entries itself before it decides.
+## Trust and testing
 
-- Required: `compile` and `bib` (written by `/ploma:compile` and `/ploma:validate-bib`).
-- Recommended: `consistency`, `claims`, `proofread`. `consistency` becomes required in 0.1.1.
-- Override: write `commit anyway: <reason>` on its own line in your message. The reason is logged. After three consecutive overridden commits the gate stops accepting overrides until the required checks pass.
+ploma 0.2.0 was released on 2026-10-30. The suite has 1464 tests and CI runs it on Python 3.10 and 3.12. The maintainers also run skills headless on real paper repos, on both hosts, and pass a skill when its verdict matches what a careful author would conclude. They run no billed evals. [`docs/testing.md`](docs/testing.md) has the commands.
 
-`python3 scripts/gate.py check` shows the gate state without committing.
+- [`docs/commit-gate.md`](docs/commit-gate.md): the required and recommended checks, the override syntax and the limit of three overrides in a row.
+- [`docs/hosts.md`](docs/hosts.md): one host at a time, and what the doctor reports after a switch.
+- [`CHANGELOG.md`](CHANGELOG.md): every release and its known issues.
+- [`docs/superpowers/specs/`](docs/superpowers/specs/): the design specs.
 
-## Running the tests
+## Credits and licence
 
-```
-python3 -m pytest -q
-claude plugin validate .
-```
-
-Tests need Python 3.10 or later and pytest. CI runs pytest on Python 3.10 and 3.12; `claude plugin validate .` runs locally, since the Claude CLI is not assumed in CI.
-
-## Testing
-
-The maintainers test ploma with the pytest suite above plus headless field tests on real paper repos, without billed eval runs. On Claude Code:
-
-```
-cd <paper-repo>
-claude -p --plugin-dir /path/to/ploma "/ploma:doctor"
-```
-
-On Codex, use an isolated home, a local marketplace add and a headless run:
-
-```
-export CODEX_HOME=/tmp/ploma-codex-home        # keep the real ~/.codex untouched; copy auth.json into it
-codex plugin marketplace add /path/to/ploma && codex plugin add ploma@ploma
-cd <paper-repo>
-codex exec --skip-git-repo-check --dangerously-bypass-hook-trust -s workspace-write '$ploma:doctor'
-```
-
-`--dangerously-bypass-hook-trust` is needed because a headless run cannot trust hooks interactively.
-
-Swap in any skill. A field test passes when the skill's report and verdict match what a careful author would conclude about that repo.
-
-## Evals (optional, not run by the maintainers)
-
-`evals/` holds one `claude plugin eval` case per skill, staged on `examples/sample-paper`. They bill model calls and are not part of the release process. If you run them, use `--scaffold --allow-tools 'Bash(python3 *)'`, one case at a time (`--case <name> --runs 1 --ablation none`), and a `--max-cost-usd` ceiling. On Ubuntu 23.10 or later the eval sandbox needs `kernel.apparmor_restrict_unprivileged_userns=0` and `socat`.
-
-## Licence
-
-Apache-2.0. See [`LICENSE`](LICENSE) and [`UPSTREAMS.md`](UPSTREAMS.md).
+ploma is licensed under Apache-2.0; see [`LICENSE`](LICENSE). The projects it took ideas, structure or text from are listed in [`UPSTREAMS.md`](UPSTREAMS.md). The hero film is rendered with [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache-2.0). The wordmark is set in Fraunces (SIL Open Font License) and converted to outlines, so no font file ships.

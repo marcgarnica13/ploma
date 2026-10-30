@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- A public README with the logo, the hero film and the workflow stills; the reference material moved to `docs/` (install, hosts, commit gate, testing).
+- The nib logo under `assets/logo/`, and the plugin icon at `.claude-plugin/icon.png`.
+- A hero film and four stills, made from a real ploma session on the demo paper; the transcripts are in `media/transcripts/`.
+- `examples/demo-paper`: a fictional systems paper that ploma runs on, so the session can be replayed.
+
+### Known issues
+
+- During the write run on the demo paper, `sections.py check` reported `results/bench.json` missing although the file exists.
+
 ## 0.2.0 (2026-10-30)
 
 - Codex support: install from the same repo with `codex plugin marketplace add marcgarnica13/ploma` and `codex plugin add ploma@ploma`; skills are typed `$ploma:<name>`.
