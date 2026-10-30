@@ -6,9 +6,10 @@ import os
 import shutil
 
 import doctor
+import host
 from _findings import FAIL, INFO, PASS, SKIP, WARN
 
-GROUP_IDS = ["runtime", "config", "toolchain", "manuscript", "project-files", "state", "dependencies",
+GROUP_IDS = ["runtime", "config", "toolchain", "manuscript", "host", "project-files", "state", "dependencies",
              "legacy-harness"]
 PRESENT = ("pdflatex", "bibtex", "pdfinfo", "pdftotext", "make", "git")
 
@@ -52,6 +53,8 @@ def test_empty_dir_skips_groups_needing_config(tmp_path):
     r = doctor.run(tmp_path, which=_which(), home=tmp_path / "nohome")
     assert [g["id"] for g in r.groups] == GROUP_IDS
     for g in r.groups:
+        if g["id"] == "host":
+            assert [(f.id, f.status) for f in g["findings"]] == [("host.running", INFO), ("host.skipped", SKIP)]
         if g["id"] in ("toolchain", "manuscript", "project-files", "state", "legacy-harness"):
             assert [f.status for f in g["findings"]] == [SKIP], g
             assert g["findings"][0].summary == "no ploma.yaml" or "no ploma.yaml" in g["findings"][0].observed
@@ -60,7 +63,8 @@ def test_empty_dir_skips_groups_needing_config(tmp_path):
     assert any(f.id == "dependencies.superpowers" for f in _all(r))
 
 
-def test_onboarded_sample_is_ready(onboarded_sample):
+def test_onboarded_sample_is_ready(onboarded_sample, repo_root):
+    host.ensure_plugin_link(onboarded_sample, repo_root)
     r = _run(onboarded_sample)
     assert r.verdict == "READY", r.render()
     assert [g["id"] for g in r.groups] == GROUP_IDS
@@ -68,7 +72,8 @@ def test_onboarded_sample_is_ready(onboarded_sample):
         assert f.id.split(".")[0] == f.group, f
 
 
-def test_missing_linters_are_skip_not_warn(onboarded_sample):
+def test_missing_linters_are_skip_not_warn(onboarded_sample, repo_root):
+    host.ensure_plugin_link(onboarded_sample, repo_root)
     r = _run(onboarded_sample, which=lambda n: None if n in ("chktex", "lacheck", "texcount") else "/usr/bin/" + n)
     linters = [f for f in _all(r) if f.id in ("toolchain.chktex", "toolchain.lacheck", "toolchain.texcount")]
     assert len(linters) == 3 and all(f.status == SKIP for f in linters)
@@ -216,7 +221,7 @@ def test_figure_provenance_only_with_pipeline(onboarded_sample):
 
 def test_project_files_pass_and_receipt_info_without_receipt(onboarded_sample):
     r = _run(onboarded_sample)
-    for check in ("rules", "claude_md", "gitignore", "receipt"):
+    for check in ("rules", "instructions_section", "gitignore", "receipt"):
         assert _by_id(r, f"project-files.{check}").status == PASS, check
     (onboarded_sample / "quality_reports" / "ploma-receipt.json").unlink()
     assert _by_id(_run(onboarded_sample), "project-files.receipt").status == INFO
@@ -273,7 +278,7 @@ def test_render_format(onboarded_sample):
     assert lines[0] == f"Overall verdict: {r.verdict}"
     c = r.counts
     assert lines[1] == f"Counts: PASS {c['PASS']} WARN {c['WARN']} FAIL {c['FAIL']} INFO {c['INFO']} SKIP {c['SKIP']}"
-    assert "1. Runtime" in lines and "8. Legacy harness" in lines
+    assert "1. Runtime" in lines and "9. Legacy harness" in lines
     assert any(line.startswith("- PASS runtime.python: ") for line in lines)
     empty = onboarded_sample.parent / "empty"
     empty.mkdir()
@@ -405,3 +410,138 @@ def test_legacy_harness_grouped_one_warn_per_kind(onboarded_sample, monkeypatch)
     text = r.render()
     assert "\n  Observed: .claude/rules/r00.md\n    .claude/rules/r01.md\n" in text
     assert sum(1 for line in text.splitlines() if line.startswith("- WARN legacy-harness.")) == 3
+
+
+# ---------------------------------------------------------------- host group (multi-host spec section 12)
+
+def _codex_root(onboarded_for, monkeypatch):
+    root = onboarded_for("codex")
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    return root
+
+
+def test_running_is_reported_without_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    f = _by_id(doctor.run(tmp_path, which=_which(), home=tmp_path / "nohome"), "host.running")
+    assert f.status == INFO and f.summary == "running under Codex"
+
+
+def test_host_mismatch_is_first_and_not_ready(onboarded_sample, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    r = _run(onboarded_sample)
+    first = _all(r)[0]
+    assert r.verdict == "NOT_READY" and first.id == "host.host_mismatch" and first.status == FAIL
+    assert first.summary == "repo is onboarded for Claude Code; you are running Codex"
+    assert first.remediation == "Run /ploma:onboard to switch."
+    lines = r.render().splitlines()
+    i = lines.index(f"- FAIL host.host_mismatch: {first.summary}")
+    assert lines[i + 1] == "  Observed: receipt host: claude"
+    assert lines[i + 2] == "  Remediation: Run $ploma:onboard to switch."
+    ids = {f.id for f in _all(r)}
+    assert "host.running" in ids and "host.other_host_files" not in ids  # nothing but Claude files on disk
+    assert not any(i.startswith(("project-files.drift", "project-files.missing", "project-files.instructions_section"))
+                   for i in ids), ids
+
+
+def test_host_match_and_other_host_files_info(onboarded_for, monkeypatch):
+    r = _run(_codex_root(onboarded_for, monkeypatch))
+    match = _by_id(r, "host.host_match")
+    assert match.status == PASS and match.summary == "running under Codex; repo onboarded for Codex"
+    other = _by_id(r, "host.other_host_files")
+    assert other.status == INFO and "CLAUDE.md" in other.observed
+    assert ".claude/rules/ploma-manuscript.md" in other.observed
+    assert "AGENTS.md" not in other.observed
+
+
+def test_unknown_host_runs_with_claude_paths(onboarded_sample):
+    r = _run(onboarded_sample)
+    assert _by_id(r, "host.host_unknown").status == INFO
+    assert _by_id(r, "host.host_match").status == PASS
+    assert _by_id(r, "project-files.instructions_section").status == PASS
+    assert not any(f.id.startswith("host.root_export") for f in _all(r))
+
+
+def test_root_export_and_link_warnings(onboarded_for, monkeypatch):
+    root = _codex_root(onboarded_for, monkeypatch)
+    (root / ".codex" / "config.toml").unlink()
+    shutil.rmtree(root / ".ploma", ignore_errors=True)
+    r = _run(root)
+    missing = _by_id(r, "host.root_export_missing")
+    assert missing.status == WARN and ".codex/config.toml" in missing.remediation
+    link = _by_id(r, "host.plugin_link")
+    assert link.status == WARN
+    assert link.remediation == ("Start a new session (the session hook refreshes .ploma/plugin), "
+                                "or run /ploma:onboard.")
+
+
+def test_dangling_plugin_link_warns_on_claude(onboarded_sample, monkeypatch, tmp_path):
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    host.ensure_plugin_link(onboarded_sample, gone)
+    gone.rmdir()
+    assert _by_id(_run(onboarded_sample), "host.plugin_link").status == WARN
+
+
+def test_root_export_manual_when_withheld(onboarded_for, monkeypatch):
+    import project_files
+    root = _codex_root(onboarded_for, monkeypatch)
+    (root / ".codex" / "config.toml").write_text('[shell_environment_policy]\ninherit = "all"\n', encoding="utf-8")
+    f = _by_id(_run(root), "host.root_export_manual")
+    assert f.status == WARN and project_files.export_line() in f.observed
+    assert "by hand" in f.remediation
+
+
+def test_agents_md_size_warns_over_28_kib(onboarded_for, monkeypatch):
+    root = _codex_root(onboarded_for, monkeypatch)
+    assert not any(f.id == "host.agents_md_size" for f in _all(_run(root)))
+    agents = root / "AGENTS.md"
+    agents.write_text(agents.read_text(encoding="utf-8") + "x" * (28 * 1024) + "\n", encoding="utf-8")
+    f = _by_id(_run(root), "host.agents_md_size")
+    assert f.status == WARN and str(agents.stat().st_size) in f.observed
+
+
+def test_inlined_rules_drift_reported_on_codex(onboarded_for, monkeypatch):
+    root = _codex_root(onboarded_for, monkeypatch)
+    _set_cfg(root, "page_budget: 8", "page_budget: 9")
+    f = _by_id(_run(root), "project-files.drift:AGENTS.md")
+    assert f.status == WARN and "Page budget" in f.observed
+
+
+def test_codex_checks_codex_files(onboarded_for, monkeypatch):
+    root = _codex_root(onboarded_for, monkeypatch)
+    r = _run(root)
+    assert _by_id(r, "project-files.instructions_section").status == PASS
+    assert _by_id(r, "project-files.rules").status == PASS
+    agent = next((root / ".codex" / "agents").glob("ploma-*.toml"))
+    agent.write_text(agent.read_text(encoding="utf-8") + "# mine\n", encoding="utf-8")
+    rel = agent.relative_to(root).as_posix()
+    assert _by_id(_run(root), f"project-files.drift:{rel}").status == WARN
+    (root / "AGENTS.md").write_text("# mine\n", encoding="utf-8")
+    assert _by_id(_run(root), "project-files.instructions_section").status == WARN
+
+
+def test_codex_superpowers_uses_host_paths(onboarded_for, monkeypatch, tmp_path):
+    root = _codex_root(onboarded_for, monkeypatch)
+    home = tmp_path / "home"
+    assert _by_id(doctor.run(root, which=_which(), home=home), "dependencies.superpowers").status == WARN
+    (home / ".codex" / "superpowers").mkdir(parents=True)
+    assert _by_id(doctor.run(root, which=_which(), home=home), "dependencies.superpowers").status == PASS
+
+
+def test_codex_ready_on_onboarded_sample(onboarded_for, monkeypatch, tmp_path, repo_root):
+    root = _codex_root(onboarded_for, monkeypatch)
+    home = tmp_path / "home"
+    (home / ".agents" / "skills" / "superpowers").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    host.ensure_plugin_link(root, repo_root)
+    r = doctor.run(root, which=_which())  # the toolchain stub every READY test uses; home comes from HOME
+    assert r.verdict in ("READY", "READY_WITH_WARNINGS"), r.render()
+    assert [f.id for f in _all(r) if f.status in (WARN, FAIL)] == [], r.render()
+
+
+def test_remediation_is_localized(onboarded_for, monkeypatch):
+    root = _codex_root(onboarded_for, monkeypatch)
+    (root / "main.pdf").unlink()  # gives a remediation naming a skill
+    txt = _run(root).render()
+    assert "$ploma:compile" in txt and "/ploma:" not in txt

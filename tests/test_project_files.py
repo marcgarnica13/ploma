@@ -351,7 +351,7 @@ def test_onboarded_sample_has_project_files(onboarded_sample):
         assert (onboarded_sample / rel).is_file(), rel
     ids = _ids(_doctor(onboarded_sample))
     assert ids["project-files.rules"].status == PASS
-    assert ids["project-files.claude_md"].status == PASS
+    assert ids["project-files.instructions_section"].status == PASS
     assert ids["project-files.gitignore"].status == PASS
     assert ids["project-files.receipt"].status == PASS
     assert not any(i.endswith(".renderer") for i in ids)
@@ -391,16 +391,16 @@ def test_created_once_edit_is_never_drift(onboarded_sample):
 
 def test_claude_md_section_missing_warns(onboarded_sample):
     (onboarded_sample / "CLAUDE.md").write_text("# just mine\n", encoding="utf-8")
-    f = _ids(_doctor(onboarded_sample))["project-files.claude_md"]
+    f = _ids(_doctor(onboarded_sample))["project-files.instructions_section"]
     assert f.status == WARN and "/ploma:onboard" in f.remediation
     (onboarded_sample / "CLAUDE.md").unlink()
-    assert _ids(_doctor(onboarded_sample))["project-files.claude_md"].status == WARN
+    assert _ids(_doctor(onboarded_sample))["project-files.instructions_section"].status == WARN
 
 
 def test_claude_md_unbalanced_markers_warn(onboarded_sample):
     (onboarded_sample / "CLAUDE.md").write_text("<!-- ploma:begin -->\n", encoding="utf-8")
     ids = _ids(_doctor(onboarded_sample))
-    assert ids["project-files.claude_md"].status == WARN and "unbalanced" in ids["project-files.claude_md"].observed
+    assert ids["project-files.instructions_section"].status == WARN and "unbalanced" in ids["project-files.instructions_section"].observed
 
 
 def test_gitignore_coverage_uses_shared_check(onboarded_sample):

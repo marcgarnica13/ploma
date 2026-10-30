@@ -34,3 +34,13 @@ def test_worst_orders_statuses():
     assert worst([mk(PASS), mk(INFO), mk(SKIP)]) in (INFO, SKIP)
     assert worst([mk(PASS), mk(WARN), mk(INFO)]) == WARN
     assert worst([mk(WARN), mk(FAIL), mk(PASS)]) == FAIL
+
+
+def test_render_localizes_skill_references(monkeypatch):
+    f = Finding("x.y", WARN, "run /ploma:compile", observed="saw /ploma:doctor", remediation="Run /ploma:onboard")
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    assert render([f]).splitlines() == ["- WARN x.y: run $ploma:compile", "  Observed: saw $ploma:doctor",
+                                        "  Remediation: Run $ploma:onboard"]
+    assert f.remediation == "Run /ploma:onboard"  # the finding itself (and JSON) keeps /ploma:
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    assert "/ploma:compile" in render([f])

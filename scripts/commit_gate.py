@@ -259,7 +259,12 @@ def main(argv: list[str] | None = None) -> int:
         prep = prepare(root, cfg)
     except ValueError as exc:
         return _error(str(exc), as_json)
-    print(json.dumps(prep.to_dict(), indent=2) if as_json else render(prep))
+    if as_json:
+        print(json.dumps(prep.to_dict(), indent=2))  # JSON keeps /ploma: for the skills that read it
+    else:
+        import host  # NEXT_COMMAND and the SEMANTIC_* notes name skills; print them in the host's form
+
+        print(host.localize(render(prep), host.detect(root=root)))
     return 0 if prep.verdict == "PASS" else 1
 
 

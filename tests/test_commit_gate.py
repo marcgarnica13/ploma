@@ -403,3 +403,14 @@ def test_state_event_is_recorded_and_staged_before_the_commit():
     commit = text.index("git commit -F -")
     assert rec < stage < commit
     assert "commit=<short sha>" not in text
+
+
+def test_cli_text_localizes_skill_references_json_keeps_them(sample_paper, cfg, capsys, monkeypatch):
+    for name in ("compile", "bib", "consistency", "proofread"):  # claims missing: next names /ploma:verify-claims
+        gate.record(sample_paper, cfg, name, "PASS", f"quality_reports/{name}.md")
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    commit_gate.main(["--root", str(sample_paper), "prepare"])
+    out = capsys.readouterr().out
+    assert "next: $ploma:verify-claims" in out and "/ploma:" not in out
+    commit_gate.main(["--root", str(sample_paper), "prepare", "--json"])
+    assert "/ploma:verify-claims" in json.loads(capsys.readouterr().out)["next_commands"]

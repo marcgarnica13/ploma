@@ -215,3 +215,12 @@ def test_render_skips_respond_without_reports(sample_paper, cfg):
     st = state.record(sample_paper, cfg, "review", "PASS")
     (sample_paper / "review" / "review1.md").unlink()
     assert "next: commit" in state.render(st, cfg, root=sample_paper)
+
+
+def test_cli_render_text_is_localized(sample_paper, monkeypatch, capsys):
+    monkeypatch.setattr(state, "render", lambda st, cfg, root=None: "next: run /ploma:compile")
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    assert state.main(["--root", str(sample_paper), "render"]) == 0
+    assert capsys.readouterr().out.strip() == "next: run $ploma:compile"
+    assert state.main(["--root", str(sample_paper), "render", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["render"] == "next: run /ploma:compile"

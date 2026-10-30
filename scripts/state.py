@@ -277,7 +277,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(rec_) if as_json else f"{rec_['stage']}: {rec_['reason']}")
         return 0
     text = render(st, cfg, root)
-    print(json.dumps({"render": text, "state": st}, indent=2) if as_json else text)
+    if as_json:
+        print(json.dumps({"render": text, "state": st}, indent=2))
+    else:
+        import host  # inside the function: host imports state
+
+        print(host.localize(text, host.detect(root=root)))
     return 0
 
 

@@ -32,14 +32,19 @@ class Finding:
 
 
 def render(findings: list[Finding]) -> str:
-    """One ``- STATUS id: summary`` line per finding, with indented Observed and Remediation lines."""
+    """One ``- STATUS id: summary`` line per finding, with indented Observed and Remediation lines.
+
+    /ploma:<skill> references are written in the running host's form; the findings themselves keep /ploma:."""
+    import host  # inside the function: host imports state, which imports ploma_config, which imports this module
+
+    h = host.detect()
     lines: list[str] = []
     for f in findings:
-        lines.append(f"- {f.status} {f.id}: {f.summary}")
+        lines.append(f"- {f.status} {f.id}: {host.localize(f.summary, h)}")
         if f.observed:
-            lines.append(f"  Observed: {f.observed}")
+            lines.append(f"  Observed: {host.localize(f.observed, h)}")
         if f.remediation:
-            lines.append(f"  Remediation: {f.remediation}")
+            lines.append(f"  Remediation: {host.localize(f.remediation, h)}")
     return "\n".join(lines)
 
 

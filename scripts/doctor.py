@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _yamlio  # noqa: E402
 import bib_check  # noqa: E402
 import gate  # noqa: E402
+import host as host_mod  # noqa: E402
 import inventory  # noqa: E402
 import ploma_config  # noqa: E402
 import profiles  # noqa: E402
@@ -35,13 +36,17 @@ import state  # noqa: E402
 from _findings import FAIL, INFO, PASS, SKIP, STATUSES, WARN, Finding  # noqa: E402
 
 GROUPS = (("runtime", "Runtime"), ("config", "Config"), ("toolchain", "Toolchain"),
-          ("manuscript", "Manuscript"), ("project-files", "Project files"), ("state", "State"),
+          ("manuscript", "Manuscript"), ("host", "Host"), ("project-files", "Project files"), ("state", "State"),
           ("dependencies", "Dependencies"), ("legacy-harness", "Legacy harness"))
-NEEDS_CONFIG = ("toolchain", "manuscript", "project-files", "state", "legacy-harness")
+# Without config these groups give one SKIP; host still reports `running` first.
+NEEDS_CONFIG = ("toolchain", "manuscript", "host", "project-files", "state", "legacy-harness")
+AGENTS_MD_LIMIT = 28 * 1024  # spec section 12: leaves headroom under Codex's project-doc size limit
 LINTERS = ("chktex", "lacheck", "texcount")
 PDF_TOOLS = ("pdfinfo", "pdftotext")
 SOURCE_SUFFIXES = (".tex", ".bib")
 MAX_LISTED = 10
+SUPERPOWERS_INSTALL_CODEX = ("Install superpowers for Codex so that ~/.agents/skills/superpowers (or "
+                             "~/.codex/superpowers) exists; see the superpowers README for the Codex steps.")
 SUPERPOWERS_INSTALL = ("Install superpowers: /plugin install superpowers@claude-plugins-official "
                        "(or add the superpowers-marketplace marketplace with "
                        "/plugin marketplace add obra/superpowers-marketplace and run "
@@ -62,6 +67,7 @@ def verdict_for(findings: list[Finding]) -> str:
 @dataclass
 class DoctorReport:
     groups: list[dict] = field(default_factory=list)
+    host: host_mod.Host | None = None  # the running host; render() writes skill references in its form
 
     def findings(self) -> list[Finding]:
         return [f for g in self.groups for f in g["findings"]]
@@ -83,6 +89,11 @@ class DoctorReport:
                             "findings": [f.to_dict() for f in g["findings"]]} for g in self.groups]}
 
     def render(self) -> str:
+        """Plain text; /ploma:<skill> references are localized for the running host (to_dict keeps them)."""
+        h = self.host or host_mod.detect()
+        return host_mod.localize(self._render(), h)
+
+    def _render(self) -> str:
         c = self.counts
         lines = [f"Overall verdict: {self.verdict}",
                  "Counts: " + " ".join(f"{s} {c[s]}" for s in (PASS, WARN, FAIL, INFO, SKIP))]
@@ -308,24 +319,151 @@ def _gitignore_finding(g: str, missing: list[str]) -> Finding:
     return _f(g, "gitignore", PASS, ".gitignore covers .ploma/, session logs and caches")
 
 
-def _project_files(root: Path, cfg: dict) -> list[Finding]:
-    """Generated project files. Ids naming a file are project-files.<kind>:<path> (drift, missing, stale), so
-    a path such as .claude/rules/x.md never gives a double dot."""
-    g = "project-files"
-    out = []
+def _files_host(h: host_mod.Host) -> host_mod.Host:
+    """The host whose files the repo should hold: an unknown host uses Claude Code's (ruling R6)."""
+    return host_mod.HOSTS["claude"] if h.name == "unknown" else h
+
+
+def _receipt_host(root: Path, cfg: dict) -> tuple[str | None, str]:
+    """(receipt host name or None, problem) without raising; problem is '' when the receipt loaded."""
     try:
-        specs = project_files.render_enforced(cfg)  # the enforced entries of render_all; created-once never drift
+        data = receipt.load(root, cfg)
+    except ValueError as exc:
+        return None, str(exc)
+    if data is None:
+        return None, f"missing: {receipt.path(root, cfg)}"
+    return data["host"], ""
+
+
+def _mismatch(root: Path, cfg: dict, h: host_mod.Host) -> str | None:
+    """The receipt's host name when it differs from the files host of h, else None."""
+    name, _ = _receipt_host(root, cfg)
+    return name if name is not None and name != _files_host(h).name else None
+
+
+def _display(name: str) -> str:
+    return host_mod.HOSTS[name].display if name in host_mod.HOSTS else name
+
+
+def _running(h: host_mod.Host) -> Finding:
+    return _f("host", "running", INFO, f"running under {h.display}")
+
+
+def _host(root: Path, cfg: dict, h: host_mod.Host) -> list[Finding]:
+    """Which host runs doctor, which one the repo is onboarded for, and the host's own wiring (spec section 12)."""
+    g = "host"
+    out = [_running(h)]
+    if h.name == "unknown":
+        out.append(_f(g, "host_unknown", INFO, "the host could not be detected; checking Claude Code's files",
+                      observed="no PLOMA_HOST, no Codex or Claude Code variables, no readable .ploma/host.json"))
+    fh = _files_host(h)
+    name, problem = _receipt_host(root, cfg)
+    if name is None:
+        out.append(_f(g, "not_onboarded", INFO, "no onboard receipt, so the onboarded host is unknown",
+                      observed=problem, remediation="Run /ploma:onboard to write the project files and receipt."))
+        return out
+    if name != fh.name:
+        out.insert(0, _f(g, "host_mismatch", FAIL,
+                         f"repo is onboarded for {_display(name)}; you are running {h.display}",
+                         observed=f"receipt host: {name}", remediation="Run /ploma:onboard to switch."))
+    else:
+        out.append(_f(g, "host_match", PASS, f"running under {h.display}; repo onboarded for {_display(name)}"))
+    others = [p for other, paths in host_mod.host_files(root, cfg).items() if other != name for p in paths]
+    if others:
+        out.append(_f(g, "other_host_files", INFO, "ploma files for another host are present (left in place)",
+                      observed=", ".join(others)))
+    if fh.root_export:
+        out.extend(_root_export(root, cfg, fh))
+    link = root / host_mod.LINK
+    if os.path.islink(link) and os.path.isdir(link):
+        out.append(_f(g, "plugin_link", PASS, f"{host_mod.LINK} points at the plugin", observed=os.readlink(link)))
+    else:
+        out.append(_f(g, "plugin_link", WARN, f"{host_mod.LINK} is missing or dangling",
+                      observed=f"{host_mod.LINK}: " + ("dangling link to " + os.readlink(link)
+                                                       if os.path.islink(link) else "not a symlink"),
+                      remediation="Start a new session (the session hook refreshes .ploma/plugin), "
+                                  "or run /ploma:onboard."))
+    if fh.name == "codex":
+        agents = root / fh.instructions_file
+        size = agents.stat().st_size if agents.is_file() else 0
+        if size > AGENTS_MD_LIMIT:
+            out.append(_f(g, "agents_md_size", WARN,
+                          f"{fh.instructions_file} is over 28 KiB, so Codex may not read all of it",
+                          observed=f"{fh.instructions_file}: {size} bytes (limit {AGENTS_MD_LIMIT})",
+                          remediation=f"Shorten the text outside the ploma section of {fh.instructions_file}."))
+    return out
+
+
+def _root_export(root: Path, cfg: dict, fh: host_mod.Host) -> list[Finding]:
+    g = "host"
+    rel = fh.root_export
+    try:
+        held = project_files.withheld(cfg, root, fh)
+        text = project_files._read(root, rel)
+        span = project_files.marker_span(text, project_files.TOML_BEGIN, project_files.TOML_END) if text else None
+    except ValueError as exc:
+        return [_f(g, "root_export_missing", WARN, f"the ploma block in {rel} is broken", observed=str(exc),
+                   remediation=f"Fix the {project_files.TOML_BEGIN} and {project_files.TOML_END} lines in {rel} "
+                               "by hand, then run /ploma:onboard.")]
+    if rel in held:
+        return [_f(g, "root_export_manual", WARN,
+                   f"{rel} defines its own shell_environment_policy table, so onboard left the export to you",
+                   observed=project_files.export_line(),
+                   remediation=f"Add this line to the existing {project_files.POLICY_TABLE} table in {rel} by hand.")]
+    if span is None:
+        return [_f(g, "root_export_missing", WARN, f"{rel} has no ploma export block",
+                   observed=f"missing: {rel}" if text is None else f"no {project_files.TOML_BEGIN} block in {rel}",
+                   remediation=f"Run /ploma:onboard to write the export block in {rel}.")]
+    return []
+
+
+def _drift(g: str, path: str, current: str, wanted: str, what: str) -> Finding:
+    diff = "".join(difflib.unified_diff(current.splitlines(keepends=True), wanted.splitlines(keepends=True)))
+    return _f(g, f"drift:{path}", WARN, f"{what} differs from what ploma.yaml generates",
+              observed=_drift_excerpt(diff),
+              remediation="Re-run /ploma:onboard to regenerate it; change ploma.yaml, not the generated file.")
+
+
+def _section_drift(root: Path, cfg: dict, fh: host_mod.Host) -> list[Finding]:
+    """Codex inlines the rules in the AGENTS.md section, so the section itself must match ploma.yaml."""
+    rel = fh.instructions_file
+    try:
+        text = project_files._read(root, rel)
+        span = project_files.marker_span(text) if text is not None else None
+    except ValueError:
+        return []  # instructions_section reports it
+    if span is None:
+        return []
+    current = "".join(text.splitlines(keepends=True)[span[0]:span[1] + 1])
+    wanted = project_files.instructions_section(cfg, fh)
+    wanted = wanted if wanted.endswith("\n") else wanted + "\n"
+    current = current if current.endswith("\n") else current + "\n"
+    return [] if current == wanted else [_drift("project-files", rel, current, wanted, f"the ploma section of {rel}")]
+
+
+def _project_files(root: Path, cfg: dict, h: host_mod.Host | None = None) -> list[Finding]:
+    """Generated project files of the running host. Ids naming a file are project-files.<kind>:<path> (drift,
+    missing, stale), so a path such as .claude/rules/x.md never gives a double dot."""
+    g = "project-files"
+    fh = _files_host(h or host_mod.detect(root=root))
+    out = []
+    if _mismatch(root, cfg, fh) is not None:
+        out.append(_f(g, "files", SKIP, "the repo is onboarded for another host; file checks skipped",
+                      observed="see host.host_mismatch"))
+        return out + _project_common(root, cfg)
+    try:
+        specs = [s for s in project_files.render_all(cfg, root, fh) if s.mode == "enforced"]
     except (ValueError, KeyError, OSError) as exc:
         specs = None
-        out.append(_f(g, "render", WARN, "ploma could not render the generated rules", observed=str(exc),
+        out.append(_f(g, "render", WARN, "ploma could not render the generated files", observed=str(exc),
                       remediation="Fix ploma.yaml, then re-run /ploma:onboard."))
     if specs is not None:
         bad = 0
-        for spec in (s for s in specs if s.mode == "enforced"):
+        for spec in specs:
             target = root / spec.path
             if not target.is_file():
                 bad += 1
-                out.append(_f(g, f"missing:{spec.path}", WARN, f"generated rule {spec.path} is missing",
+                out.append(_f(g, f"missing:{spec.path}", WARN, f"generated file {spec.path} is missing",
                               observed=f"missing: {spec.path}", remediation="Re-run /ploma:onboard"))
                 continue
             try:
@@ -334,15 +472,9 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
                 current = f"<unreadable: {exc}>"
             if current != spec.content:
                 bad += 1
-                diff = "".join(difflib.unified_diff(current.splitlines(keepends=True),
-                                                    spec.content.splitlines(keepends=True)))
-                out.append(_f(g, f"drift:{spec.path}", WARN,
-                              f"{spec.path} differs from what ploma.yaml generates",
-                              observed=_drift_excerpt(diff),
-                              remediation="Re-run /ploma:onboard to regenerate it; change ploma.yaml, "
-                                          "not the generated file."))
+                out.append(_drift(g, spec.path, current, spec.content, spec.path))
         stale = root / project_files.PIPELINE_RULE
-        if _get(cfg, "pipeline.enabled") is not True and stale.is_file():
+        if fh.rules_dir and _get(cfg, "pipeline.enabled") is not True and stale.is_file():
             try:
                 generated = project_files.has_generated_marker(stale.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError):
@@ -355,18 +487,27 @@ def _project_files(root: Path, cfg: dict) -> list[Finding]:
                               remediation="Re-run /ploma:onboard"))
         if not bad:
             n = len(specs)
-            out.append(_f(g, "rules", PASS, f"{n} generated rules match ploma.yaml"))
+            out.append(_f(g, "rules", PASS, f"{n} generated files match ploma.yaml"))
+    rel = fh.instructions_file
     try:
-        claude = (root / "CLAUDE.md").read_text(encoding="utf-8") if (root / "CLAUDE.md").is_file() else None
-        span = project_files.marker_span(claude) if claude is not None else None
-        problem = "" if span is not None else \
-            "CLAUDE.md does not exist" if claude is None else "no ploma markers in CLAUDE.md"
+        text = (root / rel).read_text(encoding="utf-8") if (root / rel).is_file() else None
+        span = project_files.marker_span(text) if text is not None else None
+        problem = "" if span is not None else f"{rel} does not exist" if text is None else f"no ploma markers in {rel}"
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         problem = str(exc)
-    out.append(_f(g, "claude_md", WARN, "the CLAUDE.md ploma section is missing or broken", observed=problem,
+    out.append(_f(g, "instructions_section", WARN, f"the {rel} ploma section is missing or broken", observed=problem,
                   remediation="Re-run /ploma:onboard to restore the section between "
                               f"{project_files.MARKER_BEGIN} and {project_files.MARKER_END}.") if problem else
-               _f(g, "claude_md", PASS, "CLAUDE.md has the ploma section"))
+               _f(g, "instructions_section", PASS, f"{rel} has the ploma section"))
+    if not fh.rules_dir and not problem:
+        out.extend(_section_drift(root, cfg, fh))
+    return out + _project_common(root, cfg)
+
+
+def _project_common(root: Path, cfg: dict) -> list[Finding]:
+    """The checks that do not depend on the host: .gitignore coverage and the onboard receipt."""
+    g = "project-files"
+    out = []
     gi = root / ".gitignore"
     try:
         lines = gi.read_text(encoding="utf-8").splitlines() if gi.is_file() else []
@@ -457,13 +598,18 @@ def _state(root: Path, cfg: dict) -> list[Finding]:
     return out
 
 
-def _dependencies(root: Path, home: Path) -> list[Finding]:
+def _dependencies(root: Path, home: Path, h: host_mod.Host | None = None) -> list[Finding]:
     g = "dependencies"
-    sp = inventory._superpowers(root, home)  # same settings lookup onboard uses, without the full inventory walk
-    out = [_f(g, "superpowers", PASS, "superpowers is enabled", observed=sp["id"]) if sp["enabled"] else
-           _f(g, "superpowers", WARN, "superpowers is not enabled",
-              observed="no enabled superpowers@* plugin in user or project settings",
-              remediation=SUPERPOWERS_INSTALL)]
+    h = h or host_mod.detect(root=root)
+    codex = h.name == "codex"
+    if host_mod.superpowers_installed(h, home, root):
+        out = [_f(g, "superpowers", PASS, "superpowers is enabled",
+                  observed="" if codex else inventory._superpowers(root, home)["id"])]
+    else:
+        out = [_f(g, "superpowers", WARN, "superpowers is not enabled",
+                  observed="neither ~/.agents/skills/superpowers* nor ~/.codex/superpowers exists" if codex else
+                  "no enabled superpowers@* plugin in user or project settings",
+                  remediation=SUPERPOWERS_INSTALL_CODEX if codex else SUPERPOWERS_INSTALL)]
     out.append(_f(g, "citation_apis", SKIP, "doctor makes no network calls",
                   observed="citation API reachability is checked by /ploma:validate-bib"))
     return out
@@ -523,6 +669,7 @@ def _guard(group: str, fn: Callable[[], list[Finding]]) -> list[Finding]:
 def run(root: Path, *, which: Which = shutil.which, home: Path | None = None) -> DoctorReport:
     root = Path(root)
     home = Path.home() if home is None else Path(home)
+    h = host_mod.detect(root=root)
     found: dict[str, list[Finding]] = {"runtime": _guard("runtime", lambda: _runtime(which))}
     cfg: dict | None = None
     skip_reason = ""
@@ -540,16 +687,21 @@ def run(root: Path, *, which: Which = shutil.which, home: Path | None = None) ->
     if cfg is None:
         for gid in NEEDS_CONFIG:
             found[gid] = [_f(gid, "skipped", SKIP, skip_reason)]
+        found["host"] = [_running(h)] + found["host"]
     else:
         c = cfg
         found["config"] = _guard("config", lambda: _config(root, c))
         found["toolchain"] = _guard("toolchain", lambda: _toolchain(c, which))
         found["manuscript"] = _guard("manuscript", lambda: _manuscript(root, c))
-        found["project-files"] = _guard("project-files", lambda: _project_files(root, c))
+        found["host"] = _guard("host", lambda: _host(root, c, h))
+        found["project-files"] = _guard("project-files", lambda: _project_files(root, c, h))
         found["state"] = _guard("state", lambda: _state(root, c))
         found["legacy-harness"] = _guard("legacy-harness", lambda: _legacy(root))
-    found["dependencies"] = _guard("dependencies", lambda: _dependencies(root, home))
-    return DoctorReport([{"id": gid, "title": title, "findings": found[gid]} for gid, title in GROUPS])
+    found["dependencies"] = _guard("dependencies", lambda: _dependencies(root, home, h))
+    order = list(GROUPS)
+    if any(f.id == "host.host_mismatch" for f in found["host"]):  # the first thing the user reads
+        order.sort(key=lambda gt: gt[0] != "host")
+    return DoctorReport([{"id": gid, "title": title, "findings": found[gid]} for gid, title in order], host=h)
 
 
 def main(argv: list[str] | None = None) -> int:
