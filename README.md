@@ -1,14 +1,16 @@
 # ploma
 
-**Status: 0.1.0, released 2026-10-29.** Every lifecycle skill is installed. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
+**Status: 0.2.0, unreleased.** Every lifecycle skill is installed. The design spec is in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
 ## What ploma is
 
-ploma is a Claude Code plugin: a harness for writing, validating, reviewing and formatting LaTeX academic papers. A paper repo declares its facts once in `ploma.yaml` (manuscript path, build command, venue). Skills, agents, hooks and rules read that config instead of restating it. `/ploma:onboard` detects the facts by reading the repo and writes project files only after approval; `/ploma:doctor` says whether the repo is ready; a lifecycle of stages, each owned by one skill, is recommended from state that survives sessions. `/ploma:commit` refuses to commit until the required checks have passed.
+ploma is a harness for coding agents (Claude Code or Codex) for writing, validating, reviewing and formatting LaTeX academic papers. The plugin is installed on the agent. The paper repo declares its facts once in `ploma.yaml` (manuscript path, build command, venue). Skills, agents, hooks and rules read that config instead of restating it. `/ploma:onboard` detects the facts by reading the repo and writes project files only after approval; `/ploma:doctor` says whether the repo is ready; a lifecycle of stages, each owned by one skill, is recommended from state that survives sessions. `/ploma:commit` refuses to commit until the required checks have passed. Skill names below use the Claude Code form `/ploma:<name>`; on Codex type `$ploma:<name>`.
 
 ## Install
 
-The same commands work on both hosts (the development machine and the paper host). On a host without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
+### Claude Code
+
+The same commands work on both machines (the development machine and the paper host). On a machine without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
 
 ```
 gh auth login && gh auth setup-git          # HTTPS credentials for git
@@ -24,6 +26,31 @@ Then, inside Claude Code:
 ```
 
 Updates: `/plugin marketplace update ploma`, then `/reload-plugins`.
+
+### Codex
+
+Install from the same repo:
+
+```
+codex plugin marketplace add marcgarnica13/ploma
+codex plugin add ploma@ploma
+```
+
+Then open `/hooks` in the Codex TUI and trust ploma's hooks, and run `$ploma:onboard`. Skills are typed `$ploma:<name>`. Codex reads `.codex/config.toml` only for trusted projects, so trust the paper repo.
+
+Updates: `codex plugin marketplace upgrade ploma`, then `codex plugin add ploma@ploma` again.
+
+API keys on Codex come from environment variables: `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY` and `CROSSREF_MAILTO`. The scripts read them when the Claude Code plugin options are absent. ploma never writes secrets into project files. For per-machine keys, set them in `~/.codex/config.toml`:
+
+```
+# ~/.codex/config.toml
+[shell_environment_policy]
+set = { OPENALEX_API_KEY = "...", SEMANTIC_SCHOLAR_API_KEY = "...", CROSSREF_MAILTO = "you@example.org" }
+```
+
+## Switching hosts
+
+ploma runs on one host at a time. The repo is onboarded for the host you ran onboard under; the onboard receipt records it. To switch, run onboard on the new host. The old host's files stay in place. The doctor reports `host_mismatch` until you do.
 
 ## Lifecycle
 
@@ -93,12 +120,23 @@ Tests need Python 3.10 or later and pytest. CI runs pytest on Python 3.10 and 3.
 
 ## Testing
 
-The maintainers test ploma with the pytest suite above plus headless field tests on real paper repos, without billed eval runs:
+The maintainers test ploma with the pytest suite above plus headless field tests on real paper repos, without billed eval runs. On Claude Code:
 
 ```
 cd <paper-repo>
 claude -p --plugin-dir /path/to/ploma "/ploma:doctor"
 ```
+
+On Codex, use an isolated home, a local marketplace add and a headless run:
+
+```
+export CODEX_HOME=/tmp/ploma-codex-home        # keep the real ~/.codex untouched; copy auth.json into it
+codex plugin marketplace add /path/to/ploma && codex plugin add ploma@ploma
+cd <paper-repo>
+codex exec --skip-git-repo-check --dangerously-bypass-hook-trust -s workspace-write '$ploma:doctor'
+```
+
+`--dangerously-bypass-hook-trust` is needed because a headless run cannot trust hooks interactively.
 
 Swap in any skill. A field test passes when the skill's report and verdict match what a careful author would conclude about that repo.
 

@@ -5,13 +5,13 @@
     "url": "https://github.com/marcgarnica13"
   },
   "metadata": {
-    "description": "ploma: a Claude Code harness for LaTeX academic papers."
+    "description": "ploma: a harness for LaTeX academic papers with a coding agent (Claude Code or Codex)."
   },
   "plugins": [
     {
       "name": "ploma",
       "source": "./",
-      "description": "A Claude Code harness for writing, validating, reviewing and formatting LaTeX academic papers.",
+      "description": "A harness for writing, validating, reviewing and formatting LaTeX academic papers with a coding agent (Claude Code or Codex).",
       "category": "productivity"
     }
   ]

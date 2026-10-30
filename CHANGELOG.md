@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- Codex support: install from the same repo with `codex plugin marketplace add marcgarnica13/ploma` and `codex plugin add ploma@ploma`; skills are typed `$ploma:<name>`.
+- Host detection; the session hook refreshes the `.ploma/plugin` link to the plugin root.
+- Onboard writes per-host project files. On Codex: an `AGENTS.md` section with the rule bodies inlined, a `.codex/config.toml` export block, generated `.codex/agents/ploma-*.toml` agents, and `.agents/skills/` for the project skill.
+- Switching hosts: run onboard on the new host; the old host's files are kept.
+- Doctor `host` group: `host_mismatch`, `other_host_files`, `root_export_*`, `plugin_link`, `agents_md_size`.
+- Hooks classify tool names instead of relying on matchers.
+- Printed skill references are localized per host (`/ploma:<name>` or `$ploma:<name>`).
+- Promoted learnings on Codex live in an `AGENTS.md` block.
+- The `statusline` CLI action.
+- A bootstrap line in every skill sets the plugin root when the shell lacks it.
+
 ## 0.1.0 (2026-10-29)
 
 Note: `consistency` is a recommended gate check in 0.1.0 and becomes a required gate check in 0.1.1.

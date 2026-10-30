@@ -27,7 +27,7 @@ from state import _atomic_write, _now  # noqa: E402
 MODES = ("enforced", "created-once", "merged")
 STATES = ("unchanged", "hand_edited", "missing")
 FILE_NAME = "ploma-receipt.json"
-DEFAULT_VERSION = "0.1.0"
+DEFAULT_VERSION = "0.2.0"
 DEFAULT_HOST = "claude"
 
 

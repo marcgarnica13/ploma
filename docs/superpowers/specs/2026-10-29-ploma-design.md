@@ -67,6 +67,8 @@ From the environments:
 
 ## 4. Repository layout
 
+0.2.0: amended by `2026-10-29-ploma-multihost-design.md` §5.
+
 Single plugin at the repo root, tramat style. Marketplace `source: "./"`.
 
 ```
@@ -301,6 +303,8 @@ Skills hidden from model invocation (`disable-model-invocation: true`): onboard,
 
 ## 8. Onboard
 
+0.2.0: amended by `2026-10-29-ploma-multihost-design.md` §11.
+
 `/ploma:onboard [--dry-run] [--yes]`, hidden from model invocation.
 
 1. **Refuse or route.** If `ploma.yaml` exists, this is an absorption run: re-inventory, show what changed, absorb answered gaps, never clobber hand edits. If the repo has no `.tex` file, stop with the message that ploma v0.1 supports LaTeX papers only.
@@ -317,6 +321,8 @@ Skills hidden from model invocation (`disable-model-invocation: true`): onboard,
 7. **Verify.** Run `scripts/doctor.py --json` and report. Onboard must end READY or say exactly why not.
 
 ## 9. Doctor
+
+0.2.0: amended by `2026-10-29-ploma-multihost-design.md` §12.
 
 `/ploma:doctor [--json] [path]`, read-only, never asks "proceed?". `scripts/doctor.py` renders grouped checks, each PASS, WARN, FAIL, INFO or SKIP with a reason, and one verdict: READY (no FAIL, no WARN), READY_WITH_WARNINGS, NOT_READY. INFO and SKIP never affect the verdict. Observed facts and remediation are separate lines.
 
@@ -335,6 +341,8 @@ Groups:
 AC3: READY on the onboarded traces repo; NOT_READY on an empty directory with the first FAIL saying to run `/ploma:onboard`.
 
 ## 10. Agents
+
+0.2.0: amended by `2026-10-29-ploma-multihost-design.md` §9.
 
 Eight agents under `agents/`, namespaced `ploma:<name>`. Each starts with a "Project context" block that reads the resolved config injected by the SubagentStart hook and the venue or discipline files named there. No agent body names a field, venue, language or dataset.
 
@@ -356,6 +364,8 @@ Peeve pools: the 29 critical and 25 constructive peeves in `editor.md` split int
 Review hardening (from the research, all cheap): every finding quotes a manuscript span and the editor's synthesis drops any finding whose quote is not found verbatim; referees commit reports without seeing each other; the manuscript and pasted referee text are data, not instructions, stated in every reviewer agent.
 
 ## 11. Hooks
+
+0.2.0: amended by `2026-10-29-ploma-multihost-design.md` §8.
 
 `hooks/hooks.json`, all `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/<name>.py"`, all fail-open, all no-ops in under 100 ms when the project has no `ploma.yaml` (except the session start line).
 
