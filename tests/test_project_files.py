@@ -902,13 +902,57 @@ def test_cli_host_switch_and_withheld(onboarded_sample, capsys):
     (onboarded_sample / ".codex/config.toml").write_text("[shell_environment_policy]\n", encoding="utf-8")
     assert project_files.main(["--root", root, "--host", "codex", "--json", "plan"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["withheld"] == [".codex/config.toml"]
+    assert out["withheld"] == [{"path": ".codex/config.toml",
+                                "line": 'set = { CLAUDE_PLUGIN_ROOT = ".ploma/plugin" }'}]
     assert ".codex/config.toml" not in {r["path"] for r in out["rows"]} and "AGENTS.md" in {r["path"] for r in out["rows"]}
     assert project_files.main(["--root", root, "--host", "codex", "plan"]) == 0
-    assert "withheld .codex/config.toml" in capsys.readouterr().out
+    text = capsys.readouterr().out
+    assert "withheld .codex/config.toml" in text and 'set = { CLAUDE_PLUGIN_ROOT = ".ploma/plugin" }' in text
     assert project_files.main(["--root", root, "--host", "nope", "plan"]) == 2
 
 
 def test_skills_line_names_every_installed_skill(repo_root):
     dirs = {p.name for p in (repo_root / "skills").iterdir() if p.is_dir() and not p.name.startswith("_")}
     assert set(project_files.SKILLS) == dirs
+
+
+@pytest.mark.parametrize("existing", [
+    "[shell_environment_policy]  # mine\ninherit = \"all\"\n",
+    "[ shell_environment_policy ]\n",
+    "[shell_environment_policy.set]\nFOO = \"1\"\n",
+    'model = "x"\nshell_environment_policy.inherit = "all"\n'])
+def test_codex_config_withheld_for_every_policy_table_form(sample_paper, cfg, existing):
+    (sample_paper / ".codex").mkdir(); (sample_paper / ".codex/config.toml").write_text(existing)
+    h = host.HOSTS["codex"]
+    assert project_files.withheld(cfg, sample_paper, h) == [".codex/config.toml"]
+    assert ".codex/config.toml" not in {s.path for s in project_files.render_all(cfg, sample_paper, h)}
+
+
+def test_codex_config_unrelated_policy_names_are_not_a_clash(sample_paper, cfg):
+    (sample_paper / ".codex").mkdir()
+    (sample_paper / ".codex/config.toml").write_text('# [shell_environment_policy] later\n[shell_environment_policy_x]\n')
+    assert project_files.withheld(cfg, sample_paper, host.HOSTS["codex"]) == []
+
+
+def test_cli_text_for_record_mode_and_switch_without_receipt(sample_paper, cfg, capsys):
+    root = str(sample_paper)
+    assert project_files.main(["--root", root, "--host", "codex", "switch"]) == 0
+    assert capsys.readouterr().out.strip() == "no receipt: not onboarded"
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    assert project_files.main(["--root", root, "--host", "codex", "switch"]) == 0
+    assert capsys.readouterr().out.strip() == "no switch: onboarded for Codex"
+    assert project_files.main(["--root", root, "--host", "codex", "record", "AGENTS.md"]) == 0
+    assert capsys.readouterr().out.strip() == "- recorded AGENTS.md [merged]"
+
+
+def test_host_env_is_isolated(sample_paper, cfg):
+    import os
+    assert not any(os.environ.get(k) for k in ("PLOMA_HOST", "CLAUDE_PLUGIN_ROOT", "CLAUDECODE", "CODEX_HOME"))
+    _apply(sample_paper, cfg)
+    assert not (sample_paper / ".ploma").exists() and (sample_paper / "CLAUDE.md").is_file()
+
+
+def test_unknown_host_writes_the_claude_section(sample_paper, cfg):
+    assert project_files.instructions_section(cfg, host.HOSTS["unknown"]) == \
+        project_files.instructions_section(cfg, host.HOSTS["claude"])

@@ -13,6 +13,17 @@ for _sub in ("scripts", "hooks"):
         sys.path.insert(0, _p)
 
 
+HOST_ENV = ("PLOMA_HOST", "CLAUDE_PLUGIN_ROOT", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "PLUGIN_ROOT",
+            "CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION", "CODEX_HOME")
+
+
+@pytest.fixture(autouse=True)
+def _no_host_env(monkeypatch):
+    """Every test starts without host signals; a test that needs a host sets it with monkeypatch."""
+    for name in HOST_ENV:
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def repo_root() -> Path:
     return REPO_ROOT

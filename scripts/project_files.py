@@ -19,9 +19,9 @@ Usage:
   python3 scripts/project_files.py [--root R] [--host H] [--json] record <path>
   python3 scripts/project_files.py [--root R] [--host H] [--json] switch
 
-plan shows what apply would do (--json: {"rows": [...], "withheld": [...]}; withheld names a merged file
-ploma will not write, the .codex/config.toml block when the user's file already has a
-[shell_environment_policy] table); apply writes create, overwrite and merge actions, deletes a
+plan shows what apply would do (--json: {"rows": [...], "withheld": [{"path", "line"}]}; withheld names a
+merged file ploma will not write, the .codex/config.toml block when the user's file already defines the
+shell_environment_policy table, with the line to merge by hand); apply writes create, overwrite and merge actions, deletes a
 generated pipeline rule left over after pipeline.enabled turned false (action remove), records the
 receipt with the host, and creates the .ploma/plugin link (and .ploma/host.json) from
 CLAUDE_PLUGIN_ROOT when it is set; settings prints the proposed .claude/settings.json additions (never
@@ -69,6 +69,9 @@ LEARNINGS_END = "<!-- ploma-learnings:end -->"
 TOML_BEGIN = "# ploma:begin"
 TOML_END = "# ploma:end"
 POLICY_TABLE = "[shell_environment_policy]"
+# Any form that defines the table: [shell_environment_policy] (spaces, comments), a subtable, a dotted key.
+_POLICY_RES = (re.compile(r"^\s*\[\s*shell_environment_policy\s*(\]|\.)"),
+               re.compile(r"^\s*shell_environment_policy\s*\."))
 SKILLS = ("compile", "validate-bib", "audit-reproducibility", "verify-claims", "proofread", "write", "format",
           "review", "devils-advocate", "brainstorm", "lit-review", "grill", "spec", "respond", "checkpoint",
           "compress-session", "learn", "deep-audit", "commit", "doctor", "status", "help", "onboard")
@@ -383,7 +386,11 @@ def _inline_rules(cfg: dict, ctx: dict, h: _host.Host) -> str:
 
 
 def instructions_section(cfg: dict, host: _host.Host, ctx: dict | None = None) -> str:
-    """The marker-delimited ploma section of the host's instructions file (CLAUDE.md, AGENTS.md)."""
+    """The marker-delimited ploma section of the host's instructions file (CLAUDE.md, AGENTS.md).
+
+    An unknown host writes Claude Code's files, so it gets Claude Code's section (no churn between a
+    plain shell and a Claude Code session)."""
+    host = _host.HOSTS[_receipt_host(host)]
     ctx = dict(_context(cfg) if ctx is None else ctx)
     ctx["host"] = dict(dataclasses.asdict(host), rules_sentence=_rules_sentence(host))
     ctx["skills_line"] = ", ".join(_host.skill_ref(name, host) for name in SKILLS)
@@ -396,8 +403,8 @@ def _pipeline_skill(h: _host.Host) -> str:
 
 
 def withheld(cfg: dict, root: Path, host: _host.Host | None = None) -> list[str]:
-    """Merged files ploma will not write: the root export when the user's file already has the
-    [shell_environment_policy] table outside ploma's markers (the user merges the line by hand)."""
+    """Merged files ploma will not write: the root export when the user's file already defines the
+    shell_environment_policy table outside ploma's markers (the user merges export_line() by hand)."""
     h = _resolve(host, root)
     if not h.root_export:
         return []
@@ -409,8 +416,14 @@ def withheld(cfg: dict, root: Path, host: _host.Host | None = None) -> list[str]
     except ValueError as exc:
         raise ValueError(f"{h.root_export}: {exc}") from None
     ours = range(span[0], span[1] + 1) if span else range(0)
-    clash = any(ln.strip() == POLICY_TABLE and i not in ours for i, ln in enumerate(text.splitlines()))
+    clash = any(i not in ours and any(r.match(ln) for r in _POLICY_RES) for i, ln in enumerate(text.splitlines()))
     return [h.root_export] if clash else []
+
+
+def export_line() -> str:
+    """The line of the root export block a user merges by hand into their own policy table."""
+    lines = _template("codex-config.toml").splitlines()
+    return next(ln for ln in lines if ln.strip() and ln.strip() not in (TOML_BEGIN, TOML_END, POLICY_TABLE))
 
 
 def render_all(cfg: dict, root: Path, host: _host.Host | None = None) -> list[FileSpec]:
@@ -670,11 +683,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "record":
             entry = record_created_once(root, cfg, args.target, h)
             out = {"path": entry["path"], "mode": entry["mode"], "recorded": True}
-            print(json.dumps(out) if args.json else f"- recorded {entry['path']} [created-once]")
+            print(json.dumps(out) if args.json else f"- recorded {entry['path']} [{entry['mode']}]")
             return 0
         if args.action == "switch":
             notice = switch_notice(root, cfg, h)
-            print(json.dumps({"notice": notice}) if args.json else notice or f"no switch: onboarded for {h.display}")
+            idle = "no receipt: not onboarded" if receipt.load(root, cfg) is None else \
+                f"no switch: onboarded for {h.display}"
+            print(json.dumps({"notice": notice}) if args.json else notice or idle)
             return 0
         rows = plan(root, cfg, h)
         if args.action == "apply":
@@ -684,7 +699,8 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, KeyError, OSError) as exc:
         return _error(str(exc), args.json)
     if args.json:
-        print(json.dumps({"rows": rows, "withheld": held} if args.action == "plan" else rows, indent=2))
+        held_rows = [{"path": rel, "line": export_line()} for rel in held]
+        print(json.dumps({"rows": rows, "withheld": held_rows} if args.action == "plan" else rows, indent=2))
     else:
         for row in rows:
             flag = " (written)" if row.get("written") else ""
@@ -692,8 +708,8 @@ def main(argv: list[str] | None = None) -> int:
             if row["diff"] and args.action == "plan":
                 print(row["diff"].rstrip("\n"))
         for rel in held:
-            print(f"- withheld {rel}: it already has a {POLICY_TABLE} table outside the ploma markers; "
-                  f"add CLAUDE_PLUGIN_ROOT = \".ploma/plugin\" to that table's set by hand")
+            print(f"- withheld {rel}: it already defines shell_environment_policy outside the ploma markers; "
+                  f"merge this line into that table by hand: {export_line()}")
     return 0
 
 
