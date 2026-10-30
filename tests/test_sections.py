@@ -165,6 +165,19 @@ def test_check_maps_consistency_findings_to_the_draft(sample_paper):
     assert rep["consistency"]["verdict"] == "FAIL"
 
 
+def test_check_resolves_source_pins_against_the_repo_root(sample_paper):
+    # Issue #1: the check runs on a copy under .ploma/tmp; a "%% ploma-source" pin must still be
+    # resolved against the repo root, where the results file lives.
+    res = sample_paper / "sections" / "results.tex"
+    res.write_text(res.read_text().replace("  \\begin{tabular}", "  %% ploma-source: results/metrics.json\n  \\begin{tabular}"))
+    assert "%% ploma-source: results/metrics.json" in res.read_text()
+    draft = _draft(sample_paper, "\\section{Introduction}\n\\label{sec:intro}\n\nShort text.\n")
+    rep = sections.check(sample_paper, sample_paper / "main.tex", "Introduction", draft)
+    ids = [f["id"] for f in rep["consistency"]["findings"]]
+    assert not any(i.startswith("consistency.table_source_missing.") for i in ids), ids
+    assert not any(i.startswith("consistency.table_source_unused.") for i in ids), ids
+
+
 def test_check_reports_stale_source_and_diff(sample_paper):
     draft = _draft(sample_paper, "\\section{Introduction}\n\\label{sec:intro}\n\nShort text.\n", sha="0" * 12)
     rep = sections.check(sample_paper, sample_paper / "main.tex", "Introduction", draft)

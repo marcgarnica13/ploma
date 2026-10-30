@@ -7,9 +7,9 @@
 - A hero film and four stills, made from a real ploma session on the demo paper; the transcripts are in `media/transcripts/`.
 - `examples/demo-paper`: a fictional systems paper that ploma runs on, so the session can be replayed.
 
-### Known issues
+### Fixed
 
-- During the write run on the demo paper, `sections.py check` reported `results/bench.json` missing although the file exists. The cause: `sections.py check` resolves a `%% ploma-source` pin against the draft's temporary copy, so it reports the pinned results file missing.
+- `sections.py check` resolves `%% ploma-source` pins against the repo root, not the draft's temporary copy under `.ploma/tmp/`; on the demo paper it reported `results/bench.json` missing although the file exists (#1).
 
 ## 0.2.0 (2026-10-30)
 

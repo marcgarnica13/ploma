@@ -406,10 +406,11 @@ def check(root: Path, main: Path, query: str, draft: Path) -> dict:
         _copy_manuscript(srcs, base, tmp / "current", None)
         _copy_manuscript(srcs, base, tmp / "draft", (sec.file, sec.start, sec.end, body))
         rel_main = main.relative_to(base)
+        # root: "%% ploma-source" pins and results files are named relative to the repo root, not the copy.
         current = consistency.run(tmp / "current" / rel_main, results_dir=results_dir, metric_keys=keys,
-                                  tolerances=tolerances)
+                                  tolerances=tolerances, root=root)
         spliced = consistency.run(tmp / "draft" / rel_main, results_dir=results_dir, metric_keys=keys,
-                                  tolerances=tolerances)
+                                  tolerances=tolerances, root=root)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         try:
