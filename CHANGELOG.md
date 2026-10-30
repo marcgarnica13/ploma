@@ -14,6 +14,13 @@
 - Codex role files cannot restrict tools or set a sandbox, so the read-only guarantee of the reviewer agents holds on Claude Code only; on Codex it rests on the agents' instructions.
 - A bootstrap line in every skill sets the plugin root when `$CLAUDE_PLUGIN_ROOT/scripts` is not a directory (unset variable, or a missing or stale `.ploma/plugin`).
 
+### Known issues (0.2.1)
+
+- The edit reminder hook prints `/ploma:compile` on Codex instead of `$ploma:compile`.
+- A renamed `.tex` file (`*** Move to:` in a Codex patch) gets no edit reminder.
+- With a symlinked `AGENTS.md` (withheld by onboard), doctor reports `drift:AGENTS.md` whose remediation should point at the symlink notice.
+- Gemini CLI is out of scope; the research for it is kept for a later release.
+
 ## 0.1.0 (2026-10-29)
 
 Note: `consistency` is a recommended gate check in 0.1.0 and becomes a required gate check in 0.1.1.
