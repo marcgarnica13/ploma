@@ -12,8 +12,8 @@ The script needs Python 3, fontTools and `rsvg-convert` from librsvg. It writes 
 
 - `assets/logo/ploma-mark.svg` and `assets/logo/ploma-mark-dark.svg`: the nib alone.
 - `assets/logo/ploma-lockup.svg` and `assets/logo/ploma-lockup-dark.svg`: the nib with the wordmark.
-- `assets/logo/ploma-mark-512.png`: the nib at 512 by 512 pixels.
-- `.claude-plugin/icon.png`: a copy of the 512 pixel nib.
+- `assets/logo/ploma-mark-512.png`: the light nib at 512 by 512 pixels on an opaque `#f6f4ef` tile, so it stays visible on dark surfaces.
+- `.claude-plugin/icon.png`: a byte-identical copy of the 512 pixel tile.
 
 The light files use `#1d1b17`. The dark files use `#e8e6e0`.
 

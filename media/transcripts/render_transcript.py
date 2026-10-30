@@ -21,6 +21,9 @@ conversation: `system` events (init, hooks) and `rate_limit_event` events.
 The init event lists the owner's connectors, skills and plugins, and the rate
 limit event describes the account. With files it rewrites them in place.
 With no files it filters stdin to stdout.
+
+A line that is not valid JSON stops either mode with exit status 1 and its
+line number, so nothing unfiltered or unread slips through.
 """
 from __future__ import annotations
 
@@ -103,16 +106,26 @@ def render(events: list[dict]) -> str:
 DROPPED_TYPES = ("system", "rate_limit_event")
 
 
-def drop_system(lines):
-    """Yield the JSONL lines that are not setup events. Lines that do not parse are kept."""
-    for line in lines:
+class BadLine(ValueError):
+    """A JSONL line that does not parse."""
+
+    def __init__(self, source: str, lineno: int, error: json.JSONDecodeError):
+        super().__init__(f"{source}:{lineno}: not valid JSON ({error.msg})")
+
+
+def _parse(line: str, source: str, lineno: int):
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError as error:
+        raise BadLine(source, lineno, error) from None
+
+
+def drop_system(lines, source: str = "<stdin>"):
+    """Yield the JSONL lines that are not setup events. A line that does not parse raises BadLine."""
+    for lineno, line in enumerate(lines, start=1):
         if not line.strip():
             continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            yield line
-            continue
+        event = _parse(line, source, lineno)
         if isinstance(event, dict) and event.get("type") in DROPPED_TYPES:
             continue
         yield line
@@ -122,23 +135,29 @@ def strip_system(path: Path) -> None:
     """Rewrite a JSONL file in place without its setup events."""
     path = Path(path)
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    path.write_text("".join(drop_system(lines)), encoding="utf-8")
+    kept = "".join(drop_system(lines, str(path)))
+    path.write_text(kept, encoding="utf-8")
 
 
 def _read_jsonl(path: Path) -> list[dict]:
     events = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
-        try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+        events.append(_parse(line, str(path), lineno))
     return events
 
 
 def main(argv: list[str]) -> int:
+    try:
+        return _main(argv)
+    except BadLine as error:
+        print(f"render_transcript.py: {error}", file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str]) -> int:
     if argv and argv[0] == "--strip-system":
         if len(argv) == 1:
             for line in drop_system(sys.stdin):

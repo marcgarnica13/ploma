@@ -4,7 +4,7 @@ How to install and update ploma on Claude Code or Codex, and where API keys go. 
 
 ## Claude Code
 
-The same commands work on both machines (the development machine and the paper machine). On a machine without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
+The same commands work on every machine. On a machine without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
 
 ```
 gh auth login && gh auth setup-git          # HTTPS credentials for git

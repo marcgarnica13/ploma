@@ -9,7 +9,7 @@
 
 ### Known issues
 
-- During the write run on the demo paper, `sections.py check` reported `results/bench.json` missing although the file exists.
+- During the write run on the demo paper, `sections.py check` reported `results/bench.json` missing although the file exists. The cause: `sections.py check` resolves a `%% ploma-source` pin against the draft's temporary copy, so it reports the pinned results file missing.
 
 ## 0.2.0 (2026-10-30)
 

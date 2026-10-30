@@ -24,6 +24,7 @@ ALLOWED=("Bash(python3 *)" "Bash(git *)" "Bash(make *)" "Bash(mkdir *)" "Bash(ls
 mkdir -p "$RAW"
 
 setup() {
+  # Deletes the scratch copy at $HOME/ploma-demo-run.
   rm -rf "$RUN"
   cp -r "$PLUGIN/examples/demo-paper" "$RUN"
   (cd "$RUN" && git init -q && git add -A && git commit -qm "demo paper")
@@ -34,7 +35,7 @@ warn_keys() {
   local name
   for name in OPENALEX_API_KEY SEMANTIC_SCHOLAR_API_KEY CROSSREF_MAILTO; do
     if [ -z "${!name:-}" ]; then
-      echo "warning: $name is unset; citation lookups use the polite pools" >&2
+      echo "warning: $name is unset; citation lookups run without a contact address, outside the polite pool" >&2
     fi
   done
 }
@@ -107,7 +108,8 @@ if [ $# -eq 0 ]; then
 fi
 warn_keys
 for name in "$@"; do
-  step "$name" "$(prompt_for "$name")"
+  prompt=$(prompt_for "$name") || exit 1
+  step "$name" "$prompt"
 done
 
 echo "scratch copy left in place: $RUN"

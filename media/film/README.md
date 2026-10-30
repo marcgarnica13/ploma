@@ -28,6 +28,8 @@ The ship beat shows the one verdict sentence ploma printed. The names `compile`,
 
 The render server only serves the project directory. A link to `../../shared/chrome.css` resolves to the server root and fails. So `shared` and `logo` are relative symlinks, and the composition loads `../shared/chrome.css` and `../logo/*.svg`. The styles and logos stay in one place.
 
+The symlinks are committed, so the film renders on Linux or macOS.
+
 ## Network
 
 Render needs the network. The composition loads GSAP 3.14.2 from jsDelivr and IBM Plex Mono and Source Serif 4 from Google Fonts. The data is inlined, so the composition makes no fetch. The timeline is registered after every tween is added.

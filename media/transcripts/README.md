@@ -27,7 +27,7 @@ The raw event stream goes to `raw/<name>.jsonl`. System events and rate limit ev
 
 Tool results and thinking blocks are left out of the markdown. They stay in the raw files. System events never reach the raw files, since they are dropped at capture.
 
-All runs are from 2026-10-30, with Claude Code 2.1.314 and model `claude-opus-5-5`. No citation API keys were set, so `validate-bib --semantic` used the polite pools.
+All runs are from 2026-10-30, with Claude Code 2.1.314 and model `claude-opus-5-5`. No citation API keys were set, so the `validate-bib --semantic` lookups ran without a contact address, outside the polite pool.
 
 ## Files
 
@@ -42,6 +42,10 @@ All runs are from 2026-10-30, with Claude Code 2.1.314 and model `claude-opus-5-
 | `commit.md` | `/ploma:commit intro: ground the latency claim in bench.json --no-pr` | commit `5eb3f64` in the scratch copy |
 
 `grill.md` and `spec.md` come from the owner's interactive session on the same scratch copy: `/ploma:grill sections/intro.tex`, then `/ploma:spec --no-verify`. Their raw source is `raw/session.jsonl`.
+
+## Order of the runs
+
+The headless runs came first: onboard, compile, validate-bib, write, merge, compile and commit. The owner's interactive grill and spec session ran afterwards on the same scratch copy. The original 31% intro was re-staged for that session. That is why `grill.md` says "staged edit".
 
 ## Things to know before quoting
 

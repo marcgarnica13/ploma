@@ -18,15 +18,15 @@ ffmpeg -y -loglevel error -i out/ploma-hero.mp4 -i out/palette.png \
   "$DEST/ploma-hero.gif"
 ffmpeg -y -loglevel error -ss "$STILL_AT" -i out/ploma-hero.mp4 -frames:v 1 "$DEST/ploma-hero.png"
 
-if [ "$(stat -c%s out/ploma-hero.mp4)" -le 4000000 ]; then
+if [ "$(wc -c < out/ploma-hero.mp4)" -le 4000000 ]; then
   cp out/ploma-hero.mp4 "$DEST/"
 else
   rm -f "$DEST/ploma-hero.mp4"
   echo "make_gif.sh: out/ploma-hero.mp4 is over 4 MB, not copied" >&2
 fi
 
-for f in "$DEST"/ploma-hero.*; do printf '%s %s bytes\n' "$f" "$(stat -c%s "$f")"; done
-gif=$(stat -c%s "$DEST/ploma-hero.gif")
+for f in "$DEST"/ploma-hero.*; do printf '%s %s bytes\n' "$f" "$(wc -c < "$f")"; done
+gif=$(wc -c < "$DEST/ploma-hero.gif")
 if [ "$gif" -gt 6000000 ]; then
   echo "make_gif.sh: GIF is $gif bytes, over 6 MB. Retry with FPS=12, then WIDTH=900." >&2
   exit 1

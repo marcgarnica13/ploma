@@ -21,7 +21,7 @@
 
 ![ploma session on the demo paper](assets/film/ploma-hero.gif)
 
-Grill, write, merge, compile and commit on one paper. The paper is a fictional demo that ships in [`examples/demo-paper`](examples/demo-paper), so you can replay this session. Every terminal line in the film comes from a real ploma session; the transcripts are in [`media/transcripts/`](media/transcripts/). [Watch the MP4](assets/film/ploma-hero.mp4).
+Grill, write, merge, compile and commit on one paper. The paper is a fictional demo that ships in [`examples/demo-paper`](examples/demo-paper), so you can replay these runs. Every terminal line in the film comes from a real ploma session; the transcripts are in [`media/transcripts/`](media/transcripts/). [Watch the MP4](assets/film/ploma-hero.mp4).
 
 ## Why ploma exists
 
@@ -29,7 +29,7 @@ A coding agent can write a fluent introduction. The demo paper's introduction sa
 
 A paper needs every number to trace back to a result and every citation to a real record. A referee who reruns the benchmark should find the number the text states, and every entry in `refs.bib` should resolve to a published work.
 
-ploma makes the agent earn each sentence. It asks about the 31% before it drafts anything, the draft uses the number in `bench.json`, and `/ploma:commit` refuses to commit until the required checks pass on the current files.
+ploma makes the agent earn each sentence. `/ploma:grill` asks about the 31%. `/ploma:write` drafts with the number in `bench.json`. `/ploma:commit` refuses to commit until the required checks pass on the current files.
 
 ## How a paper gets written
 
@@ -141,4 +141,4 @@ ploma 0.2.0 was released on 2026-10-30. The suite has 1464 tests and CI runs it 
 
 ## Credits and licence
 
-ploma is licensed under Apache-2.0; see [`LICENSE`](LICENSE). The projects it took ideas, structure or text from are listed in [`UPSTREAMS.md`](UPSTREAMS.md). The hero film is rendered with [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache-2.0). The wordmark is set in Fraunces (SIL Open Font License) and converted to outlines, so no font file ships.
+ploma is licensed under Apache-2.0; see [`LICENSE`](LICENSE). The projects it took ideas, structure or text from are listed in [`UPSTREAMS.md`](UPSTREAMS.md). Their licence notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The hero film is rendered with [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache-2.0). The wordmark is set in Fraunces (SIL Open Font License) and converted to outlines, so no font file ships.

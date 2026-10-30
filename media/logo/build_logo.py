@@ -22,6 +22,8 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 OUT = REPO_ROOT / "assets" / "logo"
 ICON = REPO_ROOT / ".claude-plugin" / "icon.png"
+# Opaque tile behind the PNG nib, so it stays visible on dark surfaces.
+TILE = "#f6f4ef"
 CACHE = HERE / ".cache"
 FONT = CACHE / "Fraunces[SOFT,WONK,opsz,wght].ttf"
 FONT_URL = ("https://raw.githubusercontent.com/google/fonts/main/ofl/fraunces/"
@@ -144,7 +146,7 @@ def main() -> None:
     (OUT / "ploma-lockup.svg").write_text(lockup_svg(LIGHT, word, width))
     (OUT / "ploma-lockup-dark.svg").write_text(lockup_svg(DARK, word, width))
     png = OUT / "ploma-mark-512.png"
-    subprocess.run(["rsvg-convert", "-w", "512", "-h", "512", str(OUT / "ploma-mark.svg"),
+    subprocess.run(["rsvg-convert", "-w", "512", "-h", "512", "-b", TILE, str(OUT / "ploma-mark.svg"),
                     "-o", str(png)], check=True)
     shutil.copyfile(png, ICON)
 

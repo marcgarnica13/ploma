@@ -1,6 +1,6 @@
 # media
 
-Sources for the images and the film in the ploma README. The logo, film and stills build outputs that are committed under `assets/`; the logo also writes the plugin icon to `.claude-plugin/icon.png`. The transcripts stay in `media/transcripts/`.
+Sources for the images and the film in the ploma README. The logo, film and stills each build outputs that are committed under `assets/`; the logo also writes the plugin icon to `.claude-plugin/icon.png`. The transcripts stay in `media/transcripts/`.
 
 ## Logo
 
@@ -33,5 +33,7 @@ The film needs Node.js and npm:
 ```bash
 cd media/film
 npm install
-npx hyperframes render
+npm run render && bash make_gif.sh
 ```
+
+See `media/film/README.md` for the details.

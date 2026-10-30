@@ -4,8 +4,8 @@ Projects ploma took ideas, structure or text from. Review each row before a rele
 
 | Upstream | What ploma took | Observed | Last reviewed |
 |---|---|---|---|
-| pedrohcgs/claude-code-my-workflow | Upstream of the traces harness whose skills ploma ports; ported text descends from it. Licence not yet checked: must be checked before any public release. | v1.9 | 2026-10-29 |
-| hugosantanna/clo-author | Editor and referee agents, ported through the traces harness; ported text descends from it. Licence not yet checked: must be checked before any public release. | v4.2.0 | 2026-10-29 |
+| pedrohcgs/claude-code-my-workflow | Upstream of the traces harness whose skills ploma ports; ported text descends from it. MIT (checked 2026-10-30). | v1.9 | 2026-10-30 |
+| hugosantanna/clo-author | Editor and referee agents, ported through the traces harness; ported text descends from it. MIT (checked 2026-10-30). | v4.2.0 | 2026-10-30 |
 | chrisblattman/claudeblattman | Five-critic council and prompt skeleton ideas. | v2.1 | 2026-10-29 |
 | Imbad0202/academic-research-skills | Ideas only (CC-BY-NC-4.0), no text vendored: passport idea, stage gates, reviewer ensemble. | (unversioned) | 2026-10-29 |
 | CodySwannGT/lisa | Harness model: intent up front, state files, doctor, bounded loops that escalate, rule injection at SessionStart and SubagentStart. | 4.81.5 | 2026-10-29 |
