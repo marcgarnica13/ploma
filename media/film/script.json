@@ -1,0 +1,50 @@
+{
+  "beats": [
+    {"name": "open", "start": 0.0, "screen": 0, "lines": [
+      {"at": 0.8, "text": "/ploma:grill sections/intro.tex", "role": "user"},
+      {"at": 1.8, "text": "[tool] Bash git diff --cached", "role": "tool"},
+      {"at": 2.3, "text": "[tool] AskUserQuestion", "role": "tool"}
+    ]},
+    {"name": "grill", "start": 3.0, "screen": 0, "lines": [
+      {"at": 3.2, "text": "Empiricist", "role": "chip"},
+      {"at": 3.5, "text": "The intro now claims Hawser \"cuts median trace-query latency by 31%\" with no baseline named", "role": "q"},
+      {"at": 4.1, "text": "results/bench.json has 27.4% vs OpenTelemetry and 41.2% vs raw logs, and neither is 31.", "role": "q"},
+      {"at": 4.7, "text": "Which headline number should the intro state?", "role": "q"},
+      {"at": 5.3, "text": "27.4% vs OpenTelemetry (Recommended)", "role": "opt-rec"},
+      {"at": 5.4, "text": "matches bench.json `latency_cut_vs_otel_pct`, the abstract and results.tex:6, and is the strongest realistic baseline.", "role": "desc"},
+      {"at": 5.7, "text": "Both: 27.4% vs OTel, 41.2% vs logs", "role": "opt"},
+      {"at": 6.0, "text": "Keep 31% (a new result)", "role": "opt"},
+      {"at": 7.1, "text": "**Answer:** 27.4% vs OpenTelemetry (Recommended)", "role": "ok"},
+      {"at": 7.7, "text": "The intro must name the OpenTelemetry baseline and state 27.4%; the \"31%\" in the staged edit is unsupported and must not be committed.", "role": "bullet"}
+    ]},
+    {"name": "write", "start": 9.0, "screen": 1, "lines": [
+      {"at": 9.2, "text": "/ploma:write intro", "role": "user"},
+      {"at": 9.9, "text": "Drafting the Introduction now.", "role": "say"},
+      {"at": 10.2, "text": "[tool] Write /home/mgarnica/ploma-demo-run/sections/intro_suggestion.tex", "role": "tool"},
+      {"at": 10.6, "text": "Style check: no em-dashes, banned phrases or long sentences.", "role": "bullet"},
+      {"at": 11.0, "text": "@@ -2,9 +2,12 @@", "role": "hunk"},
+      {"at": 11.2, "text": "-We present Hawser, a tracer that keeps this chain and cuts median trace-query latency by 31\\%.", "role": "del"},
+      {"at": 11.4, "text": "+We present Hawser, a tracer that keeps this chain.", "role": "add"},
+      {"at": 11.6, "text": "+Against an OpenTelemetry pipeline, Hawser cuts median trace-query latency by 27.4\\%.", "role": "add"},
+      {"at": 12.2, "text": "/ploma:write intro --merge", "role": "user"},
+      {"at": 12.9, "text": "The draft has **not** been merged yet. I need your yes first.", "role": "say"},
+      {"at": 13.3, "text": "yes", "role": "user"},
+      {"at": 13.7, "text": "I merged the new Introduction into the paper.", "role": "say"},
+      {"at": 14.2, "text": "/ploma:compile", "role": "user"},
+      {"at": 14.9, "text": "**Status: PASS.** build clean.", "role": "say"},
+      {"at": 15.2, "text": "**Pages vs budget:** 3 pages in total; 2 counted against a budget of 10: PASS.", "role": "bullet"}
+    ]},
+    {"name": "ship", "start": 17.0, "screen": 2, "lines": [
+      {"at": 18.1, "text": "/ploma:commit intro: ground the latency claim in bench.json --no-pr", "role": "user"},
+      {"at": 18.75, "text": "Running the gate.", "role": "say"},
+      {"at": 19.0, "text": "[tool] Bash python3 \"/home/mgarnica/papers/scripts/commit_gate.py\" prepare --json", "role": "tool"},
+      {"at": 19.3, "text": "**Gate:** it passed. compile, bib and consistency all passed and are up to date. No override was used.", "role": "gate",
+       "lights": [{"word": "compile", "at": 19.7}, {"word": "bib", "at": 20.5}, {"word": "consistency", "at": 21.3}]},
+      {"at": 21.6, "text": "I committed your changes as **`5eb3f64` intro: ground the latency claim in bench.json** on `master`.", "role": "say"}
+    ]},
+    {"name": "tagline", "start": 22.0, "lines": [
+      {"at": 22.4, "text": "ploma", "role": "brand"},
+      {"at": 22.9, "text": "Your paper. Your claims. Checked.", "role": "tagline"}
+    ]}
+  ]
+}

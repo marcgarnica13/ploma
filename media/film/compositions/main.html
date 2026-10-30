@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1600, height=1000">
+<title>ploma hero film</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=block" rel="stylesheet">
+<!-- media/film/shared is a symlink to media/shared: the render server only serves the project directory. -->
+<link rel="stylesheet" href="../shared/chrome.css">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<style>
+  /* Own frame: do not rely on the body rules in chrome.css. */
+  html, body {
+    width: 1600px;
+    height: 1000px;
+    margin: 0;
+    overflow: hidden;
+    display: block;
+    background: var(--studio-b);
+  }
+  #root {
+    position: relative;
+    width: 1600px;
+    height: 1000px;
+    overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 0%, var(--studio-a) 0%, var(--studio-b) 70%);
+    font-family: var(--mono);
+    color: var(--term-fg);
+  }
+
+  /* terminal, front left */
+  #term { position: absolute; left: 40px; top: 60px; width: 880px; height: 880px; z-index: 2; }
+  #term .body { position: relative; overflow: hidden; padding: 0; }
+  .screen { position: absolute; inset: 0; padding: 24px 32px; }
+  .nib { display: block; height: 30px; margin: 0 0 12px; }
+  .type { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; }
+  .ask { padding: 14px 20px 10px; margin: 8px 0 12px; }
+  .ask .row.q { margin-bottom: 2px; }
+  .opts { margin-top: 8px; }
+  .opt { padding: 3px 0; }
+  .gate { font-size: 18px; }
+  .row.tool { margin-bottom: 4px; }
+
+  /* document window, behind right */
+  #pdf { position: absolute; left: 872px; top: 96px; width: 690px; height: 808px; z-index: 1; }
+  .pv { position: relative; flex: 1; overflow: hidden; background: #ffffff; }
+  .sheet { position: absolute; left: -126px; top: -216px; width: 965px; height: 1365px; }
+  .sheet img { display: block; width: 100%; height: 100%; }
+  .wm { position: absolute; background: #ffffff; }
+  .hl { position: absolute; background: var(--accent); opacity: 0; border-radius: 2px; }
+
+  /* closing card */
+  #dim { position: absolute; inset: 0; z-index: 3; background: var(--studio-b); opacity: 0; }
+  #card {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 34px;
+  }
+  #card .halo { position: absolute; inset: 0; background: radial-gradient(ellipse 50% 44% at 50% 50%, rgba(16, 17, 20, 0.85) 0%, rgba(16, 17, 20, 0.45) 50%, rgba(16, 17, 20, 0) 100%); opacity: 0; }
+  #card .lockup, #card .tagline { position: relative; }
+  #card .lockup { height: 150px; opacity: 0; }
+  #card .tagline { font-family: var(--serif); font-size: 44px; color: #ffffff; opacity: 0; letter-spacing: 0.01em; }
+</style>
+</head>
+<body>
+<!-- Every .ln text comes from script.json, and every script.json text is a verbatim
+     substring of media/transcripts/*.md (tests/test_film.py). Markdown markers that
+     Claude Code would not show stay in the DOM inside <i class="mk">, hidden by chrome.css. -->
+<div id="root" data-composition-id="main" data-start="0" data-duration="25" data-width="1600" data-height="1000">
+
+  <div id="pdf" class="win pdfwin clip" data-start="0" data-duration="25">
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><div class="title">main.pdf</div></div>
+    <div class="pv"><div class="sheet" id="sheet"><img src="../assets/page-1.png" alt=""></div></div>
+  </div>
+
+  <div id="term" class="win term clip" data-start="0" data-duration="25">
+    <!-- media/film/logo is a symlink to assets/logo. -->
+    <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><div class="title"><img src="../logo/ploma-mark-dark.svg" alt="">ploma-demo-run</div></div>
+    <div class="body" id="tbody"></div>
+  </div>
+
+  <div id="dim" class="clip" data-start="0" data-duration="25"></div>
+
+  <div id="card" class="clip" data-start="0" data-duration="25"></div>
+</div>
+
+<script>
+  // Deterministic: every position comes from script.json and pdf_words.json.
+  // No wall clock, no randomness, no repeats.
+  window.__timelines = window.__timelines || {};
+
+  var REVEAL = { start: 14.9, dur: 2.4 };   // with "Status: PASS", ends before the ship screen
+  var PDF_IN = 14.3;                        // with the second /ploma:compile
+  var DIM_AT = 22.0;
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Turn markdown markers into hidden <i class="mk"> spans so the line stays verbatim.
+  function md(text, lights) {
+    var out = "", bold = false, code = false, i = 0, plain = "";
+    var done = {};
+    function flush() {
+      var s = esc(plain);
+      (lights || []).forEach(function (l, k) {
+        if (done[k]) return;
+        var t = s.replace(new RegExp("\\b" + l.word + "\\b"), '<span class="lt" data-k="' + k + '">' + l.word + "</span>");
+        if (t !== s) { done[k] = true; s = t; }
+      });
+      out += s;
+      plain = "";
+    }
+    while (i < text.length) {
+      if (text.substr(i, 2) === "**") {
+        flush();
+        out += bold ? '<i class="mk">**</i></b>' : '<i class="mk">**</i><b>';
+        bold = !bold; i += 2;
+      } else if (text[i] === "`") {
+        flush();
+        out += code ? '<i class="mk">`</i></code>' : '<i class="mk">`</i><code>';
+        code = !code; i += 1;
+      } else {
+        plain += text[i]; i += 1;
+      }
+    }
+    flush();
+    return out;
+  }
+
+  function el(tag, cls, html) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html !== undefined) e.innerHTML = html;
+    return e;
+  }
+
+  function build(script, words) {
+    var tl = gsap.timeline({ paused: true });
+    var tbody = document.getElementById("tbody");
+    var screens = {};
+    var ask = null, opts = null, lastOpt = null;
+
+    // Screens: each is cleared just before the next one's first line.
+    var firstAt = {};
+    script.beats.forEach(function (b) {
+      if (b.screen === undefined) return;
+      if (!screens[b.screen]) {
+        var sc = el("div", "screen");
+        tbody.appendChild(sc);
+        screens[b.screen] = sc;
+        firstAt[b.screen] = b.lines[0].at;
+      }
+    });
+    Object.keys(screens).forEach(function (k) {
+      var next = firstAt[Number(k) + 1];
+      if (next !== undefined) {
+        tl.to(screens[k], { opacity: 0, y: -24, duration: 0.25, ease: "power1.in" }, next - 0.35);
+      }
+    });
+
+    // The nib mark sits above the first prompt and appears at 0.3 s.
+    var nib = el("img", "nib");
+    nib.src = "../logo/ploma-mark-dark.svg";
+    nib.alt = "";
+    screens[0].appendChild(nib);
+    tl.set(nib, { opacity: 0 }, 0);
+    tl.fromTo(nib, { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.4, ease: "back.out(2)", transformOrigin: "0 50%" }, 0.3);
+
+    var card = document.getElementById("card");
+    var halo = el("div", "halo");
+    card.appendChild(halo);
+    tl.to(halo, { opacity: 1, duration: 0.6, ease: "power1.inOut" }, DIM_AT);
+
+    script.beats.forEach(function (beat) {
+      var sc = screens[beat.screen];
+      beat.lines.forEach(function (line) {
+        var role = line.role, at = line.at, node, ln;
+
+        if (role === "brand") {
+          node = el("img", "lockup");
+          node.src = "../logo/ploma-lockup-dark.svg";
+          node.alt = line.text;
+          card.appendChild(node);
+          tl.fromTo(node, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, at);
+          return;
+        }
+        if (role === "tagline") {
+          node = el("div", "tagline", '<span class="ln">' + esc(line.text) + "</span>");
+          card.appendChild(node);
+          tl.fromTo(node, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, at);
+          return;
+        }
+
+        if (role === "user") {
+          node = el("div", "row prompt");
+          ln = el("span", "ln type", esc(line.text));
+          node.appendChild(ln);
+          sc.appendChild(node);
+          var n = line.text.length;
+          tl.set(node, { opacity: 0 }, 0);
+          tl.set(node, { opacity: 1 }, at);
+          tl.fromTo(ln, { width: "0ch" }, { width: n + "ch", duration: 0.6, ease: "steps(" + n + ")" }, at);
+          return;
+        }
+
+        if (role === "chip" || role === "q" || role === "opt" || role === "opt-rec" || role === "desc") {
+          if (role === "chip") {
+            ask = el("div", "ask");
+            opts = null;
+            sc.appendChild(ask);
+            tl.set(ask, { opacity: 0 }, 0);
+            tl.to(ask, { opacity: 1, duration: 0.25 }, at - 0.1);
+            node = el("div", "chip", '<span class="ln">' + md(line.text) + "</span>");
+            ask.appendChild(node);
+          } else if (role === "q") {
+            node = el("div", "row q", '<span class="ln">' + md(line.text) + "</span>");
+            ask.appendChild(node);
+          } else if (role === "desc") {
+            node = el("div", "desc", '<span class="ln">' + md(line.text) + "</span>");
+            lastOpt.appendChild(node);
+          } else {
+            if (!opts) { opts = el("div", "opts"); ask.appendChild(opts); }
+            node = el("div", role === "opt-rec" ? "opt rec" : "opt");
+            node.appendChild(el("div", "lab", '<span class="ln">' + md(line.text) + "</span>"));
+            opts.appendChild(node);
+            lastOpt = node;
+          }
+        } else {
+          var cls = { say: "row say", tool: "row tool", ok: "row ok", bullet: "row bullet",
+                      hunk: "row hunk", add: "row add", del: "row del", gate: "row gate" }[role];
+          node = el("div", cls, '<span class="ln">' + md(line.text, line.lights) + "</span>");
+          sc.appendChild(node);
+        }
+
+        tl.set(node, { opacity: 0 }, 0);
+        tl.fromTo(node, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, at);
+
+        (line.lights || []).forEach(function (l, k) {
+          var span = node.querySelector('.lt[data-k="' + k + '"]');
+          tl.fromTo(span, { color: "#d8dbe2", textShadow: "0 0 0 rgba(111,191,115,0)" },
+                    { color: "#6fbf73", textShadow: "0 0 14px rgba(111,191,115,0.75)", duration: 0.3, ease: "power2.out" }, l.at);
+          tl.to(span, { textShadow: "0 0 0 rgba(111,191,115,0)", duration: 0.5 }, l.at + 0.35);
+          span.style.fontWeight = "600";
+        });
+      });
+    });
+
+    // PDF window slides in from the right at the second compile.
+    var pdf = document.getElementById("pdf");
+    tl.set(pdf, { opacity: 0, x: 760 }, 0);
+    tl.to(pdf, { opacity: 1, x: 0, duration: 0.8, ease: "power3.out" }, PDF_IN);
+
+    // Word masks: one paper rectangle per word, fading out in reading order.
+    var sheet = document.getElementById("sheet");
+    var step = REVEAL.dur / words.length;
+    words.forEach(function (w, i) {
+      var pos = "left:" + ((w.x - 0.002) * 100) + "%;top:" + ((w.y - 0.003) * 100) + "%;width:" +
+                ((w.w + 0.004) * 100) + "%;height:" + ((w.h + 0.006) * 100) + "%";
+      var m = el("div", "wm");
+      m.setAttribute("style", pos);
+      sheet.appendChild(m);
+      var t = REVEAL.start + i * step;
+      if (w.text.indexOf("27.4") === 0) {
+        var h = el("div", "hl");
+        h.setAttribute("style", pos);
+        sheet.appendChild(h);
+        tl.to(m, { opacity: 0, duration: 0.25 }, t);
+        tl.fromTo(h, { opacity: 0 }, { opacity: 0.32, duration: 0.35, ease: "power2.out" }, t + 0.1);
+      } else {
+        tl.to(m, { opacity: 0, duration: 0.15 }, t);
+      }
+    });
+
+    // The terminal starts centred and moves left as the PDF window arrives.
+    var term = document.getElementById("term");
+    tl.set(term, { x: 320 }, 0);
+    tl.to(term, { x: 0, duration: 0.8, ease: "power3.inOut" }, PDF_IN);
+
+    // Closing card: a studio-dark veil takes both windows down to 30 percent,
+    // so the PDF does not show through a translucent terminal.
+    var dim = document.getElementById("dim");
+    tl.set(dim, { opacity: 0 }, 0);
+    tl.to(dim, { opacity: 0.7, duration: 0.6, ease: "power1.inOut" }, DIM_AT);
+    tl.set({}, {}, 25);
+
+    // Register after every tween is added.
+    window.__timelines.main = tl;
+    tl.seek(0);
+  }
+
+  Promise.all([
+    fetch("../script.json").then(function (r) { return r.json(); }),
+    fetch("../pdf_words.json").then(function (r) { return r.json(); })
+  ]).then(function (d) { build(d[0], d[1]); });
+</script>
+</body>
+</html>

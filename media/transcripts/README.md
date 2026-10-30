@@ -50,6 +50,15 @@ All runs are from 2026-10-30, with Claude Code 2.1.314 and model `claude-opus-5-
 - The merge and write runs report a warning that `results/bench.json` is missing. The file exists in the scratch copy. Treat that line as a ploma finding, not as a fact about the paper.
 - The commit run says "I said 18 earlier". The 18 is in a thinking block, so it is not in `commit.md`. Do not quote that sentence.
 
+## Fixed copy
+
+The film's closing card is brand copy, not a ploma run. It is listed here so the film's traceability test treats it as sourced:
+
+```
+ploma
+Your paper. Your claims. Checked.
+```
+
 ## Rerun
 
 ```bash
