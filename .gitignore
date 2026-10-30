@@ -10,3 +10,4 @@ __pycache__/
 .ploma/
 examples/sample-paper/build/
 evals/results/
+media/logo/.cache/
