@@ -211,6 +211,17 @@ def test_subagent_paths_survive_a_broken_config(tmp_path, repo_root):
     assert "## ploma project" in out and "ploma scripts: " in out
 
 
+def test_broken_config_carries_host_block_on_codex(tmp_path, repo_root, monkeypatch):
+    (tmp_path / "ploma.yaml").write_text("document: [unclosed\n")
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    for subagent in (False, True):
+        out = _ctx(tmp_path, repo_root, subagent=subagent)
+        assert "## ploma project" in out and "## ploma host: Codex" in out
+        assert ("ploma scripts: " in out) is subagent
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    assert "## ploma host" not in _ctx(tmp_path, repo_root, subagent=True)
+
+
 def test_session_start_refreshes_link_and_host_json(onboarded_sample, repo_root, monkeypatch):
     monkeypatch.setenv("PLOMA_HOST", "codex")
     session_context.main("{}", plugin_root=repo_root, root=onboarded_sample)

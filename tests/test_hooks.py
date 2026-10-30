@@ -96,12 +96,16 @@ def test_import_does_not_load_ploma_config(name, repo_root, tmp_path):
 
 def test_scripts_run_with_config(onboarded_sample, repo_root, tmp_path):
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
+    tools = {"context_monitor": "Bash", "verify_reminder": "Edit"}
     for name in HOOK_FILES[1:]:
         r = subprocess.run([sys.executable, str(repo_root / "hooks" / f"{name}.py")],
-                           input=_payload(onboarded_sample, tool_input={"file_path": "main.tex"}),
+                           input=_payload(onboarded_sample, tool_name=tools.get(name, "Bash"),
+                                          tool_input={"file_path": "main.tex"}),
                            capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
         assert r.returncode == 0, (name, r.stderr)
     assert (onboarded_sample / ".ploma" / "pre-compact-state.json").is_file()
+    assert (onboarded_sample / ".ploma" / "context-monitor-cache.json").is_file()
+    assert (onboarded_sample / ".ploma" / "verify-reminder-cache.json").is_file()
 
 
 @pytest.mark.parametrize("name,kind", [("Bash", "shell"), ("Write", "edit"), ("Edit", "edit"), ("MultiEdit", "edit"),

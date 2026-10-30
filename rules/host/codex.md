@@ -5,4 +5,4 @@
 - A subagent named `ploma:<agent>` in skill text is spawned with `spawn_agent`, `agent_type: ploma-<agent>` and `fork_turns: "none"`. The roles live in `.codex/agents/`.
 - The plugin root is `.ploma/plugin`, relative to the repo root. `.codex/config.toml` exports it to the shell as `CLAUDE_PLUGIN_ROOT`.
 - Plugin hooks run only once the user trusts them via `/hooks`.
-- This repo is onboarded for the host named in the project summary. If that is not Codex, run `$ploma:onboard`.
+- `$ploma:doctor` reports `host_mismatch` when this repo is onboarded for another host; then run `$ploma:onboard`.

@@ -199,7 +199,9 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
         msg = exc.message.replace("\n", " ")
         notice = msg if "could not be parsed" in msg else f"ploma.yaml could not be parsed: {msg}"
         text = "\n\n".join([rules, "## ploma project", notice[:1000] + " Fix it or run /ploma:doctor."])
-        return text + "\n" + _plugin_paths(plugin_root) if subagent else text
+        if subagent:
+            text += "\n" + _plugin_paths(plugin_root)
+        return "\n\n".join(p for p in (text, block) if p)
     head = rules + "\n\n## ploma project\n" + ploma_config.summary(cfg)
     if subagent:
         return "\n\n".join(p for p in (head + "\n" + _plugin_paths(plugin_root), block) if p)
