@@ -31,31 +31,33 @@
   }
 
   /* terminal, front left */
-  #term { position: absolute; left: 40px; top: 60px; width: 880px; height: 880px; z-index: 2; }
+  #term { position: absolute; left: 32px; top: 60px; width: 860px; height: 880px; z-index: 2; }
   #term .body { position: relative; overflow: hidden; padding: 0; }
   .screen { position: absolute; inset: 0; padding: 24px 32px; }
+  .prompt .w { white-space: nowrap; }
   .nib { display: block; height: 30px; margin: 0 0 12px; }
-  .type { display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; }
   .ask { padding: 14px 20px 10px; margin: 8px 0 12px; }
   .ask .row.q { margin-bottom: 2px; }
   .opts { margin-top: 8px; }
   .opt { padding: 3px 0; }
-  .gate { font-size: 18px; }
   .row.tool { margin-bottom: 4px; }
 
   /* document window, behind right */
-  #pdf { position: absolute; left: 872px; top: 96px; width: 690px; height: 808px; z-index: 1; }
+  /* Starts right of the terminal's edge (892 px), so all three title bar dots show. */
+  #pdf { position: absolute; left: 908px; top: 96px; width: 660px; height: 808px; z-index: 1; }
   .pv { position: relative; flex: 1; overflow: hidden; background: #ffffff; }
-  .sheet { position: absolute; left: -126px; top: -216px; width: 965px; height: 1365px; }
+  .sheet { position: absolute; left: -154px; top: -216px; width: 965px; height: 1365px; }
   .sheet img { display: block; width: 100%; height: 100%; }
   .wm { position: absolute; background: #ffffff; }
   .hl { position: absolute; background: var(--accent); opacity: 0; border-radius: 2px; }
 
   /* closing card */
   #dim { position: absolute; inset: 0; z-index: 3; background: var(--studio-b); opacity: 0; }
+  /* Centred 60 px left of the frame centre, away from the PDF text. */
   #card {
     position: absolute;
     inset: 0;
+    padding-right: 120px;
     z-index: 4;
     display: flex;
     flex-direction: column;
@@ -63,7 +65,7 @@
     justify-content: center;
     gap: 34px;
   }
-  #card .halo { position: absolute; inset: 0; background: radial-gradient(ellipse 50% 44% at 50% 50%, rgba(16, 17, 20, 0.85) 0%, rgba(16, 17, 20, 0.45) 50%, rgba(16, 17, 20, 0) 100%); opacity: 0; }
+  #card .halo { position: absolute; inset: 0; background: radial-gradient(ellipse 56% 46% at 46% 50%, rgba(16, 17, 20, 0.96) 0%, rgba(16, 17, 20, 0.7) 50%, rgba(16, 17, 20, 0) 100%); opacity: 0; }
   #card .lockup, #card .tagline { position: relative; }
   #card .lockup { height: 150px; opacity: 0; }
   #card .tagline { font-family: var(--serif); font-size: 44px; color: #ffffff; opacity: 0; letter-spacing: 0.01em; }
@@ -95,6 +97,13 @@
   // Deterministic: every position comes from script.json and pdf_words.json.
   // No wall clock, no randomness, no repeats.
   window.__timelines = window.__timelines || {};
+
+  // The data is inlined by inline_data.py from script.json and pdf_words.json,
+  // so the composition makes no fetch. Do not edit between the markers by hand.
+  // BEGIN DATA
+  var SCRIPT = {"beats":[{"name":"open","start":0.0,"screen":0,"lines":[{"at":0.8,"text":"/ploma:grill sections/intro.tex","role":"user"},{"at":1.8,"text":"[tool] Bash git diff --cached","role":"tool"},{"at":2.3,"text":"[tool] AskUserQuestion","role":"tool"}]},{"name":"grill","start":3.0,"screen":0,"lines":[{"at":3.2,"text":"Empiricist","role":"chip"},{"at":3.5,"text":"The intro now claims Hawser \"cuts median trace-query latency by 31%\" with no baseline named","role":"q"},{"at":4.1,"text":"results/bench.json has 27.4% vs OpenTelemetry and 41.2% vs raw logs, and neither is 31.","role":"q"},{"at":4.7,"text":"Which headline number should the intro state?","role":"q"},{"at":5.3,"text":"27.4% vs OpenTelemetry (Recommended)","role":"opt-rec"},{"at":5.4,"text":"matches bench.json `latency_cut_vs_otel_pct`, the abstract and results.tex:6, and is the strongest realistic baseline.","role":"desc"},{"at":5.7,"text":"Both: 27.4% vs OTel, 41.2% vs logs","role":"opt"},{"at":6.0,"text":"Keep 31% (a new result)","role":"opt"},{"at":7.1,"text":"**Answer:** 27.4% vs OpenTelemetry (Recommended)","role":"ok"},{"at":7.7,"text":"The intro must name the OpenTelemetry baseline and state 27.4%; the \"31%\" in the staged edit is unsupported and must not be committed.","role":"bullet"}]},{"name":"write","start":9.0,"screen":1,"lines":[{"at":9.2,"text":"/ploma:write intro","role":"user"},{"at":9.9,"text":"Drafting the Introduction now.","role":"say"},{"at":10.6,"text":"Style check: no em-dashes, banned phrases or long sentences.","role":"bullet"},{"at":11.0,"text":"@@ -2,9 +2,12 @@","role":"hunk"},{"at":11.2,"text":"-We present Hawser, a tracer that keeps this chain and cuts median trace-query latency by 31\\%.","role":"del"},{"at":11.4,"text":"+We present Hawser, a tracer that keeps this chain.","role":"add"},{"at":11.6,"text":"+Against an OpenTelemetry pipeline, Hawser cuts median trace-query latency by 27.4\\%.","role":"add"},{"at":12.2,"text":"/ploma:write intro --merge","role":"user"},{"at":12.9,"text":"The draft has **not** been merged yet. I need your yes first.","role":"say"},{"at":13.3,"text":"yes","role":"user"},{"at":13.7,"text":"I merged the new Introduction into the paper.","role":"say"},{"at":14.2,"text":"/ploma:compile","role":"user"},{"at":14.9,"text":"**Status: PASS.** build clean.","role":"say"},{"at":15.2,"text":"**Pages vs budget:** 3 pages in total; 2 counted against a budget of 10: PASS.","role":"bullet"}]},{"name":"ship","start":17.0,"screen":2,"lines":[{"at":18.1,"text":"/ploma:commit intro: ground the latency claim in bench.json --no-pr","role":"user"},{"at":18.75,"text":"Running the gate.","role":"say"},{"at":19.3,"text":"**Gate:** it passed. compile, bib and consistency all passed and are up to date. No override was used.","role":"gate","lights":[{"word":"compile","at":19.7},{"word":"bib","at":20.5},{"word":"consistency","at":21.3}]},{"at":21.6,"text":"I committed your changes as **`5eb3f64` intro: ground the latency claim in bench.json** on `master`.","role":"say"}]},{"name":"tagline","start":22.0,"lines":[{"at":22.4,"text":"ploma","role":"brand"},{"at":22.9,"text":"Your paper. Your claims. Checked.","role":"tagline"}]}]};
+  var WORDS = [{"text":"LLM","x":0.21133,"y":0.4527,"w":0.03946,"h":0.01675},{"text":"agents","x":0.25658,"y":0.4527,"w":0.05021,"h":0.01675},{"text":"plan,","x":0.31258,"y":0.4527,"w":0.03948,"h":0.01675},{"text":"call","x":0.35791,"y":0.4527,"w":0.02734,"h":0.01675},{"text":"tools","x":0.39104,"y":0.4527,"w":0.03806,"h":0.01675},{"text":"and","x":0.43489,"y":0.4527,"w":0.02936,"h":0.01675},{"text":"act","x":0.47004,"y":0.4527,"w":0.0243,"h":0.01675},{"text":"on","x":0.50013,"y":0.4527,"w":0.01923,"h":0.01675},{"text":"the","x":0.52515,"y":0.4527,"w":0.02531,"h":0.01675},{"text":"results,","x":0.55625,"y":0.4527,"w":0.0569,"h":0.01675},{"text":"often","x":0.619,"y":0.4527,"w":0.03999,"h":0.01675},{"text":"thousands","x":0.66478,"y":0.4527,"w":0.08018,"h":0.01675},{"text":"of","x":0.75075,"y":0.4527,"w":0.01466,"h":0.01675},{"text":"times","x":0.7712,"y":0.4527,"w":0.04262,"h":0.01675},{"text":"within","x":0.21133,"y":0.4688,"w":0.05062,"h":0.01675},{"text":"one","x":0.2701,"y":0.4688,"w":0.02733,"h":0.01675},{"text":"task","x":0.30559,"y":0.4688,"w":0.03301,"h":0.01675},{"text":"[7,","x":0.34675,"y":0.4688,"w":0.01924,"h":0.01675},{"text":"5].","x":0.37414,"y":0.4688,"w":0.01924,"h":0.01675},{"text":"When","x":0.40771,"y":0.4688,"w":0.04706,"h":0.01675},{"text":"an","x":0.46293,"y":0.4688,"w":0.01923,"h":0.01675},{"text":"agent","x":0.49032,"y":0.4688,"w":0.04304,"h":0.01675},{"text":"fails,","x":0.54151,"y":0.4688,"w":0.03706,"h":0.01675},{"text":"the","x":0.58724,"y":0.4688,"w":0.02531,"h":0.01675},{"text":"operator","x":0.62071,"y":0.4688,"w":0.06733,"h":0.01675},{"text":"needs","x":0.69619,"y":0.4688,"w":0.04363,"h":0.01675},{"text":"to","x":0.74798,"y":0.4688,"w":0.0162,"h":0.01675},{"text":"know","x":0.77234,"y":0.4688,"w":0.0415,"h":0.01675},{"text":"which","x":0.21133,"y":0.48489,"w":0.04605,"h":0.01675},{"text":"decision","x":0.26627,"y":0.48489,"w":0.06287,"h":0.01675},{"text":"led","x":0.33803,"y":0.48489,"w":0.02329,"h":0.01675},{"text":"to","x":0.3702,"y":0.48489,"w":0.0162,"h":0.01675},{"text":"which","x":0.39527,"y":0.48489,"w":0.04607,"h":0.01675},{"text":"tool","x":0.45023,"y":0.48489,"w":0.03087,"h":0.01675},{"text":"call.","x":0.48999,"y":0.48489,"w":0.0324,"h":0.01675},{"text":"The","x":0.5389,"y":0.48489,"w":0.03138,"h":0.01675},{"text":"operator","x":0.57917,"y":0.48489,"w":0.06731,"h":0.01675},{"text":"also","x":0.65537,"y":0.48489,"w":0.03048,"h":0.01675},{"text":"needs","x":0.69473,"y":0.48489,"w":0.04363,"h":0.01675},{"text":"to","x":0.74725,"y":0.48489,"w":0.0162,"h":0.01675},{"text":"know","x":0.77232,"y":0.48489,"w":0.04151,"h":0.01675},{"text":"which","x":0.21133,"y":0.50098,"w":0.04605,"h":0.01675},{"text":"result","x":0.26502,"y":0.50098,"w":0.04465,"h":0.01675},{"text":"changed","x":0.31731,"y":0.50098,"w":0.06428,"h":0.01675},{"text":"the","x":0.38923,"y":0.50098,"w":0.02531,"h":0.01675},{"text":"next","x":0.42216,"y":0.50098,"w":0.03493,"h":0.01675},{"text":"decision.","x":0.46473,"y":0.50098,"w":0.06793,"h":0.01675},{"text":"Request","x":0.54544,"y":0.50098,"w":0.06362,"h":0.01675},{"text":"tracing","x":0.61669,"y":0.50098,"w":0.05568,"h":0.01675},{"text":"records","x":0.68001,"y":0.50098,"w":0.0568,"h":0.01675},{"text":"the","x":0.74445,"y":0.50098,"w":0.02531,"h":0.01675},{"text":"path","x":0.77738,"y":0.50098,"w":0.03644,"h":0.01675},{"text":"of","x":0.21133,"y":0.51708,"w":0.01468,"h":0.01675},{"text":"a","x":0.23294,"y":0.51708,"w":0.00911,"h":0.01675},{"text":"request","x":0.24898,"y":0.51708,"w":0.0573,"h":0.01675},{"text":"through","x":0.31321,"y":0.51708,"w":0.06276,"h":0.01675},{"text":"a","x":0.38292,"y":0.51708,"w":0.00911,"h":0.01675},{"text":"distributed","x":0.39895,"y":0.51708,"w":0.08717,"h":0.01675},{"text":"system","x":0.49305,"y":0.51708,"w":0.05436,"h":0.01675},{"text":"[6,","x":0.55434,"y":0.51708,"w":0.01924,"h":0.01675},{"text":"1].","x":0.58051,"y":0.51708,"w":0.01924,"h":0.01675},{"text":"It","x":0.61041,"y":0.51708,"w":0.01367,"h":0.01675},{"text":"treats","x":0.631,"y":0.51708,"w":0.04566,"h":0.01675},{"text":"each","x":0.6836,"y":0.51708,"w":0.03492,"h":0.01675},{"text":"tool","x":0.72546,"y":0.51708,"w":0.03087,"h":0.01675},{"text":"call","x":0.76326,"y":0.51708,"w":0.02734,"h":0.01675},{"text":"as","x":0.79752,"y":0.51708,"w":0.0163,"h":0.01675},{"text":"an","x":0.21133,"y":0.53317,"w":0.01923,"h":0.01675},{"text":"independent","x":0.23866,"y":0.53317,"w":0.09718,"h":0.01675},{"text":"span,","x":0.34394,"y":0.53317,"w":0.04163,"h":0.01675},{"text":"so","x":0.39416,"y":0.53317,"w":0.0163,"h":0.01675},{"text":"it","x":0.41856,"y":0.53317,"w":0.01215,"h":0.01675},{"text":"loses","x":0.43882,"y":0.53317,"w":0.03665,"h":0.01675},{"text":"the","x":0.48357,"y":0.53317,"w":0.02533,"h":0.01675},{"text":"causal","x":0.517,"y":0.53317,"w":0.0487,"h":0.01675},{"text":"chain","x":0.57379,"y":0.53317,"w":0.04201,"h":0.01675},{"text":"between","x":0.6239,"y":0.53317,"w":0.06429,"h":0.01675},{"text":"a","x":0.69629,"y":0.53317,"w":0.00911,"h":0.01675},{"text":"decision","x":0.7135,"y":0.53317,"w":0.06287,"h":0.01675},{"text":"and","x":0.78448,"y":0.53317,"w":0.02936,"h":0.01675},{"text":"the","x":0.21133,"y":0.54926,"w":0.02531,"h":0.01675},{"text":"results","x":0.24281,"y":0.54926,"w":0.05184,"h":0.01675},{"text":"it","x":0.30083,"y":0.54926,"w":0.01215,"h":0.01675},{"text":"consumed.","x":0.31915,"y":0.54926,"w":0.08311,"h":0.01675},{"text":"We","x":0.41068,"y":0.54926,"w":0.0253,"h":0.01675},{"text":"present","x":0.44215,"y":0.54926,"w":0.05729,"h":0.01675},{"text":"Hawser,","x":0.50562,"y":0.54926,"w":0.06287,"h":0.01675},{"text":"a","x":0.57468,"y":0.54926,"w":0.00911,"h":0.01675},{"text":"tracer","x":0.58997,"y":0.54926,"w":0.04657,"h":0.01675},{"text":"that","x":0.64272,"y":0.54926,"w":0.03341,"h":0.01675},{"text":"keeps","x":0.68231,"y":0.54926,"w":0.04263,"h":0.01675},{"text":"this","x":0.73112,"y":0.54926,"w":0.02946,"h":0.01675},{"text":"chain.","x":0.76675,"y":0.54926,"w":0.04707,"h":0.01675},{"text":"Against","x":0.21133,"y":0.56536,"w":0.06134,"h":0.01675},{"text":"an","x":0.27716,"y":0.56536,"w":0.01923,"h":0.01675},{"text":"OpenTelemetry","x":0.3009,"y":0.56536,"w":0.123,"h":0.01675},{"text":"pipeline,","x":0.42839,"y":0.56536,"w":0.06733,"h":0.01675},{"text":"Hawser","x":0.50055,"y":0.56536,"w":0.05779,"h":0.01675},{"text":"cuts","x":0.56283,"y":0.56536,"w":0.0325,"h":0.01675},{"text":"median","x":0.59983,"y":0.56536,"w":0.0577,"h":0.01675},{"text":"trace-query","x":0.66202,"y":0.56536,"w":0.09011,"h":0.01675},{"text":"latency","x":0.75664,"y":0.56536,"w":0.0572,"h":0.01675},{"text":"by","x":0.21133,"y":0.58145,"w":0.01923,"h":0.01675},{"text":"27.4%.","x":0.23664,"y":0.58145,"w":0.05264,"h":0.01675}];
+  // END DATA
 
   var REVEAL = { start: 14.9, dur: 2.4 };   // with "Status: PASS", ends before the ship screen
   var PDF_IN = 14.3;                        // with the second /ploma:compile
@@ -201,13 +210,29 @@
 
         if (role === "user") {
           node = el("div", "row prompt");
-          ln = el("span", "ln type", esc(line.text));
+          // One span per character, shown in turn over 0.6 s. Long commands wrap
+          // like any other line, and the text content stays verbatim.
+          ln = el("span", "ln");
+          var n = line.text.length;
+          // Words are kept whole (no break after the "-" in "--no-pr").
+          var word = null;
+          for (var c = 0; c < n; c++) {
+            var ch = el("span", "ch");
+            ch.textContent = line.text[c];
+            if (line.text[c] === " ") {
+              word = null;
+              ln.appendChild(ch);
+            } else {
+              if (!word) { word = el("span", "w"); ln.appendChild(word); }
+              word.appendChild(ch);
+            }
+            tl.set(ch, { opacity: 0 }, 0);
+            tl.set(ch, { opacity: 1 }, at + (c * 0.6) / n);
+          }
           node.appendChild(ln);
           sc.appendChild(node);
-          var n = line.text.length;
           tl.set(node, { opacity: 0 }, 0);
           tl.set(node, { opacity: 1 }, at);
-          tl.fromTo(ln, { width: "0ch" }, { width: n + "ch", duration: 0.6, ease: "steps(" + n + ")" }, at);
           return;
         }
 
@@ -296,10 +321,7 @@
     tl.seek(0);
   }
 
-  Promise.all([
-    fetch("../script.json").then(function (r) { return r.json(); }),
-    fetch("../pdf_words.json").then(function (r) { return r.json(); })
-  ]).then(function (d) { build(d[0], d[1]); });
+  build(SCRIPT, WORDS);
 </script>
 </body>
 </html>

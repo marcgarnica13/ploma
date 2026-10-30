@@ -24,3 +24,11 @@ def test_outputs_exist_and_fit_the_budget():
     assert (OUT / "ploma-hero.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     mp4 = OUT / "ploma-hero.mp4"
     assert not mp4.exists() or mp4.stat().st_size <= 4_000_000
+
+def test_composition_inlines_the_current_data():
+    html = (FILM / "compositions" / "main.html").read_text()
+    script = json.loads((FILM / "script.json").read_text())
+    words = json.loads((FILM / "pdf_words.json").read_text())
+    assert "fetch(" not in html
+    assert "var SCRIPT = " + json.dumps(script, separators=(",", ":")) + ";" in html
+    assert "var WORDS = " + json.dumps(words, separators=(",", ":")) + ";" in html

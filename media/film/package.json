@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "npx --yes hyperframes@0.8.166 check",
-    "render": "npx --yes hyperframes@0.8.166 render -c compositions/main.html --fps 30 --output out/ploma-hero.mp4"
+    "render": "python3 inline_data.py && npx --yes hyperframes@0.8.166 render -c compositions/main.html --fps 30 --output out/ploma-hero.mp4"
   },
   "dependencies": {
     "hyperframes": "0.8.166"

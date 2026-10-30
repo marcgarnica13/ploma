@@ -7,6 +7,7 @@ The README hero film. A terminal runs a real ploma session while a PDF window fi
 | file | what it is |
 |---|---|
 | `compositions/main.html` | the composition: 1600 by 1000, 25 s, one paused GSAP timeline on `window.__timelines.main` |
+| `inline_data.py` | copies `script.json` and `pdf_words.json` into the composition's DATA block |
 | `script.json` | the terminal lines, in five beats: `open`, `grill`, `write`, `ship`, `tagline` |
 | `pdf_words.py` | writes `pdf_words.json` and `assets/page-1.png` from the compiled PDF |
 | `pdf_words.json` | one box per word of the rewritten intro paragraph, as fractions of the page |
@@ -29,7 +30,7 @@ The render server only serves the project directory. A link to `../../shared/chr
 
 ## Network
 
-Render needs the network. The composition loads GSAP 3.14.2 from jsDelivr and IBM Plex Mono and Source Serif 4 from Google Fonts. The data files load with `fetch` from the project directory, and the timeline is registered after every tween is added.
+Render needs the network. The composition loads GSAP 3.14.2 from jsDelivr and IBM Plex Mono and Source Serif 4 from Google Fonts. The data is inlined, so the composition makes no fetch. The timeline is registered after every tween is added.
 
 ## Commands
 
@@ -50,14 +51,15 @@ Word boxes and the page image, from the repo root:
 python3 media/film/pdf_words.py media/film/assets/demo-main.pdf media/film/pdf_words.json
 ```
 
-Render, then the GIF, the still and the MP4, from `media/film`:
+Inline the data, render, then make the GIF, the still and the MP4, from `media/film`:
 
 ```bash
+python3 inline_data.py
 npx hyperframes render -c compositions/main.html --fps 30 --output out/ploma-hero.mp4
 bash make_gif.sh
 ```
 
-`npm run render` runs the same render. The render prints "No index.html file found" from its lint step. That is expected: the composition lives at `compositions/main.html`, and the render goes on.
+`npm run render` runs the inline step and the same render. `tests/test_film.py` fails if the inlined data is out of date. The render prints "No index.html file found" from its lint step. That is expected: the composition lives at `compositions/main.html`, and the render goes on.
 
 For quick checks, render with `-q draft` and pull frames with ffmpeg:
 

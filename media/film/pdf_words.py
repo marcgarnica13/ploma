@@ -9,7 +9,8 @@ and including the first word that starts with "27.4". That is the paragraph
 ploma rewrote. Each word is written as fractions of the page:
 {"text", "x", "y", "w", "h"}.
 
-It also renders page 1 with `pdftoppm -r 200` to assets/page-1.png, next to
+It also renders page 1 with `pdftoppm -r 200 -singlefile` to assets/page-1.png
+(-singlefile keeps the name unpadded for any page count), next to
 this script. The film lays the word masks over that image.
 """
 import json
@@ -55,8 +56,8 @@ def main():
     words = intro_paragraph(page_words(pdf))
     out.write_text(json.dumps(words, indent=1) + "\n")
     (HERE / "assets").mkdir(exist_ok=True)
-    subprocess.run(["pdftoppm", "-r", "200", "-png", "-f", "1", "-l", "1",
-                    str(pdf), str(HERE / "assets" / "page")], check=True)
+    subprocess.run(["pdftoppm", "-r", "200", "-png", "-singlefile", "-f", "1", "-l", "1",
+                    str(pdf), str(HERE / "assets" / "page-1")], check=True)
     print(f"{len(words)} words -> {out}")
 
 
