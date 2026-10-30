@@ -28,6 +28,7 @@ MODES = ("enforced", "created-once", "merged")
 STATES = ("unchanged", "hand_edited", "missing")
 FILE_NAME = "ploma-receipt.json"
 DEFAULT_VERSION = "0.1.0"
+DEFAULT_HOST = "claude"
 
 
 def path(root: Path, cfg: dict) -> Path:
@@ -76,13 +77,17 @@ def _check_entry(entry: Any, where: str) -> None:
         raise ValueError(f"{where}: unknown mode {entry['mode']!r}; expected one of {MODES}")
 
 
-def write(root: Path, cfg: dict, files: list[dict]) -> Path:
-    """Write the receipt atomically, replacing any previous one; returns its path."""
+def write(root: Path, cfg: dict, files: list[dict], host: str) -> Path:
+    """Write the receipt atomically, replacing any previous one; returns its path.
+
+    host is the name of the host the files were written for ("onboarded for", spec section 11)."""
+    if not isinstance(host, str) or not host:
+        raise ValueError("receipt.write: host must be a host name")
     entries = []
     for f in files:
         _check_entry(f, "receipt.write")
         entries.append({"path": _norm_path(f["path"], "receipt.write"), "mode": f["mode"], "sha256": f["sha256"]})
-    data = {"ploma_version": plugin_version(), "at": _now(), "files": entries}
+    data = {"ploma_version": plugin_version(), "at": _now(), "host": host, "files": entries}
     out = path(root, cfg)
     _atomic_write(out, json.dumps(data, indent=2) + "\n")
     return out
@@ -102,6 +107,9 @@ def load(root: Path, cfg: dict) -> dict | None:
     for key in ("ploma_version", "at"):
         if not isinstance(data.get(key), str):
             raise ValueError(f"{p}: receipt lacks a string {key!r}")
+    data.setdefault("host", DEFAULT_HOST)  # receipts written before the host field
+    if not isinstance(data["host"], str) or not data["host"]:
+        raise ValueError(f"{p}: receipt host must be a host name")
     for entry in data["files"]:
         _check_entry(entry, str(p))
         _norm_path(entry["path"], str(p))
@@ -153,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
             if data is None:
                 return _error("no receipt yet (onboard has not applied files)", args.json, code=1)
             print(json.dumps(data, indent=2) if args.json else
-                  "\n".join([f"ploma {data['ploma_version']} applied at {data['at']}"]
+                  "\n".join([f"ploma {data['ploma_version']} applied for {data['host']} at {data['at']}"]
                             + [f"- {f['mode']} {f['path']}" for f in data["files"]]))
             return 0
         rows = compare(root, cfg)

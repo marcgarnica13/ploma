@@ -7,6 +7,7 @@ import re
 import pytest
 
 import doctor
+import host
 import ploma_config
 import project_files
 import receipt
@@ -140,13 +141,18 @@ def test_templates_have_no_domain_words_or_em_dashes(repo_root):
         assert not EM_DASH_RE.search(text), p
 
 
-def test_claude_md_section_is_short_and_has_the_facts_rule(sample_paper, cfg):
-    text = (project_files.TEMPLATES / "claude-md-section.md").read_text(encoding="utf-8")
+@pytest.mark.parametrize("name", ["claude", "codex"])
+def test_claude_md_section_is_short_and_has_the_facts_rule(sample_paper, cfg, name):
+    h = host.HOSTS[name]
+    text = project_files.instructions_section(cfg, h)
     lines = text.splitlines()
     assert lines[0] == project_files.MARKER_BEGIN and lines[-1] == project_files.MARKER_END
-    assert len(lines) < 25
-    assert "ploma.yaml" in text and "/ploma:doctor" in text and "/ploma:status" in text
-    assert "Never restate" in text and "/ploma:compile" in text
+    if name == "claude":
+        assert len(lines) < 25
+    p = h.skill_prefix
+    assert "ploma.yaml" in text and f"{p}doctor" in text and f"{p}status" in text
+    assert "Never restate" in text and f"{p}compile" in text
+    assert f"Never restate the paper's facts in {h.instructions_file}." in text
 
 
 def test_statusline_renders_outputs_dir(cfg):
@@ -247,7 +253,7 @@ def test_marker_section_appended_after_one_blank_line(sample_paper, cfg):
 def test_claude_md_created_with_only_the_section(sample_paper, cfg):
     _apply(sample_paper, cfg)
     t = (sample_paper / "CLAUDE.md").read_text(encoding="utf-8")
-    assert t == (project_files.TEMPLATES / "claude-md-section.md").read_text(encoding="utf-8")
+    assert t == project_files.instructions_section(cfg, host.HOSTS["claude"])
 
 
 def test_unbalanced_markers_raise(sample_paper, cfg):
@@ -323,7 +329,9 @@ def test_settings_suggestion_is_never_written(sample_paper, cfg):
 def test_cli_plan_apply_settings(sample_paper, capsys):
     root = str(sample_paper)
     assert project_files.main(["--root", root, "--json", "plan"]) == 0
-    rows = json.loads(capsys.readouterr().out)
+    out = json.loads(capsys.readouterr().out)
+    rows = out["rows"]
+    assert out["withheld"] == []
     assert {r["action"] for r in rows} >= {"create"}
     assert project_files.main(["--root", root, "--json", "apply"]) == 0
     assert all(r["written"] for r in json.loads(capsys.readouterr().out))
@@ -426,7 +434,7 @@ def test_fenced_marker_pair_is_not_a_section(sample_paper, cfg):
     assert project_files.marker_span(claude.read_text(encoding="utf-8")) is None
     _apply(sample_paper, cfg)
     t = claude.read_text(encoding="utf-8")
-    section = (project_files.TEMPLATES / "claude-md-section.md").read_text(encoding="utf-8")
+    section = project_files.instructions_section(cfg, host.HOSTS["claude"])
     assert t == "# Mine\n\n" + FENCED_PAIR + "\n" + section
 
 
@@ -437,7 +445,7 @@ def test_fenced_example_plus_real_pair_replaces_only_the_real_one(sample_paper, 
                       encoding="utf-8")
     _apply(sample_paper, cfg)
     t = claude.read_text(encoding="utf-8")
-    section = (project_files.TEMPLATES / "claude-md-section.md").read_text(encoding="utf-8")
+    section = project_files.instructions_section(cfg, host.HOSTS["claude"])
     assert t == "# Mine\n" + FENCED_PAIR + tilde + section + "tail\n"
 
 
@@ -514,7 +522,7 @@ def test_cli_plan_from_proposed_config_on_stdin(sample_paper, capsys, monkeypatc
     before = sorted(p.relative_to(sample_paper) for p in sample_paper.rglob("*"))
     monkeypatch.setattr("sys.stdin", io.StringIO(text))
     assert project_files.main(["--root", str(sample_paper), "--config", "-", "--json", "plan"]) == 0
-    rows = json.loads(capsys.readouterr().out)
+    rows = json.loads(capsys.readouterr().out)["rows"]
     assert {r["path"]: r["action"] for r in rows}[MANUSCRIPT] == "create"
     assert sorted(p.relative_to(sample_paper) for p in sample_paper.rglob("*")) == before
     monkeypatch.setattr("sys.stdin", io.StringIO(text))
@@ -638,7 +646,7 @@ def test_reapply_keeps_only_the_learnings_rule_from_foreign_entries(sample_paper
     other.write_text("x\n", encoding="utf-8")
     data = receipt.load(sample_paper, cfg)
     files = data["files"] + [{"path": "notes.md", "mode": "created-once", "sha256": receipt.sha256_file(other)}]
-    receipt.write(sample_paper, cfg, files)
+    receipt.write(sample_paper, cfg, files, "claude")
     _apply(sample_paper, cfg)
     paths = {e["path"] for e in receipt.load(sample_paper, cfg)["files"]}
     assert LEARNINGS_RULE in paths and "notes.md" not in paths
@@ -737,3 +745,170 @@ def test_pipeline_skill_bash_is_narrowed_to_the_language(sample_paper, cfg, lang
     assert "Bash" not in tools and "Bash(make *)" in tools
     bash = [t for t in tools if t.startswith("Bash(")]
     assert bash == ([runner] if runner else []) + ["Bash(make *)"]
+
+
+# ---------------------------------------------------------------- per host (multi-host Task 5)
+
+@pytest.mark.parametrize("name,expected", [
+    ("claude", {".claude/rules/ploma-manuscript.md": "enforced", "CLAUDE.md": "merged"}),
+    ("codex", {".codex/agents/ploma-editor.toml": "enforced", "AGENTS.md": "merged", ".codex/config.toml": "merged"})])
+def test_render_all_per_host(sample_paper, cfg, name, expected):
+    specs = {s.path: s.mode for s in project_files.render_all(cfg, sample_paper, host.HOSTS[name])}
+    for path, mode in expected.items():
+        assert specs[path] == mode
+    assert (".claude/rules/ploma-manuscript.md" in specs) == (name == "claude")
+    assert not any(p.startswith(".codex/") for p in specs) or name == "codex"
+
+
+def test_codex_section_inlines_rules_and_uses_dollar_prefix(sample_paper, cfg):
+    text = next(s.content for s in project_files.render_all(cfg, sample_paper, host.HOSTS["codex"]) if s.path == "AGENTS.md")
+    assert "### Manuscript facts" in text and "$ploma:compile" in text and "/ploma:" not in text and "Claude Code" not in text
+
+
+def test_codex_section_strips_rule_frontmatter_and_fits_the_cap(sample_paper, cfg):
+    text = project_files.instructions_section(cfg, host.HOSTS["codex"])
+    assert "### Pipeline facts" in text and "paths:" not in text and GENERATED_LINE not in text
+    assert "The facts below are generated from it." in text and ".claude/" not in text
+    assert len(text.encode("utf-8")) < 28 * 1024
+    cfg["pipeline"]["enabled"] = False
+    assert "### Pipeline facts" not in project_files.instructions_section(cfg, host.HOSTS["codex"])
+    assert "### Manuscript facts" not in project_files.instructions_section(cfg, host.HOSTS["claude"])
+
+
+def test_no_absolute_plugin_paths_in_any_project_file(sample_paper, cfg, repo_root):
+    for s in project_files.render_all(cfg, sample_paper, host.HOSTS["codex"]):
+        assert str(repo_root) not in s.content
+    toml = next(s.content for s in project_files.render_all(cfg, sample_paper, host.HOSTS["codex"]) if s.path == ".codex/config.toml")
+    assert 'CLAUDE_PLUGIN_ROOT = ".ploma/plugin"' in toml and toml.count("# ploma:begin") == 1
+
+
+def test_codex_config_merges_into_existing_file(sample_paper, cfg):
+    (sample_paper / ".codex").mkdir(); (sample_paper / ".codex/config.toml").write_text('model = "x"\n')
+    text = next(s.content for s in project_files.render_all(cfg, sample_paper, host.HOSTS["codex"]) if s.path == ".codex/config.toml")
+    assert text.startswith('model = "x"\n') and "[shell_environment_policy]" in text
+
+
+def test_codex_config_withheld_when_policy_table_exists(sample_paper, cfg):
+    (sample_paper / ".codex").mkdir(); (sample_paper / ".codex/config.toml").write_text("[shell_environment_policy]\ninherit = \"all\"\n")
+    paths = [s.path for s in project_files.render_all(cfg, sample_paper, host.HOSTS["codex"])]
+    assert ".codex/config.toml" not in paths and project_files.withheld(cfg, sample_paper, host.HOSTS["codex"]) == [".codex/config.toml"]
+
+
+def test_codex_config_policy_inside_the_span_is_ours(sample_paper, cfg):
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    assert project_files.withheld(cfg, sample_paper, h) == []
+    assert project_files.withheld(cfg, sample_paper, host.HOSTS["claude"]) == []
+    assert {r["action"] for r in project_files.plan(sample_paper, cfg, h)} == {"unchanged"}
+
+
+def test_merge_marked_is_generic():
+    b, e = project_files.TOML_BEGIN, project_files.TOML_END
+    block = f"{b}\nnew\n{e}\n"
+    assert project_files.merge_marked(None, block, b, e) == block
+    assert project_files.merge_marked("a\n", block, b, e) == "a\n\n" + block
+    assert project_files.merge_marked(f"a\n{b}\nold\n{e}\nz\n", block, b, e) == f"a\n{block}z\n"
+    section = f"{project_files.MARKER_BEGIN}\nx\n{project_files.MARKER_END}\n"
+    assert project_files.merge_claude_md("mine\n", section) == "mine\n\n" + section
+    assert project_files.marker_span(f"{b}\n{e}\n", b, e) == (0, 1)
+    with pytest.raises(ValueError, match="unbalanced"):
+        project_files.merge_marked(f"{b}\n", block, b, e)
+
+
+def test_onboard_merge_keeps_learnings_block(sample_paper, cfg):
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    p = sample_paper / "AGENTS.md"
+    p.write_text(p.read_text() + "\n<!-- ploma-learnings:begin -->\n- keep me\n<!-- ploma-learnings:end -->\n")
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    assert "- keep me" in p.read_text() and p.read_text().count("ploma-learnings:begin") == 1
+    assert project_files.LEARNINGS_BEGIN == "<!-- ploma-learnings:begin -->"
+    assert project_files.LEARNINGS_END == "<!-- ploma-learnings:end -->"
+
+
+def test_switch_rewrites_receipt_and_touches_no_old_file(onboarded_sample, cfg):
+    old = [p for p in onboarded_sample.rglob("*") if p.is_file() and (".claude" in p.parts or p.name == "CLAUDE.md")]
+    before = {p: p.read_bytes() for p in old}
+    h = host.HOSTS["codex"]
+    assert "onboarded for Claude Code" in project_files.switch_notice(onboarded_sample, cfg, h)
+    project_files.apply(onboarded_sample, cfg, project_files.plan(onboarded_sample, cfg, h), h)
+    rec = receipt.load(onboarded_sample, cfg)
+    assert rec["host"] == "codex" and not any(e["path"].startswith(".claude/") or e["path"] == "CLAUDE.md" for e in rec["files"])
+    assert all(p.read_bytes() == b for p, b in before.items())
+    assert project_files.switch_notice(onboarded_sample, cfg, h) is None
+
+
+def test_switch_notice_lists_the_old_files(onboarded_sample, cfg, sample_paper):
+    notice = project_files.switch_notice(onboarded_sample, cfg, host.HOSTS["codex"])
+    assert notice.startswith("This repo is onboarded for Claude Code. You are running Codex. "
+                             "Onboard will write the Codex files and leave the Claude Code files in place: ")
+    assert "CLAUDE.md" in notice and MANUSCRIPT in notice
+    assert project_files.switch_notice(onboarded_sample, cfg, host.HOSTS["claude"]) is None
+
+
+def test_switch_notice_none_without_receipt(sample_paper, cfg):
+    assert project_files.switch_notice(sample_paper, cfg, host.HOSTS["codex"]) is None
+
+
+def test_apply_creates_link_and_host_json_from_env(sample_paper, cfg, repo_root, monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(repo_root)); monkeypatch.setenv("PLOMA_HOST", "codex")
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    assert (sample_paper / ".ploma/plugin").resolve() == repo_root.resolve() and host.read_host_json(sample_paper)["host"] == "codex"
+
+
+def test_apply_without_plugin_root_writes_no_link(sample_paper, cfg, monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    _apply(sample_paper, cfg)
+    assert not (sample_paper / ".ploma").exists()
+
+
+def test_record_accepts_host_learnings_target(sample_paper, cfg, monkeypatch, capsys):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    h = host.HOSTS["codex"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
+    agents = sample_paper / "AGENTS.md"
+    agents.write_text(agents.read_text(encoding="utf-8") + "\n<!-- ploma-learnings:begin -->\n"
+                      "- [LEARN:build] run the build from the repo root.\n<!-- ploma-learnings:end -->\n",
+                      encoding="utf-8")
+    root = str(sample_paper)
+    assert project_files.main(["--root", root, "--json", "record", "AGENTS.md"]) == 0
+    assert json.loads(capsys.readouterr().out)["path"] == "AGENTS.md"
+    rec = receipt.load(sample_paper, cfg)
+    entries = {e["path"]: e for e in rec["files"]}
+    assert rec["host"] == "codex" and [e["path"] for e in rec["files"]].count("AGENTS.md") == 1
+    assert entries["AGENTS.md"]["sha256"] == receipt.sha256_file(agents)
+    assert all(r["state"] == "unchanged" for r in receipt.compare(sample_paper, cfg))
+    skill = sample_paper / ".agents" / "skills" / "notes" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: notes\n---\n", encoding="utf-8")
+    assert project_files.record_created_once(sample_paper, cfg, ".agents/skills/notes/SKILL.md")["mode"] == "created-once"
+    _write_learnings_rule(sample_paper)
+    assert project_files.main(["--root", root, "--json", "record", LEARNINGS_RULE]) == 2
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "AGENTS.md" in error and ".agents/skills/" in error and LEARNINGS_RULE in error
+    assert project_files.main(["--root", root, "--json", "--host", "claude", "record", LEARNINGS_RULE]) == 0
+    capsys.readouterr()
+    assert project_files.main(["--root", root, "--json", "--host", "claude", "record", "AGENTS.md"]) == 2
+
+
+def test_cli_host_switch_and_withheld(onboarded_sample, capsys):
+    root = str(onboarded_sample)
+    assert project_files.main(["--root", root, "--host", "codex", "--json", "switch"]) == 0
+    assert "onboarded for Claude Code" in json.loads(capsys.readouterr().out)["notice"]
+    assert project_files.main(["--root", root, "--host", "claude", "--json", "switch"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"notice": None}
+    (onboarded_sample / ".codex").mkdir()
+    (onboarded_sample / ".codex/config.toml").write_text("[shell_environment_policy]\n", encoding="utf-8")
+    assert project_files.main(["--root", root, "--host", "codex", "--json", "plan"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["withheld"] == [".codex/config.toml"]
+    assert ".codex/config.toml" not in {r["path"] for r in out["rows"]} and "AGENTS.md" in {r["path"] for r in out["rows"]}
+    assert project_files.main(["--root", root, "--host", "codex", "plan"]) == 0
+    assert "withheld .codex/config.toml" in capsys.readouterr().out
+    assert project_files.main(["--root", root, "--host", "nope", "plan"]) == 2
+
+
+def test_skills_line_names_every_installed_skill(repo_root):
+    dirs = {p.name for p in (repo_root / "skills").iterdir() if p.is_dir() and not p.name.startswith("_")}
+    assert set(project_files.SKILLS) == dirs

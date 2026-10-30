@@ -182,6 +182,16 @@ INSTALLED = {"onboard", "doctor", "status", "help", "compile", "validate-bib",
 _PLOMA_CMD = re.compile(r"/ploma:([a-z][a-z-]*)")
 
 
+def _claude_section() -> str:
+    """The CLAUDE.md ploma section as onboard renders it for the sample paper."""
+    import host
+    import ploma_config
+    import project_files
+
+    sample = REPO / "examples" / "sample-paper"
+    return project_files.instructions_section(ploma_config.load(sample), host.HOSTS["claude"])
+
+
 def _planned_mention_problems(text: str, label: str) -> list[str]:
     """Every /ploma:<name> is installed, or is followed by "(planned" or "arrives in milestone 2"."""
     problems = []
@@ -359,7 +369,7 @@ def test_validate_skills_are_installed_and_not_marked_planned(name):
     help_text = _skill("help")
     assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
-    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    section = _claude_section()
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
     assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
@@ -497,7 +507,7 @@ def test_lifecycle_skills_are_installed_and_not_marked_planned(name):
     help_text = _skill("help")
     assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
-    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    section = _claude_section()
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
     assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
@@ -796,7 +806,7 @@ def test_ideation_skills_are_installed_and_not_marked_planned(name):
     help_text = _skill("help")
     assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
-    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    section = _claude_section()
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
     assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
@@ -1044,7 +1054,7 @@ def test_respond_is_installed_and_not_marked_planned():
     help_text = _skill("help")
     assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
-    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    section = _claude_section()
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
     assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line
@@ -1244,7 +1254,7 @@ def test_session_skills_are_installed_and_not_marked_planned(name):
     help_text = _skill("help")
     assert "not yet installed" not in help_text
     assert f"/ploma:{name}" in help_text.split("## Installed now", 1)[1].split("##", 1)[0]
-    section = (REPO / "templates" / "claude-md-section.md").read_text(encoding="utf-8")
+    section = _claude_section()
     installed_line = next(line for line in section.splitlines() if line.startswith("- Installed skills"))
     assert not any(line.startswith("- Planned") for line in section.splitlines())
     assert f"/ploma:{name}" in installed_line

@@ -63,6 +63,13 @@ def test_host_files_lists_only_present_owned_files(onboarded_sample, cfg):
     assert "CLAUDE.md" in files["claude"] and ".claude/rules/ploma-manuscript.md" in files["claude"]
     assert files["codex"] == []
 
+def test_host_files_lists_codex_files_after_codex_onboard(onboarded_for, cfg):
+    root = onboarded_for("codex")
+    files = host.host_files(root, cfg)
+    for rel in ("AGENTS.md", ".codex/config.toml", ".codex/agents/ploma-editor.toml"):
+        assert rel in files["codex"], rel
+    assert "CLAUDE.md" in files["claude"]
+
 def test_superpowers_detection_per_host(tmp_path):
     home = tmp_path / "home"; (home / ".agents" / "skills" / "superpowers").mkdir(parents=True)
     assert host.superpowers_installed(host.HOSTS["codex"], home, tmp_path)

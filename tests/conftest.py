@@ -41,6 +41,7 @@ def onboarded_sample(sample_paper) -> Path:
     import json
     import os
 
+    import host
     import ploma_config
     import project_files
 
@@ -55,5 +56,23 @@ def onboarded_sample(sample_paper) -> Path:
     newest = max(p.stat().st_mtime for p in sample_paper.rglob("*") if p.suffix in (".tex", ".bib"))
     os.utime(pdf, (newest + 60, newest + 60))
     cfg = ploma_config.load(sample_paper)
-    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg))
+    claude_host = host.HOSTS["claude"]
+    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, claude_host), claude_host)
     return sample_paper
+
+
+@pytest.fixture
+def onboarded_for(onboarded_sample):
+    """A function: onboarded_for(name) applies host name's plan on top of the Claude-onboarded sample,
+    so both file sets exist and the receipt names the new host; returns the repo root."""
+    import host
+    import ploma_config
+    import project_files
+
+    def make(name: str) -> Path:
+        h = host.HOSTS[name]
+        cfg = ploma_config.load(onboarded_sample)
+        project_files.apply(onboarded_sample, cfg, project_files.plan(onboarded_sample, cfg, h), h)
+        return onboarded_sample
+
+    return make

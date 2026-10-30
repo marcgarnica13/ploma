@@ -1,0 +1,4 @@
+# ploma:begin
+[shell_environment_policy]
+set = { CLAUDE_PLUGIN_ROOT = ".ploma/plugin" }
+# ploma:end

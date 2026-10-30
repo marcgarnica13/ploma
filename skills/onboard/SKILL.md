@@ -74,7 +74,7 @@ Show, in this order:
    PLOMA_YAML
    ```
 
-   Quote the JSON, then render a table with columns path, mode, action. Under it, show the `diff` of every `overwrite`, `merge` and `remove` row (a generated rule that will be removed is shown before approval).
+   Quote the JSON, then render a table of its `rows` with columns path, mode, action. Under it, show the `diff` of every `overwrite`, `merge` and `remove` row (a generated rule that will be removed is shown before approval). Name every path in `withheld`: ploma will not write it.
 
    With `pipeline.enabled: true` the plan has a row for `.claude/skills/analysis-pipeline/SKILL.md` (created-once): a project skill for running and extending the pipeline, rendered from the `pipeline` block (language, run directory, rerun command, outputs, metric keys, env contract, gotchas, and the stage chain from the optional `pipeline.stages` list). Say in one line what it is and that it is written once and then belongs to the user. When `pipeline.stages` is unset, the skill says the stage chain is not declared; offer to add the ordered stage names to the proposal.
 3. The settings suggestion, unless step 5 withheld it:
