@@ -1,0 +1,10 @@
+/* Still-only layout: a 1400 by 820 stage with the windows centred.
+   chrome.css holds the shared tokens and components. */
+html, body { width: 1400px; height: 820px; overflow: hidden; }
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}

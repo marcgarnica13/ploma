@@ -32,13 +32,14 @@ if [ ! -x "$CHROME" ]; then
 fi
 
 for n in grill spec write ship; do
+  # --no-sandbox: the headless shell runs as an unprivileged user without a setuid sandbox helper.
   "$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars \
     --force-device-scale-factor=2 --window-size=1400,820 \
     --virtual-time-budget=8000 --run-all-compositor-stages-before-draw \
-    --screenshot="$OUT/$n.png" "file://$HERE/$n.html" >/dev/null 2>&1
+    --screenshot="$OUT/$n.png" "file://$HERE/$n.html" >"$OUT/$n.log" 2>&1
   ffmpeg -y -loglevel error -i "$OUT/$n.png" -vf "scale=1400:-1:flags=area" "$DEST/$n.png"
   if command -v optipng >/dev/null 2>&1; then
     optipng -quiet -o2 "$DEST/$n.png"
   fi
-  printf '%s %s bytes\n' "$DEST/$n.png" "$(stat -c %s "$DEST/$n.png")"
+  printf '%s %s bytes\n' "$DEST/$n.png" "$(wc -c < "$DEST/$n.png")"
 done
