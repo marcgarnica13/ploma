@@ -79,7 +79,7 @@ Without `--branch`, commit on the current branch. With `--branch <name>`: `git s
 
 ## Step 3: Stage specific paths
 
-Build the list from `git status --porcelain`: every modified, added, deleted or renamed path, and untracked paths one by one. Leave out Claude Code's local settings file (`settings.local.json` in its project settings directory), `.env` and other credential files, anything that looks like a secret or a large binary not already tracked, and files under `.ploma/`. Show the list (path and status) and the left-out paths with the reason.
+Build the list from `git status --porcelain`: every modified, added, deleted or renamed path, and untracked paths one by one. Leave out Claude Code's local settings file (`settings.local.json` in its project settings directory), `.env` and other credential files, anything that looks like a secret or a large binary not already tracked, and files under `.ploma/`. `.codex/config.toml` is the host's shared project config, not local config or a secret: commit it like any other project file. Show the list (path and status) and the left-out paths with the reason.
 
 Ask once with `AskUserQuestion`: "Commit these paths?" Options: "Commit them (Recommended)", "Let me adjust the list". Adjust on request. Without `AskUserQuestion`, commit the shown list.
 

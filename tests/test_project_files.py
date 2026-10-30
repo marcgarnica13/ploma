@@ -160,6 +160,18 @@ def test_statusline_renders_outputs_dir(cfg):
     assert "quality_reports/ploma-state.yaml" in out and "{{" not in out
 
 
+def test_statusline_cli_prints_the_rendered_script(sample_paper, capsys, monkeypatch):
+    assert project_files.main(["--root", str(sample_paper), "statusline"]) == 0
+    out = capsys.readouterr().out
+    assert "quality_reports/ploma-state.yaml" in out and "{{" not in out
+    # --config - reads a proposal from stdin; --host is accepted and ignored.
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO((sample_paper / "ploma.yaml").read_text(encoding="utf-8")))
+    assert project_files.main(["--root", str(sample_paper), "--host", "codex", "--config", "-", "statusline"]) == 0
+    out = capsys.readouterr().out
+    assert "quality_reports/ploma-state.yaml" in out and "{{" not in out
+
+
 # ---------------------------------------------------------------- plan and apply
 
 def test_plan_on_fresh_repo(sample_paper, cfg):

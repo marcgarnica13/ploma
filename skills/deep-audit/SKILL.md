@@ -41,7 +41,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json files
 ```
 
-From the first, take `name`, `instructions_file`, `rules_dir` and `learnings_target`. From the second, take the list under the active host's `name` (the ploma-owned files present). Add Glob `<rules_dir>/*.md` when `rules_dir` is set (hand-written rules too), the span of `instructions_file` between `<!-- ploma:begin -->` and `<!-- ploma:end -->`, the learnings target, and Glob `<outputs.dir>/**/*.md` without `session_logs/` and `.cache/`. Pass these paths to the agents.
+From the first, take `name`, `instructions_file`, `rules_dir` and `learnings_target`. From the second, take the list under the active host's `name` (the ploma-owned files present; `unknown`: use the `claude` list). Add Glob `<rules_dir>/*.md` when `rules_dir` is set (hand-written rules too), the span of `instructions_file` between `<!-- ploma:begin -->` and `<!-- ploma:end -->`, the learnings target, and Glob `<outputs.dir>/**/*.md` without `session_logs/` and `.cache/`. Pass these paths to the agents.
 
 ## Phase 1: Four parallel agents
 

@@ -62,8 +62,8 @@ Promotion moves a learning from the ledger (read on demand) into the host's lear
 
 The learnings target has two forms:
 
-- A rule file (Claude Code: `learnings_target` lies under `rules_dir`). The rule file form below.
-- `AGENTS.md` (Codex). The learnings block form below.
+- When `learnings_target` equals `instructions_file` (Codex: `AGENTS.md`), use the learnings block form below.
+- Otherwise it is a rule file (Claude Code); use the rule file form below.
 
 The learnings rule or block is written only here. `/ploma:onboard` never renders, plans or rewrites it.
 
@@ -81,7 +81,7 @@ The learnings rule or block is written only here. `/ploma:onboard` never renders
    - File present: read it and append the approved lines under `## Learnings`; never rewrite lines already there.
    - Frontmatter: when every line in the file is path-scoped, open the file with `paths:` frontmatter listing the union of their globs, one quoted glob per line (as the generated ploma rules do). When any line is unscoped, the file has no frontmatter, and a path-scoped line names its paths in its text. Re-check this on every append.
 
-   Learnings block form (`AGENTS.md`):
+   Learnings block form (in `instructions_file`):
    - The block is the span between `<!-- ploma-learnings:begin -->` and `<!-- ploma-learnings:end -->`, placed right after the line `<!-- ploma:end -->` that closes the onboard section.
    - Block absent: insert it there with Edit: the begin marker, `## Learnings`, the approved lines, the end marker.
    - Block present: add the approved lines inside it, before the end marker; never rewrite lines already there.

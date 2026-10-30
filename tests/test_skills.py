@@ -100,7 +100,7 @@ def test_bootstrap_line_present(d):
 
 @pytest.mark.parametrize("d", SKILLS, ids=lambda d: d.name)
 def test_skill_text_names_no_claude_paths(d):
-    text = (d / "SKILL.md").read_text()
+    text = (d / "SKILL.md").read_text(encoding="utf-8")
     if d.name not in ("onboard", "help"):
         assert ".claude/" not in text and "CLAUDE.md" not in text, d.name
 
@@ -859,8 +859,7 @@ def test_brainstorm_contract():
         assert tool in tools, tool
     assert "Edit" not in tools
     # superpowers first when enabled, then the ported flow; its hand-off to planning is cut.
-    for s in ("superpowers:brainstorming", 'host.py" --json superpowers', '"installed": true', "superpowers@",
-              "writing-plans"):
+    for s in ("superpowers:brainstorming", 'host.py" --json superpowers', '"installed": true', "writing-plans"):
         assert s in text, s
     assert text.index("superpowers:brainstorming") < text.index("## Research questions")
     # 3 to 5 questions from descriptive to application, each with the full field set.

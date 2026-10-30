@@ -41,7 +41,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/host.py" --json superpowers
   - Exit: stop before its "Size the Work" step. Write no design document, make no commit, spawn no builder-check subagent, and offer no visual companion or spike. Its HARD-GATE and its `superpowers:writing-plans` step do not apply: the ideation report below is the output.
   - At every fork, ploma's rule wins over superpowers' "ask them to describe first": offer options with the recommended one first and its reason.
   - Carry its outcome (the framing the user settled on, constraints, directions ruled in or out) into the research questions.
-- Not enabled: say "superpowers is not enabled; running the ideation flow on its own (on Claude Code, install it with /plugin install superpowers@claude-plugins-official)." and go on.
+- Not enabled: say "superpowers is not enabled; running the ideation flow on its own (install superpowers for this host; see /ploma:help)." and go on.
 
 ## Research questions
 

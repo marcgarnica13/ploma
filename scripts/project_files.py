@@ -18,6 +18,7 @@ Usage:
   python3 scripts/project_files.py [--root R] [--host H] [--json] settings
   python3 scripts/project_files.py [--root R] [--host H] [--json] record <path>
   python3 scripts/project_files.py [--root R] [--host H] [--json] switch
+  python3 scripts/project_files.py [--root R] [--config C] statusline
 
 plan shows what apply would do (--json: {"rows": [...], "withheld": [{"path", "line"}]}; withheld names a
 merged file ploma will not write, the .codex/config.toml block when the user's file already defines the
@@ -27,7 +28,8 @@ receipt with the host, and creates the .ploma/plugin link (and .ploma/host.json)
 CLAUDE_PLUGIN_ROOT when it is set; settings prints the proposed .claude/settings.json additions (never
 written); record adds a file another skill wrote to the receipt: the host's learnings target (written
 by /ploma:learn --promote) or a project skill under the host's project skills directory; switch prints
-{"notice": ...}, the switch sentence when the receipt names another host, else null.
+{"notice": ...}, the switch sentence when the receipt names another host, else null; statusline prints
+the optional status line script rendered from the config (Claude Code only; never written; --host ignored).
 
 With pipeline.enabled, the analysis-pipeline project skill (<project skills dir>/analysis-pipeline/SKILL.md)
 is rendered created-once from the pipeline block; it stays when the pipeline is later disabled.
@@ -646,10 +648,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--config", default=None,
                         help="proposed ploma.yaml to plan from instead of <root>/ploma.yaml "
-                             "('-' reads stdin); plan and settings only")
+                             "('-' reads stdin); plan, settings and statusline only")
     parser.add_argument("--host", default=None, choices=tuple(_host.HOSTS),
                         help="the host to write files for (default: detected)")
-    parser.add_argument("action", choices=("plan", "apply", "settings", "record", "switch"))
+    parser.add_argument("action", choices=("plan", "apply", "settings", "record", "switch", "statusline"))
     parser.add_argument("target", nargs="?", default=None, help="record: the repo-relative file to record")
     try:
         args = parser.parse_args(argv)
@@ -657,7 +659,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if exc.code == 0 else 2
     root = Path(args.root)
     if (args.target is None) == (args.action == "record"):
-        return _error("record takes exactly one path; plan, apply, settings and switch take none", args.json)
+        return _error("record takes exactly one path; plan, apply, settings, switch and statusline take none", args.json)
     if args.config is not None and args.action == "record":
         return _error("record reads the written ploma.yaml; --config is for plan and settings", args.json)
     if args.config is not None and args.action == "apply":
@@ -673,6 +675,9 @@ def main(argv: list[str] | None = None) -> int:
         return _error(exc.message, args.json)
     except (OSError, UnicodeDecodeError) as exc:
         return _error(f"--config {args.config}: {exc}", args.json)
+    if args.action == "statusline":
+        print(render_statusline(cfg), end="")
+        return 0
     h = _host.HOSTS[args.host] if args.host else _host.detect(root=root)
     held: list[str] = []
     try:

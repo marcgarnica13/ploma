@@ -104,7 +104,15 @@ Show, in this order:
    ```
 
    Show it as a JSON block for `.claude/settings.json` and say: "plugins cannot grant permissions; add this yourself if you want it." Never write it.
-4. The status line, only when the host JSON has `statusline: true`: offer `${CLAUDE_PLUGIN_ROOT}/templates/statusline.sh` in one line; its header comment says how to install it. Never write it.
+4. The status line, only when the host JSON has `statusline: true`, rendered from the proposal:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --config - statusline <<'PLOMA_YAML'
+   <the proposed ploma.yaml>
+   PLOMA_YAML
+   ```
+
+   Offer the printed script in one line as optional; its header comment says where to save it and how to enable it. Never write it.
 
 `--dry-run`: stop here. Say "dry run: nothing written." and name the next step (`/ploma:onboard` without `--dry-run`).
 
