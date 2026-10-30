@@ -1,0 +1,29 @@
+% This is a fictional demo paper shipped with ploma. Its system, numbers and results are invented.
+% It exists so the README film can be reproduced: ploma runs on a copy of this directory.
+% The references are real and verified; nothing else in the paper describes real work.
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+
+\title{Tracing Agentic Workloads at Scale}
+\author{ploma demo}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+LLM agents issue long chains of tool calls, and current tracing stacks record each call without the decision that caused it.
+We present Tether, a tracer that records the causal link from each model decision to the tool results it consumed.
+Across 1200 tasks on three agent frameworks, Tether cuts median trace-query latency by 27.4\% against an OpenTelemetry pipeline.
+It stores 1.1 times the bytes of that pipeline.
+\end{abstract}
+
+\input{sections/intro}
+\input{sections/method}
+\input{sections/results}
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}

@@ -1,0 +1,23 @@
+\section{Results}
+\label{sec:results}
+
+We ran 1200 tasks on three agent frameworks and issued the same set of causal queries against each tracing back end.
+Table~\ref{tab:results} reports the reduction in median trace-query latency that Tether achieves against two baselines.
+Against an OpenTelemetry pipeline, Tether cuts median latency by 27.4\%.
+Against raw logs searched by identifier, it cuts median latency by 41.2\%.
+Tether stores 1.1 times the bytes of the OpenTelemetry pipeline, because it keeps the causal edges as well as the events.
+
+\begin{table}[t]
+  \centering
+  \caption{Reduction in median trace-query latency, 1200 tasks across three agent frameworks.}
+  \label{tab:results}
+  %% ploma-source: results/bench.json
+  \begin{tabular}{lrr}
+    \toprule
+    Baseline & Tasks & Latency cut (\%) \\
+    \midrule
+    OpenTelemetry pipeline & 1200 & 27.4 \\
+    Raw logs & 1200 & 41.2 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
