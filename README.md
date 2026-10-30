@@ -29,7 +29,7 @@ A coding agent can write a fluent introduction. The demo paper's introduction sa
 
 A paper needs every number to trace back to a result and every citation to a real record. A referee who reruns the benchmark should find the number the text states, and every entry in `refs.bib` should resolve to a published work.
 
-ploma makes the agent earn each sentence. It asks about the 31% before it drafts anything, the draft pins the number to `bench.json`, and `/ploma:commit` refuses to commit until the required checks pass on the current files.
+ploma makes the agent earn each sentence. It asks about the 31% before it drafts anything, the draft uses the number in `bench.json`, and `/ploma:commit` refuses to commit until the required checks pass on the current files.
 
 ## How a paper gets written
 
@@ -55,7 +55,7 @@ Write drafts the section into a `_suggestion.tex` file beside the original and c
 
 <img src="assets/stills/ship.png" width="700" alt="ploma commit passing the gate">
 
-`/ploma:commit` commits only when the required checks pass on the current files. On the demo paper compile, bib and consistency passed with no override, and the commit landed. An override needs a written reason, and the reason is logged.
+`/ploma:commit` commits only when the required checks pass on the current files. On the demo paper, compile, bib and consistency passed with no override, and the commit landed. An override needs a written reason, and the reason is logged.
 
 ## What stops slop
 
@@ -116,7 +116,7 @@ ploma covers a LaTeX paper from the first idea to the response to referees. The 
 - `/ploma:audit-reproducibility`: match reported numbers against the pipeline's results within tolerances.
 - `/ploma:proofread`: report-only proofreading; fixes only after approval.
 - `/ploma:review`: referee-style review; `--peer`, `--adversarial` and `--seven-pass` modes.
-- `/ploma:devils-advocate`: 5 to 7 skeptical challenges to design choices; report only.
+- `/ploma:devils-advocate`: 5 to 7 sceptical challenges to design choices; report only.
 - `/ploma:respond`: point-by-point response to referee reports, locations fact-checked.
 - `/ploma:commit`: commit behind the gate; asks before any push or pull request.
 - `/ploma:status`: stage, gate, plan and session log on one screen.
@@ -136,7 +136,7 @@ ploma 0.2.0 was released on 2026-10-30. The suite has 1464 tests and CI runs it 
 
 - [`docs/commit-gate.md`](docs/commit-gate.md): the required and recommended checks, the override syntax and the limit of three overrides in a row.
 - [`docs/hosts.md`](docs/hosts.md): one host at a time, and what the doctor reports after a switch.
-- [`CHANGELOG.md`](CHANGELOG.md): every release and its known issues.
+- [`CHANGELOG.md`](CHANGELOG.md): the releases and their known issues.
 - [`docs/superpowers/specs/`](docs/superpowers/specs/): the design specs.
 
 ## Credits and licence

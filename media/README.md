@@ -16,7 +16,7 @@ Sources for the images and the film in the ploma README. The logo, film and stil
 
 ## Transcripts
 
-`media/transcripts/` holds rendered transcripts of real ploma runs on `examples/demo-paper`. They stay in this folder; no build step copies them to `assets/`. Every line in the film and the stills comes from them.
+`media/transcripts/` holds rendered transcripts of real ploma runs on `examples/demo-paper`. They stay in this folder; no build step copies them to `assets/`. Every terminal line in the film and the stills comes from them.
 
 ## Tools
 

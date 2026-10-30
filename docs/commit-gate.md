@@ -7,7 +7,7 @@ What `/ploma:commit` checks before it commits, and how to override it. Changes t
 `/ploma:commit` refuses to commit until the required checks have passed on the current files. It refreshes missing or stale `compile`, `bib` (structural) and `consistency` entries itself before it decides.
 
 - Required: `compile` and `bib` (written by `/ploma:compile` and `/ploma:validate-bib`).
-- Recommended: `consistency`, `claims`, `proofread`. `consistency` is recommended today and becomes required in a later release.
+- Recommended: `consistency`, `claims`, `proofread`. `consistency` will become required in a later release.
 
 ## Overrides
 
