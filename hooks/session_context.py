@@ -68,7 +68,10 @@ def _early_exit_if_no_config() -> tuple[str, str]:
         if "--subagent" not in sys.argv[1:] and _has_tex(d):
             event = data.get("hook_event_name") if isinstance(data.get("hook_event_name"), str) else "SessionStart"
             line = ONBOARD_LINE
-            if any(os.environ.get(k) for k in ("CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION", "PLUGIN_ROOT")):
+            # The Codex signals of scripts/host.py detect(), copied: nothing is imported on this path.
+            env = os.environ
+            if any(env.get(k) for k in ("CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION")) or \
+                    (env.get("PLUGIN_ROOT") and env.get("PLUGIN_ROOT") == env.get("CLAUDE_PLUGIN_ROOT")):
                 line = line.replace("/ploma:", "$ploma:")
             sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": event,
                                                                "additionalContext": line}}) + "\n")
@@ -180,7 +183,11 @@ def host_block(host, plugin_root: Path) -> str:
 def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path) -> str:
     root = Path(root)
     if not hu.has_config(root):
-        return "" if subagent or not _has_tex(str(root)) else ONBOARD_LINE
+        if subagent or not _has_tex(str(root)):
+            return ""
+        hu.add_scripts_path(Path(plugin_root))
+        import host
+        return host.localize(ONBOARD_LINE, host.detect(os.environ, root))
     hu.add_scripts_path(Path(plugin_root))
     import host
     import ploma_config
@@ -198,7 +205,7 @@ def build_context(root: Path, *, subagent: bool, source: str, plugin_root: Path)
     except ploma_config.ConfigError as exc:
         msg = exc.message.replace("\n", " ")
         notice = msg if "could not be parsed" in msg else f"ploma.yaml could not be parsed: {msg}"
-        text = "\n\n".join([rules, "## ploma project", notice[:1000] + " Fix it or run /ploma:doctor."])
+        text = "\n\n".join([rules, "## ploma project", notice[:1000] + host.localize(" Fix it or run /ploma:doctor.", h)])
         if subagent:
             text += "\n" + _plugin_paths(plugin_root)
         return "\n\n".join(p for p in (text, block) if p)

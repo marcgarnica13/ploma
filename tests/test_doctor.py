@@ -562,3 +562,28 @@ def test_plugin_link_to_another_plugin_version_warns(onboarded_sample, monkeypat
     f = _by_id(r, "host.plugin_link_version")
     assert f.status == WARN and str(old) in f.observed
     assert f.remediation == "Start a new session so the hook refreshes .ploma/plugin, or run /ploma:onboard."
+
+
+def test_mismatch_skips_the_running_hosts_wiring(onboarded_sample, monkeypatch):
+    """M4: on a mismatch, root export, plugin link and AGENTS.md size are not checked for the running host."""
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    (onboarded_sample / "AGENTS.md").write_text("x" * (29 * 1024), encoding="utf-8")
+    ids = {f.id for f in _all(_run(onboarded_sample))}
+    assert "host.host_mismatch" in ids
+    assert not any(i.startswith(("host.root_export", "host.plugin_link", "host.agents_md_size")) for i in ids), ids
+
+
+def test_not_onboarded_still_reports_the_plugin_link(sample_paper, monkeypatch):
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    r = _run(sample_paper)
+    assert _by_id(r, "host.not_onboarded").status == INFO
+    assert _by_id(r, "host.plugin_link").status == WARN
+
+
+def test_render_reads_host_json_from_cwd(onboarded_for, monkeypatch):
+    """M4: a plain shell in a Codex repo renders $ploma: from .ploma/host.json."""
+    from _findings import Finding, render
+    root = onboarded_for("codex")
+    monkeypatch.chdir(root)
+    assert host.read_host_json(root)["host"] == "codex"  # apply rewrote the Claude record on the switch
+    assert render([Finding("a.b", WARN, "run /ploma:compile")]) == "- WARN a.b: run $ploma:compile"

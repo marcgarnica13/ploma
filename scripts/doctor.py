@@ -362,7 +362,7 @@ def _host(root: Path, cfg: dict, h: host_mod.Host) -> list[Finding]:
     if name is None:
         out.append(_f(g, "not_onboarded", INFO, "no onboard receipt, so the onboarded host is unknown",
                       observed=problem, remediation="Run /ploma:onboard to write the project files and receipt."))
-        return out
+        return out + _plugin_link(root)
     if name != fh.name:
         out.insert(0, _f(g, "host_mismatch", FAIL,
                          f"repo is onboarded for {_display(name)}; you are running {h.display}",
@@ -373,22 +373,11 @@ def _host(root: Path, cfg: dict, h: host_mod.Host) -> list[Finding]:
     if others:
         out.append(_f(g, "other_host_files", INFO, "ploma files for another host are present (left in place)",
                       observed=", ".join(others)))
+    if name != fh.name:
+        return out  # the running host's wiring is checked once onboard has switched
     if fh.root_export:
         out.extend(_root_export(root, cfg, fh))
-    link = root / host_mod.LINK
-    if os.path.islink(link) and os.path.isdir(link):
-        out.append(_f(g, "plugin_link", PASS, f"{host_mod.LINK} points at the plugin", observed=os.readlink(link)))
-        if Path(os.path.realpath(link)) != PLUGIN_ROOT:
-            out.append(_f(g, "plugin_link_version", WARN, f"{host_mod.LINK} points at another plugin version",
-                          observed=f"{host_mod.LINK} -> {os.path.realpath(link)}; running plugin: {PLUGIN_ROOT}",
-                          remediation="Start a new session so the hook refreshes .ploma/plugin, "
-                                      "or run /ploma:onboard."))
-    else:
-        out.append(_f(g, "plugin_link", WARN, f"{host_mod.LINK} is missing or dangling",
-                      observed=f"{host_mod.LINK}: " + ("dangling link to " + os.readlink(link)
-                                                       if os.path.islink(link) else "not a symlink"),
-                      remediation="Start a new session (the session hook refreshes .ploma/plugin), "
-                                  "or run /ploma:onboard."))
+    out.extend(_plugin_link(root))
     if fh.name == "codex":
         agents = root / fh.instructions_file
         size = agents.stat().st_size if agents.is_file() else 0
@@ -397,6 +386,25 @@ def _host(root: Path, cfg: dict, h: host_mod.Host) -> list[Finding]:
                           f"{fh.instructions_file} is over 28 KiB, so Codex may not read all of it",
                           observed=f"{fh.instructions_file}: {size} bytes (limit {AGENTS_MD_LIMIT})",
                           remediation=f"Shorten the text outside the ploma section of {fh.instructions_file}."))
+    return out
+
+
+def _plugin_link(root: Path) -> list[Finding]:
+    """plugin_link (missing or dangling), and plugin_link_version when it resolves to another plugin root."""
+    g = "host"
+    link = root / host_mod.LINK
+    if not (os.path.islink(link) and os.path.isdir(link)):
+        return [_f(g, "plugin_link", WARN, f"{host_mod.LINK} is missing or dangling",
+                   observed=f"{host_mod.LINK}: " + ("dangling link to " + os.readlink(link)
+                                                    if os.path.islink(link) else "not a symlink"),
+                   remediation="Start a new session (the session hook refreshes .ploma/plugin), "
+                               "or run /ploma:onboard.")]
+    out = [_f(g, "plugin_link", PASS, f"{host_mod.LINK} points at the plugin", observed=os.readlink(link))]
+    if Path(os.path.realpath(link)) != PLUGIN_ROOT:
+        out.append(_f(g, "plugin_link_version", WARN, f"{host_mod.LINK} points at another plugin version",
+                      observed=f"{host_mod.LINK} -> {os.path.realpath(link)}; running plugin: {PLUGIN_ROOT}",
+                      remediation="Start a new session so the hook refreshes .ploma/plugin, "
+                                  "or run /ploma:onboard."))
     return out
 
 

@@ -832,9 +832,20 @@ def test_onboard_merge_keeps_learnings_block(sample_paper, cfg):
     h = host.HOSTS["codex"]
     project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
     p = sample_paper / "AGENTS.md"
-    p.write_text(p.read_text() + "\n<!-- ploma-learnings:begin -->\n- keep me\n<!-- ploma-learnings:end -->\n")
-    project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, h), h)
-    assert "- keep me" in p.read_text() and p.read_text().count("ploma-learnings:begin") == 1
+    block = "<!-- ploma-learnings:begin -->\n- keep me  \n\n- [LEARN:x] `a`\\b\n<!-- ploma-learnings:end -->\n"
+    p.write_text(p.read_text() + "\n" + block + "trailing user text\n")
+
+    def learnings(text):
+        b, e = project_files.marker_span(text, project_files.LEARNINGS_BEGIN, project_files.LEARNINGS_END)
+        return "".join(text.splitlines(keepends=True)[b:e + 1])
+
+    before = learnings(p.read_text())
+    cfg["venue"]["page_budget"] = 9  # changes the section, so the second apply really merges
+    rows = project_files.plan(sample_paper, cfg, h)
+    assert {r["path"]: r["action"] for r in rows}["AGENTS.md"] == "merge"
+    project_files.apply(sample_paper, cfg, rows, h)
+    assert before == block and learnings(p.read_text()) == before
+    assert p.read_text().endswith(block + "trailing user text\n") and p.read_text().count("ploma-learnings:begin") == 1
     assert project_files.LEARNINGS_BEGIN == "<!-- ploma-learnings:begin -->"
     assert project_files.LEARNINGS_END == "<!-- ploma-learnings:end -->"
 
@@ -984,7 +995,9 @@ def test_skills_line_names_every_installed_skill(repo_root):
     "[shell_environment_policy]  # mine\ninherit = \"all\"\n",
     "[ shell_environment_policy ]\n",
     "[shell_environment_policy.set]\nFOO = \"1\"\n",
-    'model = "x"\nshell_environment_policy.inherit = "all"\n'])
+    'model = "x"\nshell_environment_policy.inherit = "all"\n',
+    'shell_environment_policy = { inherit = "all" }\n',
+    '[ "shell_environment_policy" ]\ninherit = "all"\n'])
 def test_codex_config_withheld_for_every_policy_table_form(sample_paper, cfg, existing):
     (sample_paper / ".codex").mkdir(); (sample_paper / ".codex/config.toml").write_text(existing)
     h = host.HOSTS["codex"]
@@ -1039,3 +1052,21 @@ def test_symlinked_instructions_file_is_withheld(sample_paper, cfg, capsys):
     assert project_files.main(["--root", root, "--host", "codex", "plan"]) == 0
     assert ("- withheld AGENTS.md: `AGENTS.md` is a symlink; ploma does not write through links: replace it "
             "with a regular file or merge the section by hand") in capsys.readouterr().out
+
+
+def test_apply_keeps_an_existing_file_mode_and_gives_new_files_the_umask(sample_paper, cfg):
+    """M1: a group-writable CLAUDE.md stays 664 after a merge; new project files are not 600."""
+    import os
+    import stat
+    claude = sample_paper / "CLAUDE.md"
+    claude.write_text("mine\n", encoding="utf-8")
+    os.chmod(claude, 0o664)
+    umask = os.umask(0o022)
+    try:
+        project_files.apply(sample_paper, cfg, project_files.plan(sample_paper, cfg, host.HOSTS["claude"]),
+                            host.HOSTS["claude"])
+    finally:
+        os.umask(umask)
+    assert "ploma:begin" in claude.read_text() and stat.S_IMODE(claude.stat().st_mode) == 0o664
+    assert stat.S_IMODE((sample_paper / MANUSCRIPT).stat().st_mode) == 0o644
+    assert stat.S_IMODE((sample_paper / "quality_reports" / "ploma-receipt.json").stat().st_mode) == 0o600

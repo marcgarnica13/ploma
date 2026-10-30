@@ -67,6 +67,14 @@ The learnings target has two forms:
 
 The learnings rule or block is written only here. `/ploma:onboard` never renders, plans or rewrites it.
 
+First check that the repo is onboarded for this host:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/project_files.py" --host <name> --json switch
+```
+
+When `notice` is not null, quote it, say "Run /ploma:onboard on this host first, then promote.", and stop: the receipt names another host, so a promotion here would be recorded for the wrong host.
+
 1. List candidates: Grep the ledger for entry lines (the pattern in the format reference) that lack the ` (promoted <date>)` suffix. With `<entry>`, keep the lines containing it. None: say "No unpromoted ledger entries." and stop.
 2. For each candidate, check before proposing:
    - Stale: Glob or Grep every path, command or name the entry mentions. Gone or renamed: propose not promoting it and say why.

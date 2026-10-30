@@ -13,11 +13,6 @@ import host
 import session_context
 
 
-@pytest.fixture(autouse=True)
-def _no_project_env(monkeypatch):
-    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
-
-
 def _ctx(root, repo_root, **kw):
     kw.setdefault("subagent", False)
     kw.setdefault("source", "startup")
@@ -151,7 +146,6 @@ def test_hooks_json_wires_session_events(repo_root):
 
 def _run_script(repo_root, cwd, payload, *args):
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
-    env.pop("CLAUDE_PROJECT_DIR", None)
     return subprocess.run([sys.executable, str(repo_root / "hooks/session_context.py"), *args],
                           input=json.dumps(payload), capture_output=True, text=True, cwd=str(cwd), env=env, timeout=30)
 
@@ -249,7 +243,6 @@ def test_subagent_context_also_carries_host_block_on_codex(onboarded_sample, rep
 def test_onboard_line_is_localized(tmp_path, repo_root):
     (tmp_path / "main.tex").write_text(r"\documentclass{article}")
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root), CODEX_SESSION_ID="s1")
-    env.pop("CLAUDE_PROJECT_DIR", None)
     env.pop("PLOMA_HOST", None)
     r = subprocess.run([sys.executable, str(repo_root / "hooks/session_context.py")],
                        input=json.dumps({"source": "startup", "cwd": str(tmp_path)}),
@@ -258,3 +251,29 @@ def test_onboard_line_is_localized(tmp_path, repo_root):
     out = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "$ploma:onboard" in out and "/ploma:" not in out
     assert not (tmp_path / ".ploma").exists()
+
+
+def test_session_strings_are_localized_on_codex(tmp_path, repo_root, monkeypatch):
+    """M9: the no-config onboard line and the broken-config notice use $ploma: on Codex."""
+    (tmp_path / "main.tex").write_text(r"\documentclass{article}")
+    monkeypatch.setenv("PLOMA_HOST", "codex")
+    out = _ctx(tmp_path, repo_root)
+    assert "$ploma:onboard" in out and "/ploma:" not in out
+    (tmp_path / "ploma.yaml").write_text("document: [unclosed\n")
+    out = _ctx(tmp_path, repo_root)
+    assert "Fix it or run $ploma:doctor." in out and "/ploma:doctor" not in out
+    monkeypatch.setenv("PLOMA_HOST", "claude")
+    assert "Fix it or run /ploma:doctor." in _ctx(tmp_path, repo_root)
+
+
+@pytest.mark.parametrize("plugin_root,codex", [("same", True), ("/other/tool", False)])
+def test_inline_plugin_root_signal_needs_equal_roots(tmp_path, repo_root, plugin_root, codex):
+    """M3: the no-config path counts PLUGIN_ROOT only when it equals CLAUDE_PLUGIN_ROOT."""
+    (tmp_path / "main.tex").write_text(r"\documentclass{article}")
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root),
+               PLUGIN_ROOT=str(repo_root) if plugin_root == "same" else plugin_root)
+    r = subprocess.run([sys.executable, str(repo_root / "hooks/session_context.py")],
+                       input=json.dumps({"source": "startup", "cwd": str(tmp_path)}),
+                       capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
+    out = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ("$ploma:onboard" in out) is codex and ("/ploma:onboard" in out) is not codex

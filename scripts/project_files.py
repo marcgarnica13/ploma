@@ -52,6 +52,7 @@ import os
 import posixpath
 import re
 import shlex
+import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -75,9 +76,12 @@ LEARNINGS_END = "<!-- ploma-learnings:end -->"
 TOML_BEGIN = "# ploma:begin"
 TOML_END = "# ploma:end"
 POLICY_TABLE = "[shell_environment_policy]"
-# Any form that defines the table: [shell_environment_policy] (spaces, comments), a subtable, a dotted key.
+# Any form that defines the table: [shell_environment_policy] (spaces, comments), a subtable, a dotted key,
+# an inline table (shell_environment_policy = {...}), a quoted table name (["shell_environment_policy"]).
 _POLICY_RES = (re.compile(r"^\s*\[\s*shell_environment_policy\s*(\]|\.)"),
-               re.compile(r"^\s*shell_environment_policy\s*\."))
+               re.compile(r"^\s*shell_environment_policy\s*\."),
+               re.compile(r"^\s*shell_environment_policy\s*="),
+               re.compile(r'^\s*\[\s*"shell_environment_policy"\s*(\]|\.)'))
 SKILLS = ("compile", "validate-bib", "audit-reproducibility", "verify-claims", "proofread", "write", "format",
           "review", "devils-advocate", "brainstorm", "lit-review", "grill", "spec", "respond", "checkpoint",
           "compress-session", "learn", "deep-audit", "commit", "doctor", "status", "help", "onboard")
@@ -576,7 +580,7 @@ def apply(root: Path, cfg: dict, plan: list[dict], host: _host.Host | None = Non
             continue
         if spec.mode == "created-once" and target.exists():
             continue  # appeared after the plan: never overwrite a created-once file
-        state._atomic_write(target, spec.content)
+        _write_keeping_mode(target, spec.content)
         written.add(spec.path)
     if h.rules_dir and actions.get(PIPELINE_RULE) == "remove" and PIPELINE_RULE not in {s.path for s in specs}:
         target = root / PIPELINE_RULE
@@ -595,15 +599,28 @@ def apply(root: Path, cfg: dict, plan: list[dict], host: _host.Host | None = Non
     return [dict(row, written=row["path"] in written) for row in plan]
 
 
+def _write_keeping_mode(target: Path, text: str) -> None:
+    """Atomic write that keeps an existing file's permission bits, or gives a new file 0o666 & ~umask
+    (state._atomic_write leaves mkstemp's 600, right for .ploma/* and the receipt, wrong for project files)."""
+    try:
+        mode = stat.S_IMODE(target.stat().st_mode)
+    except OSError:
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
+    state._atomic_write(target, text)
+    os.chmod(target, mode)
+
+
 def _link_plugin(root: Path, h: _host.Host) -> bool:
-    """Create .ploma/plugin, and .ploma/host.json when the hook has not written it; True when linked.
+    """Create .ploma/plugin, and .ploma/host.json when it is missing or names another host; True when linked.
 
     The plugin root is this script's own plugin directory (Ruling R9), never CLAUDE_PLUGIN_ROOT: on Codex
     the model's shell exports CLAUDE_PLUGIN_ROOT=.ploma/plugin, which would link the link to itself."""
     plugin_root = PLUGIN_ROOT
     try:
         _host.ensure_plugin_link(root, plugin_root)
-        if h.name != "unknown" and _host.read_host_json(root) is None:
+        if h.name != "unknown" and (_host.read_host_json(root) or {}).get("host") != h.name:
             _host.write_host_json(root, h, plugin_root, receipt.plugin_version())
     except (OSError, ValueError):
         return False  # the session hook refreshes the link; doctor reports it when missing

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 PASS = "PASS"
 WARN = "WARN"
@@ -37,7 +38,7 @@ def render(findings: list[Finding]) -> str:
     /ploma:<skill> references are written in the running host's form; the findings themselves keep /ploma:."""
     import host  # inside the function: host imports state, which imports ploma_config, which imports this module
 
-    h = host.detect()
+    h = host.detect(root=Path.cwd())  # a plain shell in the repo reads .ploma/host.json
     lines: list[str] = []
     for f in findings:
         lines.append(f"- {f.status} {f.id}: {host.localize(f.summary, h)}")

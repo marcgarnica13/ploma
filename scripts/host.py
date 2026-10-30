@@ -64,7 +64,10 @@ HOSTS: dict[str, Host] = {
     "unknown": dataclasses.replace(_CLAUDE, name="unknown", display="unknown host"),
 }
 
-_CODEX_VARS = ("CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION", "PLUGIN_ROOT")
+# Keep in step with the inline copy in hooks/session_context.py (_early_exit_if_no_config), which cannot
+# import this module. PLUGIN_ROOT is a Codex signal only when it equals CLAUDE_PLUGIN_ROOT (Codex hooks set
+# both to the same value); alone it is as generic as CODEX_HOME.
+_CODEX_VARS = ("CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION")
 _CLAUDE_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PLUGIN_ROOT")
 
 
@@ -77,7 +80,7 @@ def detect(env: Mapping[str, str] | None = None, root: Path | None = None) -> Ho
     override = env.get("PLOMA_HOST")
     if override in HOSTS:
         return HOSTS[override]
-    if any(env.get(k) for k in _CODEX_VARS):
+    if any(env.get(k) for k in _CODEX_VARS) or _codex_plugin_root(env):
         return HOSTS["codex"]
     if any(env.get(k) for k in _CLAUDE_VARS):
         return HOSTS["claude"]
@@ -86,6 +89,11 @@ def detect(env: Mapping[str, str] | None = None, root: Path | None = None) -> Ho
         if data is not None and data.get("host") in HOSTS:
             return HOSTS[data["host"]]
     return HOSTS["unknown"]
+
+
+def _codex_plugin_root(env: Mapping[str, str]) -> bool:
+    plugin_root = env.get("PLUGIN_ROOT")
+    return bool(plugin_root) and plugin_root == env.get("CLAUDE_PLUGIN_ROOT")
 
 
 def skill_ref(name: str, host: Host | None = None) -> str:
@@ -190,11 +198,14 @@ def host_files(root: Path, cfg: dict | None) -> dict[str, list[str]]:
 
 
 def superpowers_installed(host: Host, home: Path, root: Path) -> bool:
-    """Codex: ~/.codex/superpowers or ~/.agents/skills/superpowers*. Claude and unknown: enabled plugin."""
+    """Codex: <CODEX_HOME or ~/.codex>/superpowers or ~/.agents/skills/superpowers*. Claude and unknown:
+    enabled plugin."""
     home = Path(home)
     if host.name == "codex":
-        if (home / ".codex" / "superpowers").exists():
-            return True
+        codex_home = os.environ.get("CODEX_HOME")
+        for d in ([Path(codex_home)] if codex_home else []) + [home / ".codex"]:
+            if (d / "superpowers").exists():
+                return True
         skills = home / ".agents" / "skills"
         return skills.is_dir() and any(skills.glob("superpowers*"))
     import inventory

@@ -14,7 +14,7 @@ for _sub in ("scripts", "hooks"):
 
 
 HOST_ENV = ("PLOMA_HOST", "CLAUDE_PLUGIN_ROOT", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "PLUGIN_ROOT",
-            "CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION", "CODEX_HOME")
+            "CODEX_SESSION_ID", "CODEX_THREAD_ID", "CODEX_VERSION", "CODEX_HOME", "CLAUDE_PROJECT_DIR")
 
 
 @pytest.fixture(autouse=True)

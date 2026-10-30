@@ -10,7 +10,7 @@ ploma is a harness for coding agents (Claude Code or Codex) for writing, validat
 
 ### Claude Code
 
-The same commands work on both machines (the development machine and the paper host). On a machine without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
+The same commands work on both machines (the development machine and the paper machine). On a machine without SSH keys for GitHub, set up HTTPS first, in the shell that starts Claude Code:
 
 ```
 gh auth login && gh auth setup-git          # HTTPS credentials for git
@@ -50,7 +50,9 @@ set = { OPENALEX_API_KEY = "...", SEMANTIC_SCHOLAR_API_KEY = "...", CROSSREF_MAI
 
 ## Switching hosts
 
-ploma runs on one host at a time. The repo is onboarded for the host you ran onboard under; the onboard receipt records it. To switch, run onboard on the new host. The old host's files stay in place. The doctor reports `host_mismatch` until you do.
+ploma runs on one host at a time. The repo is onboarded for the host you ran onboard under; the onboard receipt records it. To switch, run onboard on the new host. The old host's files stay in place. The doctor reports `host_mismatch` until you run onboard on the new host.
+
+Co-authors on Codex run `$ploma:onboard` once per machine, after cloning. It is an absorption run: it writes nothing the repo already has and creates the machine-local `.ploma/plugin` link (`.ploma/` is gitignored, so a clone lacks it).
 
 ## Lifecycle
 

@@ -11,6 +11,7 @@
 - Printed skill references are localized per host (`/ploma:<name>` or `$ploma:<name>`).
 - Promoted learnings on Codex live in an `AGENTS.md` block.
 - The `statusline` CLI action.
+- Codex role files cannot restrict tools or set a sandbox, so the read-only guarantee of the reviewer agents holds on Claude Code only; on Codex it rests on the agents' instructions.
 - A bootstrap line in every skill sets the plugin root when `$CLAUDE_PLUGIN_ROOT/scripts` is not a directory (unset variable, or a missing or stale `.ploma/plugin`).
 
 ## 0.1.0 (2026-10-29)

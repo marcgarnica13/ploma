@@ -142,6 +142,8 @@ The host context block holds the lines the Project context block already knows h
 
 Skill prose keeps "Spawn `ploma:editor` (Agent tool, `subagent_type: ploma:editor`)". The host block tells Codex to use `spawn_agent` with `agent_type: ploma-editor` and `fork_turns: "none"`, and states the one-character naming rule (`ploma:editor` on Claude, `ploma-editor` on Codex).
 
+Codex role files cannot restrict tools or set a sandbox (ruling R11), so the read-only guarantee of the reviewer agents (`tools: Read, Grep, Glob` on Claude) holds on Claude Code only; on Codex it rests on the agents' instructions.
+
 Onboard regenerates the agent files on every run (they are enforced), and doctor reports drift like the rules. `host_adapters.py build-check` renders every agent against the sample paper and fails on any error, so a broken source cannot reach a release.
 
 ## 10. Skills on both hosts

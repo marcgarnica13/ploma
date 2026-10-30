@@ -80,7 +80,7 @@ export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
 /ploma:onboard
 ```
 
-On a host without SSH keys for GitHub, the first two lines set up HTTPS; with SSH keys, skip them.
+On a machine without SSH keys for GitHub, the first two lines set up HTTPS; with SSH keys, skip them.
 
 Update: `/plugin marketplace update ploma`, then `/reload-plugins`.
 
@@ -91,11 +91,13 @@ codex plugin marketplace add marcgarnica13/ploma
 codex plugin add ploma@ploma
 ```
 
-Then open /hooks in Codex and trust ploma's hooks, and run `$ploma:onboard`. Update: `codex plugin marketplace upgrade ploma`, then reinstall with `codex plugin add ploma@ploma`. On Codex every skill is typed `$ploma:<name>` where this page says `/ploma:<name>`.
+Then open /hooks in Codex and trust ploma's hooks, and run `$ploma:onboard`. Update: `codex plugin marketplace upgrade ploma`, then reinstall with `codex plugin add ploma@ploma`, then start a new session. On Codex every skill is typed `$ploma:<name>` where this page says `/ploma:<name>`.
 
 ## Switching hosts
 
-ploma runs on one host at a time. To move a repo to the other host, run onboard again there. The old host's files are left in place. The doctor reports `host_mismatch` until you do.
+ploma runs on one host at a time. To move a repo to the other host, run onboard again there. The old host's files are left in place. The doctor reports `host_mismatch` until you run onboard on the new host.
+
+Co-authors on Codex run `$ploma:onboard` once per machine: an absorption run that writes nothing the repo already has and creates the machine-local `.ploma/plugin` link.
 
 ## Testing
 

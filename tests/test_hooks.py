@@ -24,7 +24,7 @@ MAINS = (session_context.main, pre_compact.main, context_monitor.main, verify_re
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     for name in ("PLOMA_PRECOMPACT_BLOCK_ON_DRAFT", "PLOMA_CONTEXT_WINDOW_TOKENS",
-                 "PLOMA_CONTEXT_MAX_TOOL_CALLS", "CLAUDE_PROJECT_DIR"):
+                 "PLOMA_CONTEXT_MAX_TOOL_CALLS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -80,7 +80,6 @@ def test_script_silent_and_lean_without_config(name, repo_root, tmp_path):
         "runpy.run_path(sys.argv[0], run_name='__main__')\n"
     )
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
-    env.pop("CLAUDE_PROJECT_DIR", None)
     r = subprocess.run([sys.executable, "-c", probe], input=_payload(tmp_path), capture_output=True,
                        text=True, cwd=str(tmp_path), env=env, timeout=30)
     assert r.returncode == 0 and r.stdout == "" and r.stderr == ""
@@ -177,11 +176,20 @@ def test_context_monitor_counts_codex_spawn(onboarded_sample, monkeypatch):
 def test_no_state_dir_without_config(tmp_path, repo_root):
     (tmp_path / "main.tex").write_text(r"\documentclass{article}")
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
-    env.pop("CLAUDE_PROJECT_DIR", None)
     r = subprocess.run([sys.executable, str(repo_root / "hooks" / "session_context.py")],
                        input=_payload(tmp_path, hook_event_name="SessionStart", source="startup"),
                        capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
     assert r.returncode == 0 and "onboard" in r.stdout
+    assert not (tmp_path / ".ploma").exists()
+
+
+def test_no_state_dir_without_config_on_codex(tmp_path, repo_root):
+    (tmp_path / "main.tex").write_text(r"\documentclass{article}")
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root), PLUGIN_ROOT=str(repo_root), CODEX_SESSION_ID="s1")
+    r = subprocess.run([sys.executable, str(repo_root / "hooks" / "session_context.py")],
+                       input=_payload(tmp_path, hook_event_name="SessionStart", source="startup"),
+                       capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=30)
+    assert r.returncode == 0 and "$ploma:onboard" in r.stdout and "/ploma:" not in r.stdout
     assert not (tmp_path / ".ploma").exists()
 
 
@@ -451,7 +459,6 @@ def test_project_dir_found_from_subdirectory(onboarded_sample, repo_root, tmp_pa
     verify_reminder.main(_payload(sub, tool_name="Edit", tool_input={"file_path": str(sub / "intro.tex")}))
     assert "/ploma:compile" in capsys.readouterr().out
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(repo_root))
-    env.pop("CLAUDE_PROJECT_DIR", None)
     r = subprocess.run([sys.executable, str(repo_root / "hooks/session_context.py")],
                        input=json.dumps({"source": "startup", "cwd": str(sub)}), capture_output=True,
                        text=True, cwd=str(tmp_path), env=env, timeout=30)

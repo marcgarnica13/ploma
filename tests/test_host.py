@@ -26,6 +26,11 @@ def test_codex_hook_env_detected_by_unprefixed_plugin_root():
     assert host.detect({"PLUGIN_ROOT": "/p", "CLAUDE_PLUGIN_ROOT": "/p"}).name == "codex"
     assert host.detect({"CLAUDE_PLUGIN_ROOT": "/p"}).name == "claude"
 
+def test_plugin_root_alone_or_different_is_not_a_codex_signal():
+    assert host.detect({"PLUGIN_ROOT": "/other/tool"}).name == "unknown"
+    assert host.detect({"PLUGIN_ROOT": "/other/tool", "CLAUDE_PLUGIN_ROOT": "/p"}).name == "claude"
+    assert host.detect({"PLUGIN_ROOT": "", "CLAUDE_PLUGIN_ROOT": ""}).name == "unknown"
+
 def test_ploma_host_override():
     assert host.detect({"PLOMA_HOST": "claude", "CODEX_VERSION": "1"}).name == "claude"
     assert host.detect({"PLOMA_HOST": "nonsense", "CODEX_VERSION": "1"}).name == "codex"
@@ -97,6 +102,14 @@ def test_superpowers_detection_per_host(tmp_path):
     home = tmp_path / "home"; (home / ".agents" / "skills" / "superpowers").mkdir(parents=True)
     assert host.superpowers_installed(host.HOSTS["codex"], home, tmp_path)
     assert not host.superpowers_installed(host.HOSTS["claude"], home, tmp_path)
+
+def test_superpowers_under_codex_home(tmp_path, monkeypatch):
+    home, codex_home = tmp_path / "home", tmp_path / "ch"
+    home.mkdir()
+    assert not host.superpowers_installed(host.HOSTS["codex"], home, tmp_path)
+    (codex_home / "superpowers").mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    assert host.superpowers_installed(host.HOSTS["codex"], home, tmp_path)
 
 def test_cli_facts_json(tmp_path, monkeypatch):
     monkeypatch.setenv("PLOMA_HOST", "codex")
